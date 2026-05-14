@@ -1,101 +1,387 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 # ============================================================
-# CONFIGURAÇÃO PRINCIPAL
+# LINKS DA PLANILHA PUBLICADA
 # ============================================================
 
 BASE_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRd-tfclRRvEh9FKgC3IZUpZCRyJ5EnaTyqL40UbOHALao4BZanA0uD056YnXFbxw/pub?gid=2023176344&single=true&output=csv"
 SETORIZACAO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRd-tfclRRvEh9FKgC3IZUpZCRyJ5EnaTyqL40UbOHALao4BZanA0uD056YnXFbxw/pub?gid=1839503437&single=true&output=csv"
 
-# Tempo de sincronização.
-# A versão anterior atualizava a página inteira a cada 10s, causando o "pisca".
-# Agora só o bloco do dashboard é reexecutado, e com intervalo maior.
+# Atualização sem "piscar" a página toda.
 REFRESH_SECONDS = 60
 
 
 # ============================================================
-# PALETA
-# ============================================================
-
-AZUL_NOITE = "#001F49"
-AZUL_ESCURO = "#003B73"
-AZUL_MEDIO = "#1F77D0"
-AZUL_CLARO = "#5DA7F2"
-AZUL_GELO = "#EAF4FF"
-VERMELHO = "#EF4444"
-VERMELHO_ESCURO = "#B91C1C"
-FUNDO = "#F3F7FB"
-BRANCO = "#FFFFFF"
-BORDA = "#D9E4F2"
-TEXTO = "#1E2F47"
-TEXTO_SUAVE = "#637083"
-CINZA_BARRA = "#E8EEF6"
-
-
-# ============================================================
-# CONFIGURAÇÃO STREAMLIT
+# CONFIGURAÇÃO DO STREAMLIT
 # ============================================================
 
 st.set_page_config(
-    page_title="Painel de Climatização Escolar PB",
+    page_title="Climatização Escolar PB",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-
-# ============================================================
-# CSS
-# ============================================================
-
 st.markdown(
-    f"""
+    """
 <style>
-.stApp {{
-    background: {FUNDO};
-    color: {TEXTO};
+    .stApp {
+        background: #F3F7FB;
+    }
+
+    .block-container {
+        max-width: 1800px;
+        padding-top: 0rem;
+        padding-left: 0rem;
+        padding-right: 0rem;
+        padding-bottom: 0rem;
+    }
+
+    [data-testid="stSidebar"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    footer {
+        visibility: hidden;
+        height: 0;
+    }
+
+    iframe {
+        display: block;
+        width: 100%;
+        border: 0;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# LEITURA E TRATAMENTO DOS DADOS
+# ============================================================
+
+def numero_para_float(valor) -> float:
+    """Converte números vindos do Google Sheets para float."""
+    if pd.isna(valor):
+        return 0.0
+
+    texto = str(valor).strip()
+    texto = texto.replace(" escolas", "").replace("ESCOLAS", "")
+    texto = texto.replace(".", "").replace(",", ".")
+    texto = re.sub(r"[^0-9.\-]", "", texto)
+
+    if texto in ("", "-", "."):
+        return 0.0
+
+    try:
+        return float(texto)
+    except Exception:
+        return 0.0
+
+
+def padronizar_gre(valor: str) -> str | None:
+    """Mantém apenas linhas de GRE real. Remove TOTAL, cabeçalhos e linhas duplicadas de resumo."""
+    if pd.isna(valor):
+        return None
+
+    texto = str(valor).strip().upper()
+    texto = texto.replace("º", "ª")
+
+    if not texto or "TOTAL" in texto or "GERAL" in texto or "STATUS" in texto:
+        return None
+
+    match = re.search(r"(\d+)", texto)
+    if not match:
+        return None
+
+    numero = int(match.group(1))
+    if numero <= 0 or numero > 30:
+        return None
+
+    return f"{numero}ª GRE"
+
+
+def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    colunas_obrigatorias = ["GRE", "Climatizadas", "Em andamento", "Em rota"]
+    faltando = [c for c in colunas_obrigatorias if c not in df.columns]
+    if faltando:
+        raise ValueError("A aba Base_Geral precisa ter as colunas: GRE, Climatizadas, Em andamento e Em rota.")
+
+    # Guarda a linha TOTAL, se existir, apenas para conferência dos KPIs.
+    total_linha = None
+    linhas_total = df[df["GRE"].astype(str).str.upper().str.contains("TOTAL", na=False)].copy()
+
+    if not linhas_total.empty:
+        ultima_total = linhas_total.iloc[-1]
+        total_linha = {
+            "Climatizadas": numero_para_float(ultima_total["Climatizadas"]),
+            "Em andamento": numero_para_float(ultima_total["Em andamento"]),
+            "Em rota": numero_para_float(ultima_total["Em rota"]),
+        }
+        total_linha["Total"] = total_linha["Climatizadas"] + total_linha["Em andamento"] + total_linha["Em rota"]
+
+    for col in ["Climatizadas", "Em andamento", "Em rota"]:
+        df[col] = df[col].apply(numero_para_float)
+
+    df["GRE"] = df["GRE"].apply(padronizar_gre)
+    df = df[df["GRE"].notna()].copy()
+
+    # Remove linhas vazias e duplicadas exatas.
+    df = df[df[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
+    df = df.drop_duplicates(subset=["GRE", "Climatizadas", "Em andamento", "Em rota"])
+
+    # Se a mesma GRE aparecer mais de uma vez por causa da publicação do Google Sheets,
+    # usa o maior valor de cada coluna, evitando somar duplicatas.
+    df = (
+        df.groupby("GRE", as_index=False)
+        .agg({
+            "Climatizadas": "max",
+            "Em andamento": "max",
+            "Em rota": "max",
+        })
+    )
+
+    df["ordem"] = df["GRE"].str.extract(r"(\d+)").astype(int)
+    df = df.sort_values("ordem").drop(columns=["ordem"])
+
+    df["Total"] = df["Climatizadas"] + df["Em andamento"] + df["Em rota"]
+    df["Pendências"] = df["Em andamento"] + df["Em rota"]
+    df["Conclusão"] = df["Climatizadas"] / df["Total"]
+
+    return df, total_linha
+
+
+def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    colunas_obrigatorias = ["Setor", "Em andamento", "Rota de climatização", "Total"]
+    faltando = [c for c in colunas_obrigatorias if c not in df.columns]
+    if faltando:
+        raise ValueError("A aba Setorizacao precisa ter as colunas: Setor, Em andamento, Rota de climatização e Total.")
+
+    df["Setor"] = df["Setor"].astype(str).str.strip()
+    df["Setor_norm"] = df["Setor"].str.upper()
+
+    # Mantém apenas os 3 setores reais. Remove linha TOTAL.
+    ordem_setores = {
+        "SECRETARIA": "SECRETARIA",
+        "ENERGISA": "ENERGISA",
+        "SUPLAN": "SUPLAN",
+    }
+
+    df = df[df["Setor_norm"].isin(ordem_setores.keys())].copy()
+    df["Setor"] = df["Setor_norm"].map(ordem_setores)
+
+    for col in ["Em andamento", "Rota de climatização", "Total"]:
+        df[col] = df[col].apply(numero_para_float)
+
+    # Remove duplicatas e evita somar linhas repetidas.
+    df = (
+        df.groupby("Setor", as_index=False)
+        .agg({
+            "Em andamento": "max",
+            "Rota de climatização": "max",
+            "Total": "max",
+        })
+    )
+
+    df["ordem"] = df["Setor"].map({"SECRETARIA": 1, "ENERGISA": 2, "SUPLAN": 3})
+    df = df.sort_values("ordem").drop(columns=["ordem"])
+
+    return df
+
+
+@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
+def carregar_dados():
+    base_raw = pd.read_csv(BASE_GERAL_URL)
+    setor_raw = pd.read_csv(SETORIZACAO_URL)
+
+    base, total_linha = tratar_base_geral(base_raw)
+    setor = tratar_setorizacao(setor_raw)
+
+    return base, setor, total_linha
+
+
+def fmt_num(valor: float | int) -> str:
+    return f"{int(round(float(valor))):,}".replace(",", ".")
+
+
+def fmt_pct(valor: float) -> str:
+    return f"{float(valor) * 100:.1f}%".replace(".", ",")
+
+
+def html_escape(texto) -> str:
+    return (
+        str(texto)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def gerar_stacked_bars(base: pd.DataFrame, max_height: int = 210) -> str:
+    maior_total = max(base["Total"].max(), 1)
+
+    partes = []
+    for _, row in base.iterrows():
+        total = max(row["Total"], 1)
+        altura_total = max(28, int((total / maior_total) * max_height))
+
+        h_clim = max(8, int((row["Climatizadas"] / total) * altura_total))
+        h_and = max(8, int((row["Em andamento"] / total) * altura_total))
+        h_rota = max(8, int((row["Em rota"] / total) * altura_total))
+
+        partes.append(
+            f"""
+            <div class="bar-col">
+                <div class="stack" style="height:{altura_total}px;">
+                    <div class="seg seg-rota" style="height:{h_rota}px;">{fmt_num(row["Em rota"])}</div>
+                    <div class="seg seg-and" style="height:{h_and}px;">{fmt_num(row["Em andamento"])}</div>
+                    <div class="seg seg-clim" style="height:{h_clim}px;">{fmt_num(row["Climatizadas"])}</div>
+                </div>
+                <div class="x-label">{html_escape(row["GRE"])}</div>
+            </div>
+            """
+        )
+
+    return "\n".join(partes)
+
+
+def gerar_ranking(base: pd.DataFrame) -> str:
+    ranking = base.sort_values("Pendências", ascending=False).head(8).copy()
+    max_pend = max(ranking["Pendências"].max(), 1)
+
+    linhas = []
+    for _, row in ranking.iterrows():
+        largura = int((row["Pendências"] / max_pend) * 100)
+        linhas.append(
+            f"""
+            <div class="rank-row">
+                <div class="rank-label">{html_escape(row["GRE"])}</div>
+                <div class="rank-track"><div class="rank-fill" style="width:{largura}%"></div></div>
+                <div class="rank-value">{fmt_num(row["Pendências"])}</div>
+            </div>
+            """
+        )
+
+    return "\n".join(linhas)
+
+
+def gerar_setorizacao(setor: pd.DataFrame) -> str:
+    cards = []
+    for _, row in setor.iterrows():
+        cards.append(
+            f"""
+            <div class="sector-card">
+                <div class="sector-head">{html_escape(row["Setor"])}</div>
+                <div class="sector-line"><span>Em andamento</span><b class="blue">{fmt_num(row["Em andamento"])}</b></div>
+                <div class="sector-line"><span>Rota de climatização</span><b class="red">{fmt_num(row["Rota de climatização"])}</b></div>
+                <div class="sector-line"><span>Total</span><b>{fmt_num(row["Total"])}</b></div>
+            </div>
+            """
+        )
+
+    return "\n".join(cards)
+
+
+def gerar_html_dashboard(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None) -> str:
+    soma_total = float(base["Total"].sum())
+    soma_clim = float(base["Climatizadas"].sum())
+    soma_and = float(base["Em andamento"].sum())
+    soma_rota = float(base["Em rota"].sum())
+
+    # Se a planilha tiver uma linha TOTAL válida, usa ela nos cards.
+    # Se não tiver, usa a soma das GREs limpas.
+    if total_linha and total_linha.get("Total", 0) > 0:
+        total = float(total_linha["Total"])
+        climatizadas = float(total_linha["Climatizadas"])
+        andamento = float(total_linha["Em andamento"])
+        rota = float(total_linha["Em rota"])
+    else:
+        total = soma_total
+        climatizadas = soma_clim
+        andamento = soma_and
+        rota = soma_rota
+
+    pendencias = andamento + rota
+    pct_clim = climatizadas / total if total else 0
+    pct_and = andamento / total if total else 0
+    pct_rota = rota / total if total else 0
+
+    deg_clim = pct_clim * 360
+    deg_and = deg_clim + pct_and * 360
+
+    gre_mais_pendente = base.sort_values("Pendências", ascending=False).iloc[0]
+    gre_melhor = base.sort_values("Conclusão", ascending=False).iloc[0]
+
+    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    barras_gre = gerar_stacked_bars(base)
+    ranking = gerar_ranking(base)
+    setorizacao = gerar_setorizacao(setor)
+
+    html = f"""
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+:root {{
+    --azul-noite:#001F49;
+    --azul-escuro:#003B73;
+    --azul-medio:#1F77D0;
+    --azul-claro:#5DA7F2;
+    --azul-gelo:#EAF4FF;
+    --vermelho:#EF4444;
+    --vermelho-escuro:#B91C1C;
+    --fundo:#F3F7FB;
+    --branco:#FFFFFF;
+    --borda:#D9E4F2;
+    --texto:#1E2F47;
+    --texto-suave:#637083;
 }}
 
-.block-container {{
-    max-width: 1780px;
-    padding-top: 0.55rem;
-    padding-left: 1.15rem;
-    padding-right: 1.15rem;
-    padding-bottom: 1.2rem;
+* {{
+    box-sizing: border-box;
 }}
 
-[data-testid="stSidebar"] {{
-    background: {BRANCO};
+body {{
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--fundo);
+    color: var(--texto);
 }}
 
-[data-testid="stToolbar"] {{
-    visibility: hidden;
-    height: 0%;
-    position: fixed;
-}}
-
-div[data-testid="stDecoration"] {{
-    visibility: hidden;
-    height: 0%;
+.dashboard {{
+    width: 100%;
+    max-width: 1740px;
+    margin: 0 auto;
+    padding: 0 18px 24px 18px;
 }}
 
 .header {{
-    background:
-      radial-gradient(circle at 0% 0%, rgba(93,167,242,.28), transparent 28%),
-      linear-gradient(90deg, {AZUL_NOITE} 0%, {AZUL_ESCURO} 52%, #0059A8 100%);
-    color: {BRANCO};
-    min-height: 124px;
-    padding: 23px 34px;
+    height: 118px;
+    padding: 22px 32px;
     border-radius: 0 0 22px 22px;
-    margin: -0.55rem -0.25rem 18px -0.25rem;
-    box-shadow: 0 15px 36px rgba(0, 31, 73, .23);
+    color: white;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(93,167,242,.35), transparent 28%),
+        linear-gradient(90deg, var(--azul-noite), var(--azul-escuro) 55%, #0059A8);
+    box-shadow: 0 14px 34px rgba(0,31,73,.22);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -104,187 +390,167 @@ div[data-testid="stDecoration"] {{
 .header-left {{
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 22px;
 }}
 
-.logo-card {{
-    width: 92px;
-    height: 92px;
+.logo {{
+    width: 86px;
+    height: 86px;
     border-radius: 24px;
     border: 1px solid rgba(255,255,255,.38);
     background: rgba(255,255,255,.08);
     display: grid;
     place-items: center;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
-}}
-
-.logo-school {{
-    font-size: 35px;
-    font-weight: 900;
-    letter-spacing: -1px;
-}}
-
-.header-title {{
-    font-size: 35px;
+    font-size: 34px;
     font-weight: 950;
+}}
+
+.title {{
+    font-size: 34px;
     line-height: 1.04;
+    font-weight: 950;
     letter-spacing: -0.9px;
     text-transform: uppercase;
 }}
 
-.header-subtitle {{
+.subtitle {{
     margin-top: 10px;
     font-size: 16px;
-    opacity: .94;
     font-weight: 650;
+    opacity: .94;
 }}
 
-.map-card {{
-    width: 155px;
-    height: 72px;
+.map {{
+    width: 150px;
+    height: 70px;
     border-radius: 20px;
-    border: 1px solid rgba(255,255,255,.40);
+    border: 1px solid rgba(255,255,255,.38);
     background: rgba(255,255,255,.07);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 3px;
-}}
-
-.map-card .pb {{
+    display: grid;
+    place-items: center;
     font-size: 30px;
     font-weight: 950;
-    line-height: 1;
-}}
-
-.map-card .txt {{
-    font-size: 12px;
-    opacity: .88;
-    font-weight: 700;
 }}
 
 .filters {{
     display: grid;
     grid-template-columns: 220px 220px 220px 1fr;
     gap: 14px;
-    margin-bottom: 16px;
+    margin: 16px 0;
 }}
 
-.filter-card {{
-    background: {BRANCO};
-    border: 1px solid {BORDA};
+.filter,
+.sync {{
+    background: white;
+    border: 1px solid var(--borda);
     border-radius: 15px;
-    padding: 12px 18px;
     box-shadow: 0 8px 22px rgba(10,40,80,.075);
+    padding: 12px 18px;
+}}
+
+.filter {{
     display: flex;
     align-items: center;
     justify-content: space-between;
 }}
 
-.filter-card .info small {{
-    color: {TEXTO_SUAVE};
+.filter small {{
+    display: block;
+    color: var(--texto-suave);
     font-size: 12px;
     font-weight: 750;
-    display: block;
 }}
 
-.filter-card .info b {{
-    color: {AZUL_ESCURO};
+.filter b {{
+    color: var(--azul-escuro);
     font-size: 19px;
     font-weight: 900;
 }}
 
-.update-card {{
-    background: linear-gradient(90deg, #FFFFFF, #F6FAFF);
-    border: 1px solid {BORDA};
-    border-radius: 15px;
-    padding: 12px 18px;
-    box-shadow: 0 8px 22px rgba(10,40,80,.075);
+.sync {{
     display: flex;
-    justify-content: flex-end;
     align-items: center;
-    color: {TEXTO_SUAVE};
+    justify-content: flex-end;
+    color: var(--texto-suave);
     font-size: 13px;
     font-weight: 750;
 }}
 
-.kpi-grid {{
+.kpis {{
     display: grid;
-    grid-template-columns: repeat(5, minmax(160px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 16px;
     margin-bottom: 16px;
 }}
 
 .kpi {{
-    background: {BRANCO};
-    border: 1px solid {BORDA};
+    min-height: 132px;
+    background: white;
+    border: 1px solid var(--borda);
     border-radius: 20px;
-    min-height: 136px;
-    padding: 20px 22px;
     box-shadow: 0 10px 24px rgba(10,40,80,.08);
+    padding: 20px 22px;
     position: relative;
     overflow: hidden;
 }}
 
-.kpi:before {{
+.kpi::before {{
     content: "";
     position: absolute;
+    width: 7px;
     left: 0;
     top: 0;
     bottom: 0;
-    width: 7px;
     background: var(--accent);
 }}
 
-.kpi:after {{
+.kpi::after {{
     content: "";
     position: absolute;
-    right: -25px;
-    bottom: -42px;
-    width: 150px;
-    height: 90px;
+    right: -35px;
+    bottom: -48px;
+    width: 160px;
+    height: 100px;
     border-radius: 50%;
     background: var(--wash);
 }}
 
-.kpi-label {{
-    color: #25364F;
+.kpi-title {{
+    position: relative;
+    z-index: 1;
+    margin-left: 8px;
     font-size: 15px;
     font-weight: 850;
-    margin-left: 8px;
-    position: relative;
-    z-index: 2;
+    color: #25364F;
 }}
 
 .kpi-value {{
-    color: var(--accent);
-    font-size: 51px;
-    line-height: 1;
-    letter-spacing: -1.6px;
-    font-weight: 950;
-    margin: 10px 0 0 8px;
     position: relative;
-    z-index: 2;
+    z-index: 1;
+    margin: 10px 0 0 8px;
+    font-size: 50px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: -1.5px;
+    color: var(--accent);
 }}
 
 .kpi-sub {{
-    color: {TEXTO_SUAVE};
+    position: relative;
+    z-index: 1;
+    margin: 9px 0 0 8px;
+    color: var(--texto-suave);
     font-size: 15px;
     font-weight: 750;
-    margin: 9px 0 0 8px;
-    position: relative;
-    z-index: 2;
 }}
 
-.main-grid {{
+.grid-main {{
     display: grid;
-    grid-template-columns: 1.36fr 1.10fr .82fr;
+    grid-template-columns: 1.35fr 1.10fr .84fr;
     gap: 16px;
-    align-items: stretch;
 }}
 
-.bottom-grid {{
+.grid-bottom {{
     display: grid;
     grid-template-columns: 1.05fr 1.45fr;
     gap: 16px;
@@ -292,70 +558,135 @@ div[data-testid="stDecoration"] {{
 }}
 
 .panel {{
-    background: {BRANCO};
-    border: 1px solid {BORDA};
+    background: white;
+    border: 1px solid var(--borda);
     border-radius: 20px;
     box-shadow: 0 10px 24px rgba(10,40,80,.08);
-    height: 100%;
+    overflow: hidden;
 }}
 
-.panel-padding {{
+.panel-pad {{
     padding: 18px;
 }}
 
-.section-title {{
-    background: linear-gradient(90deg, {AZUL_NOITE}, #0059A8);
-    color: {BRANCO};
+.panel-head {{
     padding: 11px 18px;
-    border-radius: 20px 20px 0 0;
+    background: linear-gradient(90deg, var(--azul-noite), #0059A8);
+    color: white;
     font-size: 17px;
     font-weight: 950;
-    letter-spacing: .2px;
     text-transform: uppercase;
+    letter-spacing: .2px;
 }}
 
 .panel-body {{
     padding: 18px;
 }}
 
+.visao-grid {{
+    display: grid;
+    grid-template-columns: .93fr 1.07fr;
+    gap: 18px;
+}}
+
 .chart-title {{
-    color: {AZUL_ESCURO};
+    color: var(--azul-escuro);
     font-size: 18px;
     font-weight: 950;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+}}
+
+.donut {{
+    width: 285px;
+    height: 285px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: conic-gradient(
+        var(--azul-escuro) 0deg {deg_clim:.2f}deg,
+        var(--azul-claro) {deg_clim:.2f}deg {deg_and:.2f}deg,
+        var(--vermelho) {deg_and:.2f}deg 360deg
+    );
+    position: relative;
+}}
+
+.donut::after {{
+    content: "";
+    position: absolute;
+    inset: 76px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 0 0 1px #E7EEF7;
+}}
+
+.donut-center {{
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    color: var(--azul-escuro);
+    font-size: 31px;
+    font-weight: 950;
+}}
+
+.donut-center span {{
+    display: block;
+    margin-top: 6px;
+    color: #40516A;
+    font-size: 14px;
+    font-weight: 700;
+}}
+
+.legend {{
+    margin-top: 13px;
+    font-size: 13px;
+    font-weight: 750;
+}}
+
+.legend-row {{
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 2px;
+}}
+
+.dot {{
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
 }}
 
 .big-progress {{
-    color: {AZUL_ESCURO};
-    font-size: 46px;
-    font-weight: 950;
-    line-height: 1;
-    letter-spacing: -1.2px;
     margin-top: 8px;
+    color: var(--azul-escuro);
+    font-size: 46px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: -1.2px;
 }}
 
 .big-progress span {{
-    color: {TEXTO_SUAVE};
+    color: var(--texto-suave);
     font-size: 18px;
     font-weight: 650;
-    letter-spacing: 0;
 }}
 
 .progress-track {{
-    margin-top: 17px;
-    width: 100%;
     height: 38px;
-    background: {CINZA_BARRA};
+    background: #E8EEF6;
     border: 1px solid #D6E2EF;
     border-radius: 999px;
+    margin-top: 17px;
     overflow: hidden;
 }}
 
 .progress-fill {{
     height: 100%;
-    width: var(--progress);
+    width: {pct_clim * 100:.2f}%;
+    background: linear-gradient(90deg, var(--azul-noite), #005FB8);
     border-radius: 999px;
-    background: linear-gradient(90deg, {AZUL_NOITE}, #005FB8);
 }}
 
 .progress-labels {{
@@ -370,34 +701,140 @@ div[data-testid="stDecoration"] {{
 .info-box {{
     background: #F2F7FD;
     border: 1px solid #D9E8FA;
+    color: #1D3557;
     border-radius: 15px;
     padding: 14px 16px;
-    color: #1D3557;
     font-size: 15px;
     font-weight: 750;
     margin-top: 28px;
 }}
 
 .info-box strong {{
-    color: {AZUL_ESCURO};
+    color: var(--azul-escuro);
 }}
 
-.alert-box {{
+.stack-wrap {{
+    height: 315px;
+    padding: 24px 4px 0 4px;
+    border-bottom: 1px solid #C9D5E2;
+    display: flex;
+    align-items: flex-end;
+    gap: 11px;
+    position: relative;
+}}
+
+.stack-wrap::before {{
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 22px;
+    bottom: 0;
+    background: repeating-linear-gradient(to top, transparent 0 51px, #E4ECF5 52px);
+    pointer-events: none;
+}}
+
+.bar-col {{
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    min-width: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+}}
+
+.stack {{
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}}
+
+.seg {{
+    display: grid;
+    place-items: center;
+    color: white;
+    font-size: 11px;
+    font-weight: 850;
+}}
+
+.seg-clim {{
+    background: var(--azul-escuro);
+}}
+
+.seg-and {{
+    background: var(--azul-claro);
+}}
+
+.seg-rota {{
+    background: var(--vermelho);
+}}
+
+.x-label {{
+    height: 30px;
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 850;
+    text-align: center;
+    color: #25364F;
+}}
+
+.legend-top {{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    font-size: 12px;
+    font-weight: 750;
+    color: #4A5A70;
+}}
+
+.rank-row {{
+    display: grid;
+    grid-template-columns: 70px 1fr 42px;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    font-weight: 850;
+    color: #18365C;
+    font-size: 14px;
+}}
+
+.rank-track {{
+    height: 23px;
+    background: #ECF1F7;
+    border-radius: 5px;
+    overflow: hidden;
+}}
+
+.rank-fill {{
+    height: 100%;
+    background: linear-gradient(90deg, var(--azul-noite), #005FB8);
+    border-radius: 5px;
+}}
+
+.rank-value {{
+    color: var(--vermelho);
+    font-size: 16px;
+}}
+
+.alert {{
+    margin-top: 18px;
     background: #FFF0F0;
+    color: var(--vermelho-escuro);
     border: 1px solid #FECACA;
-    color: {VERMELHO_ESCURO};
     border-radius: 15px;
-    padding: 14px 15px;
+    padding: 14px;
     font-size: 14px;
     font-weight: 800;
-    margin-top: 14px;
 }}
 
 .summary-line {{
     display: grid;
     grid-template-columns: 20px 1fr;
-    gap: 12px;
     align-items: center;
+    gap: 12px;
     padding: 11px 0;
     border-bottom: 1px dashed #C7D6E8;
     color: #1C3556;
@@ -405,38 +842,35 @@ div[data-testid="stDecoration"] {{
     font-weight: 750;
 }}
 
-.check-dot {{
+.check {{
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: {AZUL_MEDIO};
+    background: var(--azul-medio);
 }}
 
 .sector-grid {{
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 14px;
-    margin-top: 4px;
 }}
 
 .sector-card {{
-    border: 1px solid {BORDA};
+    border: 1px solid var(--borda);
     border-radius: 15px;
     overflow: hidden;
-    background: {BRANCO};
     box-shadow: 0 6px 16px rgba(10,40,80,.07);
 }}
 
 .sector-head {{
-    background: linear-gradient(90deg, {AZUL_NOITE}, {AZUL_MEDIO});
+    background: linear-gradient(90deg, var(--azul-noite), var(--azul-medio));
     color: white;
-    padding: 11px 14px;
+    padding: 11px;
     text-align: center;
     font-weight: 950;
-    text-transform: uppercase;
 }}
 
-.sector-row {{
+.sector-line {{
     display: flex;
     justify-content: space-between;
     padding: 11px 16px;
@@ -445,395 +879,200 @@ div[data-testid="stDecoration"] {{
     font-weight: 850;
 }}
 
+.sector-line b {{
+    color: var(--azul-escuro);
+}}
+
+.sector-line b.blue {{
+    color: var(--azul-medio);
+}}
+
+.sector-line b.red {{
+    color: var(--vermelho);
+}}
+
 .footer {{
+    margin-top: 16px;
     text-align: center;
     color: #40516A;
-    margin-top: 16px;
     font-size: 13px;
     font-weight: 650;
 }}
 
-@media(max-width: 1200px) {{
-    .header {{
-        display: block;
-    }}
-    .map-card {{
-        margin-top: 15px;
-    }}
-    .filters, .kpi-grid, .main-grid, .bottom-grid, .visao-grid, .sector-grid {{
+@media (max-width: 1200px) {{
+    .filters,
+    .kpis,
+    .grid-main,
+    .grid-bottom,
+    .visao-grid,
+    .sector-grid {{
         grid-template-columns: 1fr;
     }}
-    .header-title {{
-        font-size: 25px;
+
+    .header {{
+        height: auto;
+        display: block;
+    }}
+
+    .map {{
+        margin-top: 16px;
+    }}
+
+    .title {{
+        font-size: 24px;
     }}
 }}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+</head>
+<body>
+<div class="dashboard">
 
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">PB</div>
+            <div>
+                <div class="title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
+                <div class="subtitle">Acompanhamento consolidado por GRE e setorização</div>
+            </div>
+        </div>
+        <div class="map">PB</div>
+    </header>
 
-# ============================================================
-# FUNÇÕES
-# ============================================================
+    <section class="filters">
+        <div class="filter"><div><small>Período</small><b>2026</b></div><span>▾</span></div>
+        <div class="filter"><div><small>GRE</small><b>Todas</b></div><span>▾</span></div>
+        <div class="filter"><div><small>Visão</small><b>Geral</b></div><span>▾</span></div>
+        <div class="sync">Sincronizado: {data_hora} · verificação a cada {REFRESH_SECONDS}s</div>
+    </section>
 
-def fmt_num(valor: float | int) -> str:
-    return f"{int(round(float(valor))):,}".replace(",", ".")
-
-
-def fmt_pct(valor: float) -> str:
-    return f"{valor * 100:.1f}%".replace(".", ",")
-
-
-@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
-def carregar_csv(url: str) -> pd.DataFrame:
-    return pd.read_csv(url)
-
-
-def tratar_base_geral(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-
-    colunas = ["GRE", "Climatizadas", "Em andamento", "Em rota"]
-    faltando = [c for c in colunas if c not in df.columns]
-    if faltando:
-        st.error("A aba Base_Geral precisa ter as colunas: GRE, Climatizadas, Em andamento e Em rota.")
-        st.stop()
-
-    for col in ["Climatizadas", "Em andamento", "Em rota"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    df = df[df[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
-    df["Total"] = df["Climatizadas"] + df["Em andamento"] + df["Em rota"]
-    df["Pendências"] = df["Em andamento"] + df["Em rota"]
-    df["Conclusão"] = df["Climatizadas"] / df["Total"]
-    return df
-
-
-def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-
-    colunas = ["Setor", "Em andamento", "Rota de climatização", "Total"]
-    faltando = [c for c in colunas if c not in df.columns]
-    if faltando:
-        st.error("A aba Setorizacao precisa ter as colunas: Setor, Em andamento, Rota de climatização e Total.")
-        st.stop()
-
-    for col in ["Em andamento", "Rota de climatização", "Total"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    return df
-
-
-def renderizar_dashboard():
-    try:
-        base_geral = tratar_base_geral(carregar_csv(BASE_GERAL_URL))
-        setorizacao = tratar_setorizacao(carregar_csv(SETORIZACAO_URL))
-    except Exception as erro:
-        st.error("Não consegui ler os dados publicados no Google Sheets. Verifique se as abas continuam publicadas.")
-        st.exception(erro)
-        st.stop()
-
-    total = float(base_geral["Total"].sum())
-    climatizadas = float(base_geral["Climatizadas"].sum())
-    andamento = float(base_geral["Em andamento"].sum())
-    rota = float(base_geral["Em rota"].sum())
-    pendencias = andamento + rota
-
-    pct_climatizadas = climatizadas / total if total else 0
-    pct_andamento = andamento / total if total else 0
-    pct_rota = rota / total if total else 0
-
-    gre_mais_pendente = base_geral.sort_values("Pendências", ascending=False).iloc[0]
-    gre_melhor_conclusao = base_geral.sort_values("Conclusão", ascending=False).iloc[0]
-    ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-    # Filtros e status de atualização
-    st.markdown(
-        f"""
-    <div class="filters">
-        <div class="filter-card"><div class="info"><small>Período</small><b>2026</b></div><span>▾</span></div>
-        <div class="filter-card"><div class="info"><small>GRE</small><b>Todas</b></div><span>▾</span></div>
-        <div class="filter-card"><div class="info"><small>Visão</small><b>Geral</b></div><span>▾</span></div>
-        <div class="update-card">Sincronizado: {ultima_atualizacao} · Verificação a cada {REFRESH_SECONDS}s</div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    # KPIs
-    st.markdown(
-        f"""
-    <div class="kpi-grid">
-        <div class="kpi" style="--accent:{AZUL_ESCURO};--wash:{AZUL_GELO};">
-            <div class="kpi-label">Total de Escolas</div>
+    <section class="kpis">
+        <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
+            <div class="kpi-title">Total de Escolas</div>
             <div class="kpi-value">{fmt_num(total)}</div>
-            <div class="kpi-sub">Base consolidada das GREs</div>
+            <div class="kpi-sub">Base consolidada</div>
         </div>
-        <div class="kpi" style="--accent:{AZUL_ESCURO};--wash:{AZUL_GELO};">
-            <div class="kpi-label">Climatizadas</div>
+        <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
+            <div class="kpi-title">Climatizadas</div>
             <div class="kpi-value">{fmt_num(climatizadas)}</div>
-            <div class="kpi-sub">{fmt_pct(pct_climatizadas)} do total</div>
+            <div class="kpi-sub">{fmt_pct(pct_clim)} do total</div>
         </div>
-        <div class="kpi" style="--accent:{AZUL_CLARO};--wash:#EDF6FF;">
-            <div class="kpi-label">Em Andamento</div>
+        <div class="kpi" style="--accent:var(--azul-claro);--wash:#EDF6FF;">
+            <div class="kpi-title">Em Andamento</div>
             <div class="kpi-value">{fmt_num(andamento)}</div>
-            <div class="kpi-sub">{fmt_pct(pct_andamento)} do total</div>
+            <div class="kpi-sub">{fmt_pct(pct_and)} do total</div>
         </div>
-        <div class="kpi" style="--accent:{VERMELHO};--wash:#FFF1F1;">
-            <div class="kpi-label">Em Rota</div>
+        <div class="kpi" style="--accent:var(--vermelho);--wash:#FFF1F1;">
+            <div class="kpi-title">Em Rota</div>
             <div class="kpi-value">{fmt_num(rota)}</div>
             <div class="kpi-sub">{fmt_pct(pct_rota)} do total</div>
         </div>
-        <div class="kpi" style="--accent:{AZUL_ESCURO};--wash:{AZUL_GELO};">
-            <div class="kpi-label">Conclusão</div>
-            <div class="kpi-value">{fmt_pct(pct_climatizadas)}</div>
+        <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
+            <div class="kpi-title">Conclusão</div>
+            <div class="kpi-value">{fmt_pct(pct_clim)}</div>
             <div class="kpi-sub">Progresso geral</div>
         </div>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
+    </section>
 
-    # Gráficos
-    fig_donut = go.Figure(
-        data=[
-            go.Pie(
-                labels=["Climatizadas", "Em andamento", "Em rota"],
-                values=[climatizadas, andamento, rota],
-                hole=0.62,
-                sort=False,
-                marker=dict(colors=[AZUL_ESCURO, AZUL_CLARO, VERMELHO], line=dict(color="white", width=3)),
-                textinfo="percent",
-                textfont=dict(color="white", size=14, family="Arial"),
-            )
-        ]
-    )
+    <section class="grid-main">
+        <div class="panel">
+            <div class="panel-head">Visão Geral da Climatização</div>
+            <div class="panel-body">
+                <div class="visao-grid">
+                    <div>
+                        <div class="chart-title">Status Geral</div>
+                        <div class="donut">
+                            <div class="donut-center">
+                                <div>{fmt_pct(pct_clim)}<span>Conclusão</span></div>
+                            </div>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span><b>{fmt_num(climatizadas)}</b></div>
+                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span><b>{fmt_num(andamento)}</b></div>
+                            <div class="legend-row"><span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span><b>{fmt_num(rota)}</b></div>
+                            <div class="legend-row" style="justify-content:center;margin-top:6px;"><b>Total de Escolas: {fmt_num(total)}</b></div>
+                        </div>
+                    </div>
 
-    fig_donut.update_layout(
-        height=312,
-        margin=dict(l=0, r=0, t=0, b=0),
-        showlegend=True,
-        legend=dict(orientation="h", y=-0.05, x=0.02, font=dict(size=12, color="#24364F")),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        annotations=[
-            dict(
-                text=f"<b>{fmt_pct(pct_climatizadas)}</b><br>Conclusão",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-                font=dict(size=22, color=AZUL_ESCURO),
-            )
-        ],
-    )
-
-    fig_gre = go.Figure()
-    fig_gre.add_bar(
-        name="Climatizadas",
-        x=base_geral["GRE"],
-        y=base_geral["Climatizadas"],
-        marker_color=AZUL_ESCURO,
-        text=base_geral["Climatizadas"].astype(int),
-        textposition="inside",
-        insidetextfont=dict(color="white", size=12),
-    )
-    fig_gre.add_bar(
-        name="Em andamento",
-        x=base_geral["GRE"],
-        y=base_geral["Em andamento"],
-        marker_color=AZUL_CLARO,
-        text=base_geral["Em andamento"].astype(int),
-        textposition="inside",
-        insidetextfont=dict(color="white", size=12),
-    )
-    fig_gre.add_bar(
-        name="Em rota",
-        x=base_geral["GRE"],
-        y=base_geral["Em rota"],
-        marker_color=VERMELHO,
-        text=base_geral["Em rota"].astype(int),
-        textposition="inside",
-        insidetextfont=dict(color="white", size=12),
-    )
-
-    fig_gre.update_layout(
-        barmode="stack",
-        height=390,
-        margin=dict(l=10, r=10, t=35, b=20),
-        legend=dict(orientation="h", y=1.08, x=0.08, font=dict(size=12)),
-        yaxis=dict(gridcolor="#E4ECF5", zeroline=False),
-        xaxis=dict(tickangle=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#24364F"),
-    )
-
-    ranking = base_geral.sort_values("Pendências", ascending=True).tail(8)
-    fig_rank = go.Figure(
-        data=[
-            go.Bar(
-                x=ranking["Pendências"],
-                y=ranking["GRE"],
-                orientation="h",
-                marker_color=AZUL_ESCURO,
-                text=ranking["Pendências"].astype(int),
-                textposition="outside",
-                textfont=dict(color=VERMELHO, size=14),
-            )
-        ]
-    )
-
-    fig_rank.update_layout(
-        height=330,
-        margin=dict(l=10, r=35, t=10, b=10),
-        xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
-        yaxis=dict(showgrid=False),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#24364F"),
-    )
-
-    # Bloco principal com colunas nativas do Streamlit para evitar problemas de HTML aninhado
-    col1, col2, col3 = st.columns([1.36, 1.10, .82], gap="medium")
-
-    with col1:
-        st.markdown('<div class="panel"><div class="section-title">Visão Geral da Climatização</div><div class="panel-body">', unsafe_allow_html=True)
-        a, b = st.columns([0.95, 1.05])
-        with a:
-            st.markdown('<div class="chart-title">Status Geral</div>', unsafe_allow_html=True)
-            st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
-            st.markdown(
-                f"""
-                <div style="font-size:13px;font-weight:850;color:#24364F;text-align:center;margin-top:-8px;">
-                Total de Escolas: {fmt_num(total)}
+                    <div>
+                        <div class="chart-title">Progresso Geral</div>
+                        <div class="big-progress">{fmt_pct(pct_clim)} <span>concluído</span></div>
+                        <div class="progress-track"><div class="progress-fill"></div></div>
+                        <div class="progress-labels"><span>0%</span><span>100%</span></div>
+                        <div class="info-box"><strong>{fmt_num(climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>{fmt_num(pendencias)}</strong> em andamento ou em rota.</div>
+                    </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with b:
-            st.markdown('<div class="chart-title">Progresso Geral</div>', unsafe_allow_html=True)
-            st.markdown(
-                f"""
-                <div class="big-progress">{fmt_pct(pct_climatizadas)} <span>concluído</span></div>
-                <div class="progress-track"><div class="progress-fill" style="--progress:{pct_climatizadas*100:.1f}%;"></div></div>
-                <div class="progress-labels"><span>0%</span><span>100%</span></div>
-                <div class="info-box"><strong>{fmt_num(climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>{fmt_num(pendencias)}</strong> em andamento ou em rota.</div>
-                """,
-                unsafe_allow_html=True,
-            )
-        st.markdown('</div></div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="panel panel-padding"><div class="chart-title">Panorama por GRE</div>', unsafe_allow_html=True)
-        st.plotly_chart(fig_gre, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            f"""
-            <div class="info-box">
-            A GRE com maior volume de pendências é <strong>{gre_mais_pendente["GRE"]}</strong>, com <strong>{fmt_num(gre_mais_pendente["Pendências"])}</strong> escolas em andamento ou em rota.
             </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col3:
-        st.markdown('<div class="panel panel-padding"><div class="chart-title">Ranking de Pendências</div><div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota</div>', unsafe_allow_html=True)
-        st.plotly_chart(fig_rank, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            """
-            <div class="alert-box">
-            Priorize as GREs com maior volume de pendências para acelerar a conclusão.
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    bottom1, bottom2 = st.columns([1.05, 1.45], gap="medium")
-
-    with bottom1:
-        st.markdown('<div class="panel panel-padding"><div class="chart-title">Resumo Executivo</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div class="summary-line"><span class="check-dot"></span><span>Mais da metade das escolas já está climatizada.</span></div>
-            <div class="summary-line"><span class="check-dot"></span><span>A GRE com maior pendência é <strong>{gre_mais_pendente["GRE"]}</strong>.</span></div>
-            <div class="summary-line"><span class="check-dot"></span><span>A maior conclusão proporcional está em <strong>{gre_melhor_conclusao["GRE"]}</strong>.</span></div>
-            <div class="summary-line"><span class="check-dot"></span><span>A setorização deve ser acompanhada separadamente do total geral.</span></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with bottom2:
-        st.markdown('<div class="panel"><div class="section-title">Quadro de Status por Setorização</div><div class="panel-body">', unsafe_allow_html=True)
-        cards = '<div class="sector-grid">'
-        for _, row in setorizacao.iterrows():
-            cards += f"""
-            <div class="sector-card">
-                <div class="sector-head">{str(row["Setor"]).upper()}</div>
-                <div class="sector-row"><span>Em andamento</span><span style="color:{AZUL_MEDIO};">{fmt_num(row["Em andamento"])}</span></div>
-                <div class="sector-row"><span>Rota de climatização</span><span style="color:{VERMELHO};">{fmt_num(row["Rota de climatização"])}</span></div>
-                <div class="sector-row"><span>Total</span><span style="color:{AZUL_ESCURO};">{fmt_num(row["Total"])}</span></div>
-            </div>
-            """
-        cards += "</div>"
-        st.markdown(cards, unsafe_allow_html=True)
-        st.markdown('</div></div>', unsafe_allow_html=True)
-
-    with st.expander("Ver tabela detalhada por GRE"):
-        tabela = base_geral.copy()
-        tabela["Conclusão"] = tabela["Conclusão"].apply(fmt_pct)
-        tabela = tabela[["GRE", "Total", "Climatizadas", "Em andamento", "Em rota", "Pendências", "Conclusão"]]
-        st.dataframe(tabela, use_container_width=True, hide_index=True)
-
-
-# ============================================================
-# CABEÇALHO FIXO
-# ============================================================
-
-st.markdown(
-    """
-<div class="header">
-    <div class="header-left">
-        <div class="logo-card"><div class="logo-school">PB</div></div>
-        <div>
-            <div class="header-title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
-            <div class="header-subtitle">Acompanhamento consolidado por GRE e setorização</div>
         </div>
-    </div>
-    <div class="map-card">
-        <div class="pb">PB</div>
-        <div class="txt">Paraíba</div>
+
+        <div class="panel panel-pad">
+            <div class="chart-title">Panorama por GRE</div>
+            <div class="legend-top">
+                <span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span>
+                <span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span>
+                <span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span>
+            </div>
+            <div class="stack-wrap">
+                {barras_gre}
+            </div>
+            <div class="info-box">A GRE com maior volume de pendências é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>, com <strong>{fmt_num(gre_mais_pendente["Pendências"])}</strong> escolas em andamento ou em rota.</div>
+        </div>
+
+        <div class="panel panel-pad">
+            <div class="chart-title">Ranking de Pendências</div>
+            <div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota</div>
+            {ranking}
+            <div class="alert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
+        </div>
+    </section>
+
+    <section class="grid-bottom">
+        <div class="panel panel-pad">
+            <div class="chart-title">Resumo Executivo</div>
+            <div class="summary-line"><span class="check"></span><span>Mais da metade das escolas já está climatizada.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>{html_escape(gre_melhor["GRE"])}</strong>.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A setorização deve ser acompanhada separadamente do total geral.</span></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">Quadro de Status por Setorização</div>
+            <div class="panel-body">
+                <div class="sector-grid">
+                    {setorizacao}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="footer">
+        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.
     </div>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+</body>
+</html>
+"""
+    return html
 
 
 # ============================================================
-# ATUALIZAÇÃO SEM PISCAR A PÁGINA INTEIRA
+# RENDERIZAÇÃO COM ATUALIZAÇÃO CONTROLADA
 # ============================================================
 
-# st.fragment faz apenas esta área do painel ser reexecutada periodicamente.
-# Assim evita a sensação de "pisca" causada pelo refresh da página inteira.
+def renderizar():
+    try:
+        base, setor, total_linha = carregar_dados()
+        html = gerar_html_dashboard(base, setor, total_linha)
+        components.html(html, height=1010, scrolling=False)
+    except Exception as erro:
+        st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
+        st.exception(erro)
+
+
 if hasattr(st, "fragment"):
     @st.fragment(run_every=f"{REFRESH_SECONDS}s")
-    def dashboard_fragment():
-        renderizar_dashboard()
+    def painel():
+        renderizar()
 
-    dashboard_fragment()
+    painel()
 else:
-    # Fallback para versões antigas do Streamlit.
-    renderizar_dashboard()
-
-st.markdown(
-    """
-<div class="footer">
-Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.
-</div>
-""",
-    unsafe_allow_html=True,
-)
+    renderizar()
