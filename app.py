@@ -16,7 +16,7 @@ import streamlit.components.v1 as components
 BASE_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRd-tfclRRvEh9FKgC3IZUpZCRyJ5EnaTyqL40UbOHALao4BZanA0uD056YnXFbxw/pub?gid=2023176344&single=true&output=csv"
 SETORIZACAO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRd-tfclRRvEh9FKgC3IZUpZCRyJ5EnaTyqL40UbOHALao4BZanA0uD056YnXFbxw/pub?gid=1839503437&single=true&output=csv"
 
-# Atualização sem "piscar" a página toda.
+# Atualização controlada, sem ficar piscando.
 REFRESH_SECONDS = 60
 
 
@@ -56,7 +56,40 @@ st.markdown(
     iframe {
         display: block;
         width: 100%;
+        min-height: 1480px;
         border: 0;
+    }
+
+    .stSelectbox label {
+        color: #003B73 !important;
+        font-weight: 800 !important;
+        font-size: 13px !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        background-color: white !important;
+        border: 1px solid #D9E4F2 !important;
+        border-radius: 15px !important;
+        min-height: 54px !important;
+        box-shadow: 0 8px 22px rgba(10,40,80,.075) !important;
+    }
+
+    .filter-note {
+        background: #FFFFFF;
+        border: 1px solid #D9E4F2;
+        border-radius: 15px;
+        padding: 14px 18px;
+        box-shadow: 0 8px 22px rgba(10,40,80,.075);
+        color: #637083;
+        font-weight: 700;
+        font-size: 13px;
+        margin-top: 26px;
+    }
+
+    .filter-wrapper {
+        padding: 0 18px;
+        max-width: 1740px;
+        margin: 0 auto 10px auto;
     }
 </style>
 """,
@@ -69,7 +102,6 @@ st.markdown(
 # ============================================================
 
 def numero_para_float(valor) -> float:
-    """Converte números vindos do Google Sheets para float."""
     if pd.isna(valor):
         return 0.0
 
@@ -88,7 +120,6 @@ def numero_para_float(valor) -> float:
 
 
 def padronizar_gre(valor: str) -> str | None:
-    """Mantém apenas linhas de GRE real. Remove TOTAL, cabeçalhos e linhas duplicadas de resumo."""
     if pd.isna(valor):
         return None
 
@@ -109,22 +140,38 @@ def padronizar_gre(valor: str) -> str | None:
     return f"{numero}ª GRE"
 
 
-def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
+def detectar_coluna_periodo(df: pd.DataFrame) -> str | None:
+    possiveis = ["Periodo", "Período", "Ano", "ANO", "ano", "periodo", "período"]
+    for col in possiveis:
+        if col in df.columns:
+            return col
+    return None
+
+
+def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, list[str]]:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
+
+    col_periodo = detectar_coluna_periodo(df)
+    if col_periodo:
+        df["Periodo"] = df[col_periodo].astype(str).str.strip()
+    else:
+        df["Periodo"] = "2026"
+
+    periodos = sorted([p for p in df["Periodo"].dropna().unique().tolist() if str(p).strip()])
 
     colunas_obrigatorias = ["GRE", "Climatizadas", "Em andamento", "Em rota"]
     faltando = [c for c in colunas_obrigatorias if c not in df.columns]
     if faltando:
         raise ValueError("A aba Base_Geral precisa ter as colunas: GRE, Climatizadas, Em andamento e Em rota.")
 
-    # Guarda a linha TOTAL, se existir, apenas para conferência dos KPIs.
     total_linha = None
     linhas_total = df[df["GRE"].astype(str).str.upper().str.contains("TOTAL", na=False)].copy()
 
     if not linhas_total.empty:
         ultima_total = linhas_total.iloc[-1]
         total_linha = {
+            "Periodo": str(ultima_total.get("Periodo", "2026")),
             "Climatizadas": numero_para_float(ultima_total["Climatizadas"]),
             "Em andamento": numero_para_float(ultima_total["Em andamento"]),
             "Em rota": numero_para_float(ultima_total["Em rota"]),
@@ -136,15 +183,11 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
 
     df["GRE"] = df["GRE"].apply(padronizar_gre)
     df = df[df["GRE"].notna()].copy()
-
-    # Remove linhas vazias e duplicadas exatas.
     df = df[df[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
-    df = df.drop_duplicates(subset=["GRE", "Climatizadas", "Em andamento", "Em rota"])
+    df = df.drop_duplicates(subset=["Periodo", "GRE", "Climatizadas", "Em andamento", "Em rota"])
 
-    # Se a mesma GRE aparecer mais de uma vez por causa da publicação do Google Sheets,
-    # usa o maior valor de cada coluna, evitando somar duplicatas.
     df = (
-        df.groupby("GRE", as_index=False)
+        df.groupby(["Periodo", "GRE"], as_index=False)
         .agg({
             "Climatizadas": "max",
             "Em andamento": "max",
@@ -153,18 +196,28 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
     )
 
     df["ordem"] = df["GRE"].str.extract(r"(\d+)").astype(int)
-    df = df.sort_values("ordem").drop(columns=["ordem"])
+    df = df.sort_values(["Periodo", "ordem"]).drop(columns=["ordem"])
 
     df["Total"] = df["Climatizadas"] + df["Em andamento"] + df["Em rota"]
     df["Pendências"] = df["Em andamento"] + df["Em rota"]
     df["Conclusão"] = df["Climatizadas"] / df["Total"]
 
-    return df, total_linha
+    return df, total_linha, periodos or ["2026"]
 
 
 def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
+
+    if "Setor" not in df.columns:
+        raise ValueError("A aba Setorizacao precisa ter a coluna Setor.")
+
+    # Se futuramente existir coluna de período na setorização, o app também aceita.
+    col_periodo = detectar_coluna_periodo(df)
+    if col_periodo:
+        df["Periodo"] = df[col_periodo].astype(str).str.strip()
+    else:
+        df["Periodo"] = "2026"
 
     colunas_obrigatorias = ["Setor", "Em andamento", "Rota de climatização", "Total"]
     faltando = [c for c in colunas_obrigatorias if c not in df.columns]
@@ -174,7 +227,6 @@ def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
     df["Setor"] = df["Setor"].astype(str).str.strip()
     df["Setor_norm"] = df["Setor"].str.upper()
 
-    # Mantém apenas os 3 setores reais. Remove linha TOTAL.
     ordem_setores = {
         "SECRETARIA": "SECRETARIA",
         "ENERGISA": "ENERGISA",
@@ -187,9 +239,8 @@ def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["Em andamento", "Rota de climatização", "Total"]:
         df[col] = df[col].apply(numero_para_float)
 
-    # Remove duplicatas e evita somar linhas repetidas.
     df = (
-        df.groupby("Setor", as_index=False)
+        df.groupby(["Periodo", "Setor"], as_index=False)
         .agg({
             "Em andamento": "max",
             "Rota de climatização": "max",
@@ -198,7 +249,7 @@ def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     df["ordem"] = df["Setor"].map({"SECRETARIA": 1, "ENERGISA": 2, "SUPLAN": 3})
-    df = df.sort_values("ordem").drop(columns=["ordem"])
+    df = df.sort_values(["Periodo", "ordem"]).drop(columns=["ordem"])
 
     return df
 
@@ -208,10 +259,10 @@ def carregar_dados():
     base_raw = pd.read_csv(BASE_GERAL_URL)
     setor_raw = pd.read_csv(SETORIZACAO_URL)
 
-    base, total_linha = tratar_base_geral(base_raw)
+    base, total_linha, periodos = tratar_base_geral(base_raw)
     setor = tratar_setorizacao(setor_raw)
 
-    return base, setor, total_linha
+    return base, setor, total_linha, periodos
 
 
 def fmt_num(valor: float | int) -> str:
@@ -232,32 +283,38 @@ def html_escape(texto) -> str:
     )
 
 
-def gerar_stacked_bars(base: pd.DataFrame, max_height: int = 210) -> str:
+def gerar_panorama_horizontal(base: pd.DataFrame) -> str:
     maior_total = max(base["Total"].max(), 1)
 
-    partes = []
+    linhas = []
     for _, row in base.iterrows():
-        total = max(row["Total"], 1)
-        altura_total = max(28, int((total / maior_total) * max_height))
+        total = max(float(row["Total"]), 1)
+        w_clim = max(3, (float(row["Climatizadas"]) / total) * 100)
+        w_and = max(3, (float(row["Em andamento"]) / total) * 100)
+        w_rota = max(3, (float(row["Em rota"]) / total) * 100)
+        largura_total = max(18, (total / maior_total) * 100)
 
-        h_clim = max(8, int((row["Climatizadas"] / total) * altura_total))
-        h_and = max(8, int((row["Em andamento"] / total) * altura_total))
-        h_rota = max(8, int((row["Em rota"] / total) * altura_total))
+        clima_label = fmt_num(row["Climatizadas"]) if row["Climatizadas"] >= 4 else ""
+        and_label = fmt_num(row["Em andamento"]) if row["Em andamento"] >= 4 else ""
+        rota_label = fmt_num(row["Em rota"]) if row["Em rota"] >= 4 else ""
 
-        partes.append(
+        linhas.append(
             f"""
-            <div class="bar-col">
-                <div class="stack" style="height:{altura_total}px;">
-                    <div class="seg seg-rota" style="height:{h_rota}px;">{fmt_num(row["Em rota"])}</div>
-                    <div class="seg seg-and" style="height:{h_and}px;">{fmt_num(row["Em andamento"])}</div>
-                    <div class="seg seg-clim" style="height:{h_clim}px;">{fmt_num(row["Climatizadas"])}</div>
+            <div class="gre-row">
+                <div class="gre-name">{html_escape(row["GRE"])}</div>
+                <div class="gre-track">
+                    <div class="gre-stack" style="width:{largura_total:.2f}%;">
+                        <div class="gre-seg gre-clim" style="width:{w_clim:.2f}%;">{clima_label}</div>
+                        <div class="gre-seg gre-and" style="width:{w_and:.2f}%;">{and_label}</div>
+                        <div class="gre-seg gre-rota" style="width:{w_rota:.2f}%;">{rota_label}</div>
+                    </div>
                 </div>
-                <div class="x-label">{html_escape(row["GRE"])}</div>
+                <div class="gre-total">{fmt_num(row["Total"])}</div>
             </div>
             """
         )
 
-    return "\n".join(partes)
+    return "\n".join(linhas)
 
 
 def gerar_ranking(base: pd.DataFrame) -> str:
@@ -297,15 +354,21 @@ def gerar_setorizacao(setor: pd.DataFrame) -> str:
     return "\n".join(cards)
 
 
-def gerar_html_dashboard(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None) -> str:
+def gerar_html_dashboard(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    total_linha: dict | None,
+    periodo: str,
+    gre: str,
+    visao: str,
+) -> str:
     soma_total = float(base["Total"].sum())
     soma_clim = float(base["Climatizadas"].sum())
     soma_and = float(base["Em andamento"].sum())
     soma_rota = float(base["Em rota"].sum())
 
-    # Se a planilha tiver uma linha TOTAL válida, usa ela nos cards.
-    # Se não tiver, usa a soma das GREs limpas.
-    if total_linha and total_linha.get("Total", 0) > 0:
+    # Usa linha TOTAL apenas quando a visão é geral e nenhuma GRE específica foi filtrada.
+    if gre == "Todas" and total_linha and total_linha.get("Total", 0) > 0 and str(total_linha.get("Periodo", periodo)) == str(periodo):
         total = float(total_linha["Total"])
         climatizadas = float(total_linha["Climatizadas"])
         andamento = float(total_linha["Em andamento"])
@@ -329,9 +392,113 @@ def gerar_html_dashboard(base: pd.DataFrame, setor: pd.DataFrame, total_linha: d
 
     data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-    barras_gre = gerar_stacked_bars(base)
+    barras_gre = gerar_panorama_horizontal(base)
     ranking = gerar_ranking(base)
     setorizacao = gerar_setorizacao(setor)
+
+    mostra_geral = visao == "Geral"
+    mostra_pendencias = visao == "Pendências"
+    mostra_setorizacao = visao == "Setorização"
+
+    # Define blocos conforme a visão selecionada.
+    if mostra_pendencias:
+        grid_main_style = "grid-template-columns: 1.05fr 1.55fr;"
+        bloco_visao_geral = ""
+    else:
+        grid_main_style = "grid-template-columns: 1.35fr 1.10fr .84fr;"
+        bloco_visao_geral = f"""
+        <div class="panel">
+            <div class="panel-head">Visão Geral da Climatização</div>
+            <div class="panel-body">
+                <div class="visao-grid">
+                    <div>
+                        <div class="chart-title">Status Geral</div>
+                        <div class="donut">
+                            <div class="donut-center">
+                                <div>{fmt_pct(pct_clim)}<span>Conclusão</span></div>
+                            </div>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span><b>{fmt_num(climatizadas)}</b></div>
+                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span><b>{fmt_num(andamento)}</b></div>
+                            <div class="legend-row"><span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span><b>{fmt_num(rota)}</b></div>
+                            <div class="legend-row" style="justify-content:center;margin-top:6px;"><b>Total de Escolas: {fmt_num(total)}</b></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="chart-title">Progresso Geral</div>
+                        <div class="big-progress">{fmt_pct(pct_clim)} <span>concluído</span></div>
+                        <div class="progress-track"><div class="progress-fill"></div></div>
+                        <div class="progress-labels"><span>0%</span><span>100%</span></div>
+                        <div class="info-box"><strong>{fmt_num(climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>{fmt_num(pendencias)}</strong> em andamento ou em rota.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+    bloco_panorama = f"""
+        <div class="panel panel-pad">
+            <div class="chart-title">Panorama por GRE</div>
+            <div class="legend-top">
+                <span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span>
+                <span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span>
+                <span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span>
+            </div>
+            <div class="panorama-horizontal">
+                {barras_gre}
+            </div>
+            <div class="info-box">A GRE com maior volume de pendências é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>, com <strong>{fmt_num(gre_mais_pendente["Pendências"])}</strong> escolas em andamento ou em rota.</div>
+        </div>
+    """
+
+    bloco_ranking = f"""
+        <div class="panel panel-pad">
+            <div class="chart-title">Ranking de Pendências</div>
+            <div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota</div>
+            {ranking}
+            <div class="alert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
+        </div>
+    """
+
+    if mostra_setorizacao:
+        bloco_principal = ""
+    elif mostra_pendencias:
+        bloco_principal = bloco_panorama + bloco_ranking
+    else:
+        bloco_principal = bloco_visao_geral + bloco_panorama + bloco_ranking
+
+    bloco_setorizacao = f"""
+        <div class="panel">
+            <div class="panel-head">Quadro de Status por Setorização</div>
+            <div class="panel-body">
+                <div class="sector-grid">
+                    {setorizacao}
+                </div>
+            </div>
+        </div>
+    """
+
+    if mostra_setorizacao:
+        grid_bottom = f"""
+        <section class="grid-bottom-only">
+            {bloco_setorizacao}
+        </section>
+        """
+    else:
+        grid_bottom = f"""
+        <section class="grid-bottom">
+            <div class="panel panel-pad">
+                <div class="chart-title">Resumo Executivo</div>
+                <div class="summary-line"><span class="check"></span><span>Mais da metade das escolas já está climatizada.</span></div>
+                <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>.</span></div>
+                <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>{html_escape(gre_melhor["GRE"])}</strong>.</span></div>
+                <div class="summary-line"><span class="check"></span><span>A setorização deve ser acompanhada separadamente do total geral.</span></div>
+            </div>
+            {bloco_setorizacao}
+        </section>
+        """
 
     html = f"""
 <!DOCTYPE html>
@@ -355,9 +522,7 @@ def gerar_html_dashboard(base: pd.DataFrame, setor: pd.DataFrame, total_linha: d
     --texto-suave:#637083;
 }}
 
-* {{
-    box-sizing: border-box;
-}}
+* {{ box-sizing: border-box; }}
 
 body {{
     margin: 0;
@@ -370,7 +535,7 @@ body {{
     width: 100%;
     max-width: 1740px;
     margin: 0 auto;
-    padding: 0 18px 24px 18px;
+    padding: 0 18px 56px 18px;
 }}
 
 .header {{
@@ -432,55 +597,11 @@ body {{
     font-weight: 950;
 }}
 
-.filters {{
-    display: grid;
-    grid-template-columns: 220px 220px 220px 1fr;
-    gap: 14px;
-    margin: 16px 0;
-}}
-
-.filter,
-.sync {{
-    background: white;
-    border: 1px solid var(--borda);
-    border-radius: 15px;
-    box-shadow: 0 8px 22px rgba(10,40,80,.075);
-    padding: 12px 18px;
-}}
-
-.filter {{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}}
-
-.filter small {{
-    display: block;
-    color: var(--texto-suave);
-    font-size: 12px;
-    font-weight: 750;
-}}
-
-.filter b {{
-    color: var(--azul-escuro);
-    font-size: 19px;
-    font-weight: 900;
-}}
-
-.sync {{
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    color: var(--texto-suave);
-    font-size: 13px;
-    font-weight: 750;
-}}
-
 .kpis {{
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 16px;
-    margin-bottom: 16px;
+    margin: 16px 0;
 }}
 
 .kpi {{
@@ -546,7 +667,7 @@ body {{
 
 .grid-main {{
     display: grid;
-    grid-template-columns: 1.35fr 1.10fr .84fr;
+    {grid_main_style}
     gap: 16px;
 }}
 
@@ -554,6 +675,10 @@ body {{
     display: grid;
     grid-template-columns: 1.05fr 1.45fr;
     gap: 16px;
+    margin-top: 16px;
+}}
+
+.grid-bottom-only {{
     margin-top: 16px;
 }}
 
@@ -565,9 +690,7 @@ body {{
     overflow: hidden;
 }}
 
-.panel-pad {{
-    padding: 18px;
-}}
+.panel-pad {{ padding: 18px; }}
 
 .panel-head {{
     padding: 11px 18px;
@@ -579,9 +702,7 @@ body {{
     letter-spacing: .2px;
 }}
 
-.panel-body {{
-    padding: 18px;
-}}
+.panel-body {{ padding: 18px; }}
 
 .visao-grid {{
     display: grid;
@@ -706,79 +827,67 @@ body {{
     padding: 14px 16px;
     font-size: 15px;
     font-weight: 750;
-    margin-top: 28px;
+    margin-top: 22px;
 }}
 
-.info-box strong {{
-    color: var(--azul-escuro);
-}}
+.info-box strong {{ color: var(--azul-escuro); }}
 
-.stack-wrap {{
-    height: 315px;
-    padding: 24px 4px 0 4px;
-    border-bottom: 1px solid #C9D5E2;
+.panorama-horizontal {{
+    margin-top: 12px;
     display: flex;
-    align-items: flex-end;
-    gap: 11px;
+    flex-direction: column;
+    gap: 8px;
+}}
+
+.gre-row {{
+    display: grid;
+    grid-template-columns: 58px 1fr 42px;
+    align-items: center;
+    gap: 10px;
+    min-height: 24px;
+}}
+
+.gre-name {{
+    color: #18365C;
+    font-size: 12px;
+    font-weight: 900;
+    text-align: right;
+}}
+
+.gre-track {{
+    background: #ECF1F7;
+    height: 24px;
+    border-radius: 7px;
+    overflow: hidden;
     position: relative;
 }}
 
-.stack-wrap::before {{
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 22px;
-    bottom: 0;
-    background: repeating-linear-gradient(to top, transparent 0 51px, #E4ECF5 52px);
-    pointer-events: none;
-}}
-
-.bar-col {{
-    position: relative;
-    z-index: 2;
-    flex: 1;
-    min-width: 28px;
+.gre-stack {{
+    height: 100%;
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-end;
+    border-radius: 7px;
+    overflow: hidden;
 }}
 
-.stack {{
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-}}
-
-.seg {{
+.gre-seg {{
+    height: 100%;
     display: grid;
     place-items: center;
     color: white;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 900;
+    white-space: nowrap;
+    min-width: 12px;
 }}
 
-.seg-clim {{
-    background: var(--azul-escuro);
-}}
+.gre-clim {{ background: var(--azul-escuro); }}
+.gre-and {{ background: var(--azul-claro); }}
+.gre-rota {{ background: var(--vermelho); }}
 
-.seg-and {{
-    background: var(--azul-claro);
-}}
-
-.seg-rota {{
-    background: var(--vermelho);
-}}
-
-.x-label {{
-    height: 30px;
-    margin-top: 8px;
-    font-size: 11px;
-    font-weight: 850;
-    text-align: center;
+.gre-total {{
     color: #25364F;
+    font-size: 12px;
+    font-weight: 900;
 }}
 
 .legend-top {{
@@ -879,17 +988,9 @@ body {{
     font-weight: 850;
 }}
 
-.sector-line b {{
-    color: var(--azul-escuro);
-}}
-
-.sector-line b.blue {{
-    color: var(--azul-medio);
-}}
-
-.sector-line b.red {{
-    color: var(--vermelho);
-}}
+.sector-line b {{ color: var(--azul-escuro); }}
+.sector-line b.blue {{ color: var(--azul-medio); }}
+.sector-line b.red {{ color: var(--vermelho); }}
 
 .footer {{
     margin-top: 16px;
@@ -900,10 +1001,10 @@ body {{
 }}
 
 @media (max-width: 1200px) {{
-    .filters,
     .kpis,
     .grid-main,
     .grid-bottom,
+    .grid-bottom-only,
     .visao-grid,
     .sector-grid {{
         grid-template-columns: 1fr;
@@ -918,9 +1019,7 @@ body {{
         margin-top: 16px;
     }}
 
-    .title {{
-        font-size: 24px;
-    }}
+    .title {{ font-size: 24px; }}
 }}
 </style>
 </head>
@@ -932,24 +1031,17 @@ body {{
             <div class="logo">PB</div>
             <div>
                 <div class="title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
-                <div class="subtitle">Acompanhamento consolidado por GRE e setorização</div>
+                <div class="subtitle">Período: {html_escape(periodo)} · GRE: {html_escape(gre)} · Visão: {html_escape(visao)}</div>
             </div>
         </div>
         <div class="map">PB</div>
     </header>
 
-    <section class="filters">
-        <div class="filter"><div><small>Período</small><b>2026</b></div><span>▾</span></div>
-        <div class="filter"><div><small>GRE</small><b>Todas</b></div><span>▾</span></div>
-        <div class="filter"><div><small>Visão</small><b>Geral</b></div><span>▾</span></div>
-        <div class="sync">Sincronizado: {data_hora} · verificação a cada {REFRESH_SECONDS}s</div>
-    </section>
-
     <section class="kpis">
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
             <div class="kpi-title">Total de Escolas</div>
             <div class="kpi-value">{fmt_num(total)}</div>
-            <div class="kpi-sub">Base consolidada</div>
+            <div class="kpi-sub">Base filtrada</div>
         </div>
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
             <div class="kpi-title">Climatizadas</div>
@@ -974,78 +1066,13 @@ body {{
     </section>
 
     <section class="grid-main">
-        <div class="panel">
-            <div class="panel-head">Visão Geral da Climatização</div>
-            <div class="panel-body">
-                <div class="visao-grid">
-                    <div>
-                        <div class="chart-title">Status Geral</div>
-                        <div class="donut">
-                            <div class="donut-center">
-                                <div>{fmt_pct(pct_clim)}<span>Conclusão</span></div>
-                            </div>
-                        </div>
-                        <div class="legend">
-                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span><b>{fmt_num(climatizadas)}</b></div>
-                            <div class="legend-row"><span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span><b>{fmt_num(andamento)}</b></div>
-                            <div class="legend-row"><span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span><b>{fmt_num(rota)}</b></div>
-                            <div class="legend-row" style="justify-content:center;margin-top:6px;"><b>Total de Escolas: {fmt_num(total)}</b></div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="chart-title">Progresso Geral</div>
-                        <div class="big-progress">{fmt_pct(pct_clim)} <span>concluído</span></div>
-                        <div class="progress-track"><div class="progress-fill"></div></div>
-                        <div class="progress-labels"><span>0%</span><span>100%</span></div>
-                        <div class="info-box"><strong>{fmt_num(climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>{fmt_num(pendencias)}</strong> em andamento ou em rota.</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="panel panel-pad">
-            <div class="chart-title">Panorama por GRE</div>
-            <div class="legend-top">
-                <span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span>
-                <span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span>
-                <span><span class="dot" style="background:var(--vermelho);"></span>Em rota</span>
-            </div>
-            <div class="stack-wrap">
-                {barras_gre}
-            </div>
-            <div class="info-box">A GRE com maior volume de pendências é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>, com <strong>{fmt_num(gre_mais_pendente["Pendências"])}</strong> escolas em andamento ou em rota.</div>
-        </div>
-
-        <div class="panel panel-pad">
-            <div class="chart-title">Ranking de Pendências</div>
-            <div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota</div>
-            {ranking}
-            <div class="alert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
-        </div>
+        {bloco_principal}
     </section>
 
-    <section class="grid-bottom">
-        <div class="panel panel-pad">
-            <div class="chart-title">Resumo Executivo</div>
-            <div class="summary-line"><span class="check"></span><span>Mais da metade das escolas já está climatizada.</span></div>
-            <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>{html_escape(gre_mais_pendente["GRE"])}</strong>.</span></div>
-            <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>{html_escape(gre_melhor["GRE"])}</strong>.</span></div>
-            <div class="summary-line"><span class="check"></span><span>A setorização deve ser acompanhada separadamente do total geral.</span></div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-head">Quadro de Status por Setorização</div>
-            <div class="panel-body">
-                <div class="sector-grid">
-                    {setorizacao}
-                </div>
-            </div>
-        </div>
-    </section>
+    {grid_bottom}
 
     <div class="footer">
-        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.
+        Sincronizado: {data_hora} · atualização controlada a cada {REFRESH_SECONDS}s.
     </div>
 </div>
 </body>
@@ -1054,18 +1081,78 @@ body {{
     return html
 
 
-# ============================================================
-# RENDERIZAÇÃO COM ATUALIZAÇÃO CONTROLADA
-# ============================================================
+def aplicar_filtros(base: pd.DataFrame, setor: pd.DataFrame, periodo: str, gre: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    base_filtrada = base.copy()
+    setor_filtrado = setor.copy()
+
+    if periodo != "Todos":
+        base_filtrada = base_filtrada[base_filtrada["Periodo"].astype(str) == str(periodo)]
+        setor_filtrado = setor_filtrado[setor_filtrado["Periodo"].astype(str) == str(periodo)]
+
+    if gre != "Todas":
+        base_filtrada = base_filtrada[base_filtrada["GRE"] == gre]
+
+    if setor_filtrado.empty:
+        # Se a setorização não tiver o período filtrado, mantém todos os setores disponíveis.
+        setor_filtrado = setor.copy()
+
+    return base_filtrada, setor_filtrado
+
 
 def renderizar():
     try:
-        base, setor, total_linha = carregar_dados()
-        html = gerar_html_dashboard(base, setor, total_linha)
-        components.html(html, height=1010, scrolling=False)
+        base, setor, total_linha, periodos = carregar_dados()
     except Exception as erro:
-        st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
+        st.error("Erro ao ler a planilha publicada no Google Sheets.")
         st.exception(erro)
+        return
+
+    st.markdown('<div class="filter-wrapper">', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 2.2], gap="medium")
+
+    lista_periodos = periodos
+    if len(lista_periodos) > 1:
+        lista_periodos = ["Todos"] + lista_periodos
+
+    with c1:
+        periodo = st.selectbox("Período", lista_periodos, index=0 if "2026" not in lista_periodos else lista_periodos.index("2026"))
+
+    base_periodo = base if periodo == "Todos" else base[base["Periodo"].astype(str) == str(periodo)]
+    gres = ["Todas"] + base_periodo["GRE"].drop_duplicates().tolist()
+
+    with c2:
+        gre = st.selectbox("GRE", gres)
+
+    with c3:
+        visao = st.selectbox("Visão", ["Geral", "Pendências", "Setorização"])
+
+    with c4:
+        st.markdown(
+            f'<div class="filter-note">Filtros ativos: <b>{periodo}</b> · <b>{gre}</b> · <b>{visao}</b> · sincronização a cada {REFRESH_SECONDS}s</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    base_filtrada, setor_filtrado = aplicar_filtros(base, setor, periodo, gre)
+
+    if base_filtrada.empty:
+        st.warning("Nenhum dado encontrado para os filtros selecionados.")
+        return
+
+    # A linha total só faz sentido quando GRE = Todas e período específico.
+    total_usavel = total_linha if gre == "Todas" and periodo != "Todos" else None
+
+    html = gerar_html_dashboard(
+        base=base_filtrada,
+        setor=setor_filtrado,
+        total_linha=total_usavel,
+        periodo=periodo,
+        gre=gre,
+        visao=visao,
+    )
+
+    components.html(html, height=1500, scrolling=True)
 
 
 if hasattr(st, "fragment"):
