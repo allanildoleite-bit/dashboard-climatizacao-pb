@@ -50,7 +50,7 @@ footer {
 iframe {
     display: block;
     width: 100%;
-    min-height: 1750px;
+    min-height: 2400px;
     border: 0;
 }
 </style>
@@ -955,7 +955,7 @@ body {{
         </div>
 
         <div class="panel panel-pad" id="panoramaPanel">
-            <div class="chart-title">Panorama por GRE</div>
+            <div class="chart-title" id="panoramaTitle">Panorama por GRE</div>
             <div class="legend-top">
                 <span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span>
                 <span><span class="dot" style="background:var(--azul-claro);"></span>Em andamento</span>
@@ -966,7 +966,7 @@ body {{
         </div>
 
         <div class="panel panel-pad" id="rankingPanel">
-            <div class="chart-title">Ranking de Pendências</div>
+            <div class="chart-title" id="rankingTitle">Ranking de Pendências</div>
             <div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota</div>
             <div id="ranking"></div>
             <div class="alert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
@@ -1189,6 +1189,7 @@ function renderKpis(totals) {{
 function renderPanorama(filtered) {{
     const panel = document.getElementById("panorama");
     const info = document.getElementById("panoramaInfo");
+    const f = getSelectedFilters();
 
     if (filtered.length === 0) {{
         panel.innerHTML = "";
@@ -1226,8 +1227,25 @@ function renderPanorama(filtered) {{
 
     panel.innerHTML = rows;
 
-    const maior = filtered.slice().sort((a, b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))[0];
-    info.innerHTML = `A GRE com maior volume de pendências é <strong>${{escapeHtml(maior.GRE)}}</strong>, com <strong>${{fmtNum(maior.Pendências)}}</strong> escolas em andamento ou em rota.`;
+    if (f.gre !== "Todas") {{
+        const d = filtered[0];
+        const total = Number(d.Total || 0);
+        const climatizadas = Number(d.Climatizadas || 0);
+        const andamento = Number(d["Em andamento"] || 0);
+        const rota = Number(d["Em rota"] || 0);
+        const pendencias = andamento + rota;
+        const pct = total ? climatizadas / total : 0;
+
+        info.innerHTML =
+            `Na <strong>${{escapeHtml(d.GRE)}}</strong>, existem <strong>${{fmtNum(total)}}</strong> escolas na base filtrada. ` +
+            `São <strong>${{fmtNum(climatizadas)}}</strong> climatizadas (${{fmtPct(pct)}}) e ` +
+            `<strong>${{fmtNum(pendencias)}}</strong> pendências: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.`;
+    }} else {{
+        const maior = filtered.slice().sort((a, b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))[0];
+        info.innerHTML =
+            `A GRE com maior volume de pendências é <strong>${{escapeHtml(maior.GRE)}}</strong>, ` +
+            `com <strong>${{fmtNum(maior.Pendências)}}</strong> escolas em andamento ou em rota.`;
+    }}
 }}
 
 function renderRanking(filtered) {{
@@ -1279,14 +1297,36 @@ function renderSummary(filtered) {{
         return;
     }}
 
+    const f = getSelectedFilters();
+    const totals = getTotals(filtered);
+    const total = Number(totals.total || 0);
+    const climatizadas = Number(totals.climatizadas || 0);
+    const andamento = Number(totals.andamento || 0);
+    const rota = Number(totals.rota || 0);
+    const pendencias = andamento + rota;
+    const pctClim = total ? climatizadas / total : 0;
+
+    if (f.gre !== "Todas") {{
+        panel.innerHTML = `
+            <div class="summary-line"><span class="check"></span><span>A <strong>${{escapeHtml(f.gre)}}</strong> possui <strong>${{fmtNum(total)}}</strong> escolas na base filtrada.</span></div>
+            <div class="summary-line"><span class="check"></span><span>Foram climatizadas <strong>${{fmtNum(climatizadas)}}</strong> escolas, o que representa <strong>${{fmtPct(pctClim)}}</strong> da GRE selecionada.</span></div>
+            <div class="summary-line"><span class="check"></span><span>As pendências somam <strong>${{fmtNum(pendencias)}}</strong> escolas: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.</span></div>
+            <div class="summary-line"><span class="check"></span><span>O quadro de setorização representa os órgãos executores e não é filtrado por GRE.</span></div>`;
+        return;
+    }}
+
     const maiorPend = filtered.slice().sort((a, b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))[0];
     const melhor = filtered.slice().sort((a, b) => Number(b.Conclusão || 0) - Number(a.Conclusão || 0))[0];
 
+    const fraseAvanco = pctClim >= 0.5
+        ? `Mais da metade das escolas já está climatizada: <strong>${{fmtPct(pctClim)}}</strong> de conclusão.`
+        : `Menos da metade das escolas está climatizada: <strong>${{fmtPct(pctClim)}}</strong> de conclusão.`;
+
     panel.innerHTML = `
-        <div class="summary-line"><span class="check"></span><span>Mais da metade das escolas já está climatizada.</span></div>
-        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(maiorPend.GRE)}}</strong>.</span></div>
-        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(melhor.GRE)}}</strong>.</span></div>
-        <div class="summary-line"><span class="check"></span><span>A setorização deve ser acompanhada separadamente do total geral.</span></div>`;
+        <div class="summary-line"><span class="check"></span><span>${{fraseAvanco}}</span></div>
+        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(maiorPend.GRE)}}</strong>, com <strong>${{fmtNum(maiorPend.Pendências)}}</strong> escolas.</span></div>
+        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(melhor.GRE)}}</strong>, com <strong>${{fmtPct(melhor.Conclusão)}}</strong>.</span></div>
+        <div class="summary-line"><span class="check"></span><span>As pendências totais somam <strong>${{fmtNum(pendencias)}}</strong> escolas em andamento ou em rota.</span></div>`;
 }}
 
 function applyViewMode() {{
@@ -1335,7 +1375,19 @@ function renderDashboard() {{
     applyViewMode();
 
     const f = getSelectedFilters();
+
     document.getElementById("subtitle").textContent = `Período: ${{f.periodo}} · GRE: ${{f.gre}} · Visão: ${{f.visao}}`;
+
+    const panoramaTitle = document.getElementById("panoramaTitle");
+    const rankingTitle = document.getElementById("rankingTitle");
+
+    if (f.gre !== "Todas") {{
+        panoramaTitle.textContent = `Panorama da ${{f.gre}}`;
+        rankingTitle.textContent = `Pendências da ${{f.gre}}`;
+    }} else {{
+        panoramaTitle.textContent = "Panorama por GRE";
+        rankingTitle.textContent = "Ranking de Pendências";
+    }}
 }}
 
 initializeFilters();
@@ -1351,7 +1403,7 @@ def renderizar():
     try:
         base, setor, total_linha = carregar_dados()
         html = montar_html(base, setor, total_linha)
-        components.html(html, height=1750, scrolling=True)
+        components.html(html, height=2400, scrolling=False)
     except Exception as erro:
         st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
         st.exception(erro)
