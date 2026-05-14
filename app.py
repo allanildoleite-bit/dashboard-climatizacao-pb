@@ -50,7 +50,7 @@ footer {
 iframe {
     display: block;
     width: 100%;
-    min-height: 2400px;
+    min-height: 2500px;
     border: 0;
 }
 </style>
@@ -271,53 +271,56 @@ body {{
     width: 100%;
     max-width: 1740px;
     margin: 0 auto;
-    padding: 0 18px 56px 18px;
+    padding: 14px 18px 70px 18px;
 }}
 
 .header {{
-    min-height: 132px;
-    padding: 20px 30px;
-    border-radius: 0 0 22px 22px;
+    min-height: 126px;
+    padding: 18px 28px;
+    border-radius: 22px;
     color: white;
     background:
         radial-gradient(circle at 0% 0%, rgba(93,167,242,.35), transparent 28%),
         linear-gradient(90deg, var(--azul-noite), var(--azul-escuro) 55%, #0059A8);
     box-shadow: 0 14px 34px rgba(0,31,73,.22);
     display: grid;
-    grid-template-columns: 280px 1fr 220px;
+    grid-template-columns: 250px 1fr 250px;
     align-items: center;
     gap: 22px;
+    overflow: visible;
 }}
 
 .header-logo-box {{
-    height: 92px;
+    height: 82px;
     background: rgba(255,255,255,.96);
     border: 1px solid rgba(255,255,255,.74);
-    border-radius: 20px;
-    padding: 10px 14px;
+    border-radius: 18px;
+    padding: 8px 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     box-shadow: 0 10px 24px rgba(0,31,73,.20);
+    overflow: hidden;
 }}
 
 .logo-gov {{
     width: 100%;
-    max-width: 250px;
-    max-height: 74px;
+    max-width: 220px;
+    max-height: 64px;
     object-fit: contain;
 }}
 
 .logo-geobs {{
     width: 100%;
-    max-width: 150px;
-    max-height: 74px;
+    max-width: 122px;
+    max-height: 64px;
     object-fit: contain;
 }}
 
 .header-text {{
     min-width: 0;
     text-align: center;
+    padding: 0 8px;
 }}
 
 .logo {{
@@ -333,16 +336,16 @@ body {{
 }}
 
 .title {{
-    font-size: 30px;
-    line-height: 1.08;
+    font-size: 27px;
+    line-height: 1.12;
     font-weight: 950;
-    letter-spacing: -0.8px;
+    letter-spacing: -0.6px;
     text-transform: uppercase;
 }}
 
 .subtitle {{
-    margin-top: 10px;
-    font-size: 16px;
+    margin-top: 8px;
+    font-size: 15px;
     font-weight: 650;
     opacity: .94;
 }}
@@ -840,19 +843,21 @@ body {{
         height: auto;
         display: grid;
         grid-template-columns: 1fr;
+        gap: 12px;
     }}
 
     .header-logo-box {{
         width: 100%;
+        height: 76px;
     }}
 
     .logo-gov,
     .logo-geobs {{
-        max-height: 70px;
+        max-height: 58px;
     }}
 
     .title {{
-        font-size: 24px;
+        font-size: 23px;
     }}
 }}
 </style>
@@ -1403,7 +1408,7 @@ def renderizar():
     try:
         base, setor, total_linha = carregar_dados()
         html = montar_html(base, setor, total_linha)
-        components.html(html, height=2400, scrolling=False)
+        components.html(html, height=2500, scrolling=False)
     except Exception as erro:
         st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
         st.exception(erro)
