@@ -108,6 +108,27 @@ def detectar_coluna_periodo(df: pd.DataFrame) -> str | None:
     return None
 
 
+def detectar_coluna_nome_gerencia(df: pd.DataFrame) -> str | None:
+    """Detecta uma coluna opcional com o nome completo de cada gerência."""
+    possiveis = [
+        "Nome da Gerência",
+        "Nome da Gerencia",
+        "Nome_Gerencia",
+        "Nome_Gerência",
+        "Nome Gerencia",
+        "Nome Gerência",
+        "Gerencia",
+        "Gerência",
+        "Nome",
+    ]
+
+    for col in possiveis:
+        if col in df.columns:
+            return col
+
+    return None
+
+
 def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -117,6 +138,12 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
         df["Periodo"] = df[col_periodo].astype(str).str.strip()
     else:
         df["Periodo"] = "2026"
+
+    col_nome_gerencia = detectar_coluna_nome_gerencia(df)
+    if col_nome_gerencia:
+        df["Nome_Gerencia"] = df[col_nome_gerencia].astype(str).str.strip()
+    else:
+        df["Nome_Gerencia"] = ""
 
     colunas_obrigatorias = ["GRE", "Climatizadas", "Em andamento", "Em rota"]
     faltando = [c for c in colunas_obrigatorias if c not in df.columns]
@@ -142,15 +169,23 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
     df["GRE"] = df["GRE"].apply(padronizar_gre)
     df = df[df["GRE"].notna()].copy()
     df = df[df[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
-    df = df.drop_duplicates(subset=["Periodo", "GRE", "Climatizadas", "Em andamento", "Em rota"])
+    df = df.drop_duplicates(subset=["Periodo", "GRE", "Nome_Gerencia", "Climatizadas", "Em andamento", "Em rota"])
 
     df = (
         df.groupby(["Periodo", "GRE"], as_index=False)
         .agg({
+            "Nome_Gerencia": "first",
             "Climatizadas": "max",
             "Em andamento": "max",
             "Em rota": "max",
         })
+    )
+
+    df["GRE_Label"] = df.apply(
+        lambda linha: f'{linha["GRE"]} — {linha["Nome_Gerencia"]}'
+        if str(linha.get("Nome_Gerencia", "")).strip()
+        else str(linha["GRE"]),
+        axis=1,
     )
 
     df["Ordem"] = df["GRE"].str.extract(r"(\d+)").astype(int)
@@ -220,7 +255,7 @@ def carregar_dados():
 
 def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None) -> str:
     dados_base = base[[
-        "Periodo", "GRE", "Ordem", "Climatizadas", "Em andamento", "Em rota",
+        "Periodo", "GRE", "GRE_Label", "Nome_Gerencia", "Ordem", "Climatizadas", "Em andamento", "Em rota",
         "Total", "Pendências", "Conclusão"
     ]].to_dict(orient="records")
 
@@ -1025,6 +1060,16 @@ function escapeHtml(text) {{
         .replaceAll('"', "&quot;");
 }}
 
+function greLabel(d) {{
+    return d?.GRE_Label || d?.GRE || "";
+}}
+
+function labelFromSelectedGre(greValue) {{
+    if (greValue === "Todas") return "Todas";
+    const found = baseData.find(d => d.GRE === greValue);
+    return found ? greLabel(found) : greValue;
+}}
+
 function uniqueValues(arr) {{
     return [...new Set(arr)];
 }}
@@ -1095,14 +1140,40 @@ function updateGreOptions() {{
         filtered = filtered.filter(d => String(d.Periodo) === String(period));
     }}
 
-    const gres = ["Todas", ...filtered
+    const greOptions = filtered
         .slice()
         .sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0))
-        .map(d => d.GRE)
-        .filter((v, i, a) => a.indexOf(v) === i)];
+        .map(d => ({{
+            value: d.GRE,
+            label: d.GRE_Label || d.GRE
+        }}));
 
-    const selectedGre = gres.includes(savedGre) ? savedGre : "Todas";
-    setOptions(greFilter, gres, selectedGre);
+    const uniqueOptions = [];
+    const seen = new Set();
+
+    greOptions.forEach(item => {{
+        if (!seen.has(item.value)) {{
+            uniqueOptions.push(item);
+            seen.add(item.value);
+        }}
+    }});
+
+    greFilter.innerHTML = "";
+
+    const optTodas = document.createElement("option");
+    optTodas.value = "Todas";
+    optTodas.textContent = "Todas";
+    greFilter.appendChild(optTodas);
+
+    uniqueOptions.forEach(item => {{
+        const option = document.createElement("option");
+        option.value = item.value;
+        option.textContent = item.label;
+        greFilter.appendChild(option);
+    }});
+
+    const selectedGre = seen.has(savedGre) ? savedGre : "Todas";
+    greFilter.value = selectedGre;
 }}
 
 function filterBase() {{
@@ -1218,7 +1289,7 @@ function renderPanorama(filtered) {{
 
         rows += `
             <div class="gre-row">
-                <div class="gre-name">${{escapeHtml(d.GRE)}}</div>
+                <div class="gre-name">${{escapeHtml(greLabel(d))}}</div>
                 <div class="gre-track">
                     <div class="gre-stack" style="width:${{widthTotal}}%;">
                         <div class="gre-seg gre-clim" style="width:${{wClim}}%;">${{climLabel}}</div>
@@ -1242,13 +1313,13 @@ function renderPanorama(filtered) {{
         const pct = total ? climatizadas / total : 0;
 
         info.innerHTML =
-            `Na <strong>${{escapeHtml(d.GRE)}}</strong>, existem <strong>${{fmtNum(total)}}</strong> escolas na base filtrada. ` +
+            `Na <strong>${{escapeHtml(greLabel(d))}}</strong>, existem <strong>${{fmtNum(total)}}</strong> escolas na base filtrada. ` +
             `São <strong>${{fmtNum(climatizadas)}}</strong> climatizadas (${{fmtPct(pct)}}) e ` +
             `<strong>${{fmtNum(pendencias)}}</strong> pendências: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.`;
     }} else {{
         const maior = filtered.slice().sort((a, b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))[0];
         info.innerHTML =
-            `A GRE com maior volume de pendências é <strong>${{escapeHtml(maior.GRE)}}</strong>, ` +
+            `A GRE com maior volume de pendências é <strong>${{escapeHtml(greLabel(maior))}}</strong>, ` +
             `com <strong>${{fmtNum(maior.Pendências)}}</strong> escolas em andamento ou em rota.`;
     }}
 }}
@@ -1268,7 +1339,7 @@ function renderRanking(filtered) {{
         const width = Math.max(3, (Number(d.Pendências || 0) / maxPend) * 100);
         html += `
             <div class="rank-row">
-                <div class="rank-label">${{escapeHtml(d.GRE)}}</div>
+                <div class="rank-label">${{escapeHtml(greLabel(d))}}</div>
                 <div class="rank-track"><div class="rank-fill" style="width:${{width}}%;"></div></div>
                 <div class="rank-value">${{fmtNum(d.Pendências)}}</div>
             </div>`;
@@ -1313,7 +1384,7 @@ function renderSummary(filtered) {{
 
     if (f.gre !== "Todas") {{
         panel.innerHTML = `
-            <div class="summary-line"><span class="check"></span><span>A <strong>${{escapeHtml(f.gre)}}</strong> possui <strong>${{fmtNum(total)}}</strong> escolas na base filtrada.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A <strong>${{escapeHtml(labelFromSelectedGre(f.gre))}}</strong> possui <strong>${{fmtNum(total)}}</strong> escolas na base filtrada.</span></div>
             <div class="summary-line"><span class="check"></span><span>Foram climatizadas <strong>${{fmtNum(climatizadas)}}</strong> escolas, o que representa <strong>${{fmtPct(pctClim)}}</strong> da GRE selecionada.</span></div>
             <div class="summary-line"><span class="check"></span><span>As pendências somam <strong>${{fmtNum(pendencias)}}</strong> escolas: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.</span></div>
             <div class="summary-line"><span class="check"></span><span>O quadro de setorização representa os órgãos executores e não é filtrado por GRE.</span></div>`;
@@ -1329,8 +1400,8 @@ function renderSummary(filtered) {{
 
     panel.innerHTML = `
         <div class="summary-line"><span class="check"></span><span>${{fraseAvanco}}</span></div>
-        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(maiorPend.GRE)}}</strong>, com <strong>${{fmtNum(maiorPend.Pendências)}}</strong> escolas.</span></div>
-        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(melhor.GRE)}}</strong>, com <strong>${{fmtPct(melhor.Conclusão)}}</strong>.</span></div>
+        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(greLabel(maiorPend))}}</strong>, com <strong>${{fmtNum(maiorPend.Pendências)}}</strong> escolas.</span></div>
+        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(greLabel(melhor))}}</strong>, com <strong>${{fmtPct(melhor.Conclusão)}}</strong>.</span></div>
         <div class="summary-line"><span class="check"></span><span>As pendências totais somam <strong>${{fmtNum(pendencias)}}</strong> escolas em andamento ou em rota.</span></div>`;
 }}
 
@@ -1381,14 +1452,14 @@ function renderDashboard() {{
 
     const f = getSelectedFilters();
 
-    document.getElementById("subtitle").textContent = `Período: ${{f.periodo}} · GRE: ${{f.gre}} · Visão: ${{f.visao}}`;
+    document.getElementById("subtitle").textContent = `Período: ${{f.periodo}} · GRE: ${{labelFromSelectedGre(f.gre)}} · Visão: ${{f.visao}}`;
 
     const panoramaTitle = document.getElementById("panoramaTitle");
     const rankingTitle = document.getElementById("rankingTitle");
 
     if (f.gre !== "Todas") {{
-        panoramaTitle.textContent = `Panorama da ${{f.gre}}`;
-        rankingTitle.textContent = `Pendências da ${{f.gre}}`;
+        panoramaTitle.textContent = `Panorama da ${{labelFromSelectedGre(f.gre)}}`;
+        rankingTitle.textContent = `Pendências da ${{labelFromSelectedGre(f.gre)}}`;
     }} else {{
         panoramaTitle.textContent = "Panorama por GRE";
         rankingTitle.textContent = "Ranking de Pendências";
