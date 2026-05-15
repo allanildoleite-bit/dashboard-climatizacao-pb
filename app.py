@@ -108,28 +108,66 @@ def detectar_coluna_periodo(df: pd.DataFrame) -> str | None:
     return None
 
 
+def normalizar_nome_coluna(texto: str) -> str:
+    """Normaliza cabeçalhos para detectar variações de acento, espaço e caixa."""
+    texto = str(texto).strip().lower()
+    trocas = {
+        "ã": "a", "á": "a", "à": "a", "â": "a",
+        "é": "e", "ê": "e",
+        "í": "i",
+        "ó": "o", "ô": "o",
+        "ú": "u",
+        "ç": "c",
+    }
+    for antigo, novo in trocas.items():
+        texto = texto.replace(antigo, novo)
+
+    texto = texto.replace("_", " ").replace("-", " ")
+    texto = " ".join(texto.split())
+    return texto
+
+
 def detectar_coluna_nome_gerencia(df: pd.DataFrame) -> str | None:
-    """Detecta uma coluna opcional com o nome completo de cada gerência."""
-    possiveis = [
-        "Nome da Gerência",
-        "Nome da Gerencia",
-        "Nome_Gerencia",
-        "Nome_Gerência",
-        "Nome Gerencia",
-        "Nome Gerência",
-        "Gerencia",
-        "Gerência",
-        "Nome",
+    """Detecta uma coluna opcional com o nome completo de cada gerência.
+
+    Aceita variações como:
+    - Nome da Gerência
+    - Nome_Gerencia
+    - Gerência Regional
+    - Nome da GRE
+    - Regional
+    """
+    mapa_normalizado = {normalizar_nome_coluna(col): col for col in df.columns}
+
+    nomes_exatos = [
+        "nome da gerencia",
+        "nome gerencia",
+        "nome da gre",
+        "nome gre",
+        "gerencia regional",
+        "gerencia regional de ensino",
+        "regional",
+        "nome",
     ]
 
-    for col in possiveis:
-        if col in df.columns:
-            return col
+    for nome in nomes_exatos:
+        if nome in mapa_normalizado:
+            return mapa_normalizado[nome]
+
+    # Detecção por combinação de palavras
+    for nome_normalizado, nome_original in mapa_normalizado.items():
+        tem_nome = "nome" in nome_normalizado
+        tem_gerencia = "gerencia" in nome_normalizado
+        tem_gre = "gre" in nome_normalizado
+        tem_regional = "regional" in nome_normalizado
+
+        if (tem_nome and (tem_gerencia or tem_gre or tem_regional)) or (tem_gerencia and tem_regional):
+            return nome_original
 
     return None
 
 
-def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
+def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, str | None]:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -194,7 +232,7 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
     df["Pendências"] = df["Em andamento"] + df["Em rota"]
     df["Conclusão"] = df["Climatizadas"] / df["Total"]
 
-    return df, total_linha
+    return df, total_linha, col_nome_gerencia
 
 
 def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
@@ -247,13 +285,13 @@ def carregar_dados():
     base_raw = pd.read_csv(BASE_GERAL_URL)
     setor_raw = pd.read_csv(SETORIZACAO_URL)
 
-    base, total_linha = tratar_base_geral(base_raw)
+    base, total_linha, coluna_nome_gerencia = tratar_base_geral(base_raw)
     setor = tratar_setorizacao(setor_raw)
 
-    return base, setor, total_linha
+    return base, setor, total_linha, coluna_nome_gerencia
 
 
-def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None) -> str:
+def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None, coluna_nome_gerencia: str | None) -> str:
     dados_base = base[[
         "Periodo", "GRE", "GRE_Label", "Nome_Gerencia", "Ordem", "Climatizadas", "Em andamento", "Em rota",
         "Total", "Pendências", "Conclusão"
@@ -268,6 +306,11 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | Non
     json_total = json.dumps(total_linha or {}, ensure_ascii=False)
 
     sincronizado = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    status_coluna_gerencia = (
+        f"nomes das gerências: coluna '{coluna_nome_gerencia}' identificada"
+        if coluna_nome_gerencia
+        else "nomes das gerências: coluna não identificada na Base_Geral publicada"
+    )
 
     html = f"""
 <!DOCTYPE html>
@@ -1028,7 +1071,8 @@ body {{
     </section>
 
     <div class="footer">
-        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.
+        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.<br>
+        <span style="font-size:12px;opacity:.75;">{status_coluna_gerencia}</span>
     </div>
 </div>
 
@@ -1477,8 +1521,8 @@ renderDashboard();
 
 def renderizar():
     try:
-        base, setor, total_linha = carregar_dados()
-        html = montar_html(base, setor, total_linha)
+        base, setor, total_linha, coluna_nome_gerencia = carregar_dados()
+        html = montar_html(base, setor, total_linha, coluna_nome_gerencia)
         components.html(html, height=2500, scrolling=False)
     except Exception as erro:
         st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
