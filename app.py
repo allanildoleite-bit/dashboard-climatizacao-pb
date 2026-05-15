@@ -108,81 +108,7 @@ def detectar_coluna_periodo(df: pd.DataFrame) -> str | None:
     return None
 
 
-def normalizar_nome_coluna(texto: str) -> str:
-    """Normaliza cabeçalhos para detectar variações de acento, espaço e caixa."""
-    texto = str(texto).strip().lower()
-    trocas = {
-        "ã": "a", "á": "a", "à": "a", "â": "a",
-        "é": "e", "ê": "e",
-        "í": "i",
-        "ó": "o", "ô": "o",
-        "ú": "u",
-        "ç": "c",
-    }
-    for antigo, novo in trocas.items():
-        texto = texto.replace(antigo, novo)
-
-    texto = texto.replace("_", " ").replace("-", " ")
-    texto = " ".join(texto.split())
-    return texto
-
-
-def detectar_coluna_nome_gerencia(df: pd.DataFrame) -> str | None:
-    """Detecta uma coluna opcional com o nome completo de cada gerência.
-
-    Aceita variações como:
-    - Nome da Gerência
-    - Nome_Gerencia
-    - Gerência Regional
-    - Nome da GRE
-    - Regional
-    """
-    mapa_normalizado = {normalizar_nome_coluna(col): col for col in df.columns}
-
-    nomes_exatos = [
-        "nome da gerencia",
-        "nome gerencia",
-        "nome da gre",
-        "nome gre",
-        "localizacao",
-        "municipio",
-        "cidade",
-        "sede",
-        "gerencia regional",
-        "gerencia regional de ensino",
-        "regional",
-        "nome",
-    ]
-
-    for nome in nomes_exatos:
-        if nome in mapa_normalizado:
-            return mapa_normalizado[nome]
-
-    # Detecção por combinação de palavras
-    for nome_normalizado, nome_original in mapa_normalizado.items():
-        tem_nome = "nome" in nome_normalizado
-        tem_gerencia = "gerencia" in nome_normalizado
-        tem_gre = "gre" in nome_normalizado
-        tem_regional = "regional" in nome_normalizado
-        tem_localizacao = "localizacao" in nome_normalizado
-        tem_municipio = "municipio" in nome_normalizado
-        tem_cidade = "cidade" in nome_normalizado
-        tem_sede = "sede" in nome_normalizado
-
-        if (
-            (tem_nome and (tem_gerencia or tem_gre or tem_regional))
-            or (tem_gerencia and tem_regional)
-            or tem_localizacao
-            or tem_municipio
-            or tem_cidade
-            or tem_sede
-        ):
-            return nome_original
-
-    return None
-
-
-def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, str | None]:
+def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None]:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -191,12 +117,6 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, str 
         df["Periodo"] = df[col_periodo].astype(str).str.strip()
     else:
         df["Periodo"] = "2026"
-
-    col_nome_gerencia = detectar_coluna_nome_gerencia(df)
-    if col_nome_gerencia:
-        df["Nome_Gerencia"] = df[col_nome_gerencia].astype(str).str.strip()
-    else:
-        df["Nome_Gerencia"] = ""
 
     colunas_obrigatorias = ["GRE", "Climatizadas", "Em andamento", "Em rota"]
     faltando = [c for c in colunas_obrigatorias if c not in df.columns]
@@ -222,23 +142,15 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, str 
     df["GRE"] = df["GRE"].apply(padronizar_gre)
     df = df[df["GRE"].notna()].copy()
     df = df[df[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
-    df = df.drop_duplicates(subset=["Periodo", "GRE", "Nome_Gerencia", "Climatizadas", "Em andamento", "Em rota"])
+    df = df.drop_duplicates(subset=["Periodo", "GRE", "Climatizadas", "Em andamento", "Em rota"])
 
     df = (
         df.groupby(["Periodo", "GRE"], as_index=False)
         .agg({
-            "Nome_Gerencia": "first",
             "Climatizadas": "max",
             "Em andamento": "max",
             "Em rota": "max",
         })
-    )
-
-    df["GRE_Label"] = df.apply(
-        lambda linha: f'{linha["GRE"]} — {linha["Nome_Gerencia"]}'
-        if str(linha.get("Nome_Gerencia", "")).strip()
-        else str(linha["GRE"]),
-        axis=1,
     )
 
     df["Ordem"] = df["GRE"].str.extract(r"(\d+)").astype(int)
@@ -247,7 +159,7 @@ def tratar_base_geral(df: pd.DataFrame) -> tuple[pd.DataFrame, dict | None, str 
     df["Pendências"] = df["Em andamento"] + df["Em rota"]
     df["Conclusão"] = df["Climatizadas"] / df["Total"]
 
-    return df, total_linha, col_nome_gerencia
+    return df, total_linha
 
 
 def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
@@ -300,15 +212,15 @@ def carregar_dados():
     base_raw = pd.read_csv(BASE_GERAL_URL)
     setor_raw = pd.read_csv(SETORIZACAO_URL)
 
-    base, total_linha, coluna_nome_gerencia = tratar_base_geral(base_raw)
+    base, total_linha = tratar_base_geral(base_raw)
     setor = tratar_setorizacao(setor_raw)
 
-    return base, setor, total_linha, coluna_nome_gerencia
+    return base, setor, total_linha
 
 
-def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None, coluna_nome_gerencia: str | None) -> str:
+def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | None) -> str:
     dados_base = base[[
-        "Periodo", "GRE", "GRE_Label", "Nome_Gerencia", "Ordem", "Climatizadas", "Em andamento", "Em rota",
+        "Periodo", "GRE", "Ordem", "Climatizadas", "Em andamento", "Em rota",
         "Total", "Pendências", "Conclusão"
     ]].to_dict(orient="records")
 
@@ -321,11 +233,6 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, total_linha: dict | Non
     json_total = json.dumps(total_linha or {}, ensure_ascii=False)
 
     sincronizado = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    status_coluna_gerencia = (
-        f"nomes das gerências: coluna '{coluna_nome_gerencia}' identificada"
-        if coluna_nome_gerencia
-        else "nomes das gerências: coluna não identificada na Base_Geral publicada"
-    )
 
     html = f"""
 <!DOCTYPE html>
@@ -1086,8 +993,7 @@ body {{
     </section>
 
     <div class="footer">
-        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.<br>
-        <span style="font-size:12px;opacity:.75;">{status_coluna_gerencia}</span>
+        Os dados apresentados são consolidados com base nas informações enviadas pelas GREs e órgãos executores.
     </div>
 </div>
 
@@ -1117,16 +1023,6 @@ function escapeHtml(text) {{
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
-}}
-
-function greLabel(d) {{
-    return d?.GRE_Label || d?.GRE || "";
-}}
-
-function labelFromSelectedGre(greValue) {{
-    if (greValue === "Todas") return "Todas";
-    const found = baseData.find(d => d.GRE === greValue);
-    return found ? greLabel(found) : greValue;
 }}
 
 function uniqueValues(arr) {{
@@ -1199,40 +1095,14 @@ function updateGreOptions() {{
         filtered = filtered.filter(d => String(d.Periodo) === String(period));
     }}
 
-    const greOptions = filtered
+    const gres = ["Todas", ...filtered
         .slice()
         .sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0))
-        .map(d => ({{
-            value: d.GRE,
-            label: d.GRE_Label || d.GRE
-        }}));
+        .map(d => d.GRE)
+        .filter((v, i, a) => a.indexOf(v) === i)];
 
-    const uniqueOptions = [];
-    const seen = new Set();
-
-    greOptions.forEach(item => {{
-        if (!seen.has(item.value)) {{
-            uniqueOptions.push(item);
-            seen.add(item.value);
-        }}
-    }});
-
-    greFilter.innerHTML = "";
-
-    const optTodas = document.createElement("option");
-    optTodas.value = "Todas";
-    optTodas.textContent = "Todas";
-    greFilter.appendChild(optTodas);
-
-    uniqueOptions.forEach(item => {{
-        const option = document.createElement("option");
-        option.value = item.value;
-        option.textContent = item.label;
-        greFilter.appendChild(option);
-    }});
-
-    const selectedGre = seen.has(savedGre) ? savedGre : "Todas";
-    greFilter.value = selectedGre;
+    const selectedGre = gres.includes(savedGre) ? savedGre : "Todas";
+    setOptions(greFilter, gres, selectedGre);
 }}
 
 function filterBase() {{
@@ -1348,7 +1218,7 @@ function renderPanorama(filtered) {{
 
         rows += `
             <div class="gre-row">
-                <div class="gre-name">${{escapeHtml(greLabel(d))}}</div>
+                <div class="gre-name">${{escapeHtml(d.GRE)}}</div>
                 <div class="gre-track">
                     <div class="gre-stack" style="width:${{widthTotal}}%;">
                         <div class="gre-seg gre-clim" style="width:${{wClim}}%;">${{climLabel}}</div>
@@ -1372,13 +1242,13 @@ function renderPanorama(filtered) {{
         const pct = total ? climatizadas / total : 0;
 
         info.innerHTML =
-            `Na <strong>${{escapeHtml(greLabel(d))}}</strong>, existem <strong>${{fmtNum(total)}}</strong> escolas na base filtrada. ` +
+            `Na <strong>${{escapeHtml(d.GRE)}}</strong>, existem <strong>${{fmtNum(total)}}</strong> escolas na base filtrada. ` +
             `São <strong>${{fmtNum(climatizadas)}}</strong> climatizadas (${{fmtPct(pct)}}) e ` +
             `<strong>${{fmtNum(pendencias)}}</strong> pendências: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.`;
     }} else {{
         const maior = filtered.slice().sort((a, b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))[0];
         info.innerHTML =
-            `A GRE com maior volume de pendências é <strong>${{escapeHtml(greLabel(maior))}}</strong>, ` +
+            `A GRE com maior volume de pendências é <strong>${{escapeHtml(maior.GRE)}}</strong>, ` +
             `com <strong>${{fmtNum(maior.Pendências)}}</strong> escolas em andamento ou em rota.`;
     }}
 }}
@@ -1398,7 +1268,7 @@ function renderRanking(filtered) {{
         const width = Math.max(3, (Number(d.Pendências || 0) / maxPend) * 100);
         html += `
             <div class="rank-row">
-                <div class="rank-label">${{escapeHtml(greLabel(d))}}</div>
+                <div class="rank-label">${{escapeHtml(d.GRE)}}</div>
                 <div class="rank-track"><div class="rank-fill" style="width:${{width}}%;"></div></div>
                 <div class="rank-value">${{fmtNum(d.Pendências)}}</div>
             </div>`;
@@ -1443,7 +1313,7 @@ function renderSummary(filtered) {{
 
     if (f.gre !== "Todas") {{
         panel.innerHTML = `
-            <div class="summary-line"><span class="check"></span><span>A <strong>${{escapeHtml(labelFromSelectedGre(f.gre))}}</strong> possui <strong>${{fmtNum(total)}}</strong> escolas na base filtrada.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A <strong>${{escapeHtml(f.gre)}}</strong> possui <strong>${{fmtNum(total)}}</strong> escolas na base filtrada.</span></div>
             <div class="summary-line"><span class="check"></span><span>Foram climatizadas <strong>${{fmtNum(climatizadas)}}</strong> escolas, o que representa <strong>${{fmtPct(pctClim)}}</strong> da GRE selecionada.</span></div>
             <div class="summary-line"><span class="check"></span><span>As pendências somam <strong>${{fmtNum(pendencias)}}</strong> escolas: ${{fmtNum(andamento)}} em andamento e ${{fmtNum(rota)}} em rota.</span></div>
             <div class="summary-line"><span class="check"></span><span>O quadro de setorização representa os órgãos executores e não é filtrado por GRE.</span></div>`;
@@ -1459,8 +1329,8 @@ function renderSummary(filtered) {{
 
     panel.innerHTML = `
         <div class="summary-line"><span class="check"></span><span>${{fraseAvanco}}</span></div>
-        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(greLabel(maiorPend))}}</strong>, com <strong>${{fmtNum(maiorPend.Pendências)}}</strong> escolas.</span></div>
-        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(greLabel(melhor))}}</strong>, com <strong>${{fmtPct(melhor.Conclusão)}}</strong>.</span></div>
+        <div class="summary-line"><span class="check"></span><span>A GRE com maior pendência é <strong>${{escapeHtml(maiorPend.GRE)}}</strong>, com <strong>${{fmtNum(maiorPend.Pendências)}}</strong> escolas.</span></div>
+        <div class="summary-line"><span class="check"></span><span>A maior conclusão proporcional está em <strong>${{escapeHtml(melhor.GRE)}}</strong>, com <strong>${{fmtPct(melhor.Conclusão)}}</strong>.</span></div>
         <div class="summary-line"><span class="check"></span><span>As pendências totais somam <strong>${{fmtNum(pendencias)}}</strong> escolas em andamento ou em rota.</span></div>`;
 }}
 
@@ -1511,14 +1381,14 @@ function renderDashboard() {{
 
     const f = getSelectedFilters();
 
-    document.getElementById("subtitle").textContent = `Período: ${{f.periodo}} · GRE: ${{labelFromSelectedGre(f.gre)}} · Visão: ${{f.visao}}`;
+    document.getElementById("subtitle").textContent = `Período: ${{f.periodo}} · GRE: ${{f.gre}} · Visão: ${{f.visao}}`;
 
     const panoramaTitle = document.getElementById("panoramaTitle");
     const rankingTitle = document.getElementById("rankingTitle");
 
     if (f.gre !== "Todas") {{
-        panoramaTitle.textContent = `Panorama da ${{labelFromSelectedGre(f.gre)}}`;
-        rankingTitle.textContent = `Pendências da ${{labelFromSelectedGre(f.gre)}}`;
+        panoramaTitle.textContent = `Panorama da ${{f.gre}}`;
+        rankingTitle.textContent = `Pendências da ${{f.gre}}`;
     }} else {{
         panoramaTitle.textContent = "Panorama por GRE";
         rankingTitle.textContent = "Ranking de Pendências";
@@ -1536,8 +1406,8 @@ renderDashboard();
 
 def renderizar():
     try:
-        base, setor, total_linha, coluna_nome_gerencia = carregar_dados()
-        html = montar_html(base, setor, total_linha, coluna_nome_gerencia)
+        base, setor, total_linha = carregar_dados()
+        html = montar_html(base, setor, total_linha)
         components.html(html, height=2500, scrolling=False)
     except Exception as erro:
         st.error("Erro ao montar o dashboard. Verifique a publicação das abas do Google Sheets.")
