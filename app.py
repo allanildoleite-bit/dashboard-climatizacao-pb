@@ -144,6 +144,10 @@ def detectar_coluna_nome_gerencia(df: pd.DataFrame) -> str | None:
         "nome gerencia",
         "nome da gre",
         "nome gre",
+        "localizacao",
+        "municipio",
+        "cidade",
+        "sede",
         "gerencia regional",
         "gerencia regional de ensino",
         "regional",
@@ -160,8 +164,19 @@ def detectar_coluna_nome_gerencia(df: pd.DataFrame) -> str | None:
         tem_gerencia = "gerencia" in nome_normalizado
         tem_gre = "gre" in nome_normalizado
         tem_regional = "regional" in nome_normalizado
+        tem_localizacao = "localizacao" in nome_normalizado
+        tem_municipio = "municipio" in nome_normalizado
+        tem_cidade = "cidade" in nome_normalizado
+        tem_sede = "sede" in nome_normalizado
 
-        if (tem_nome and (tem_gerencia or tem_gre or tem_regional)) or (tem_gerencia and tem_regional):
+        if (
+            (tem_nome and (tem_gerencia or tem_gre or tem_regional))
+            or (tem_gerencia and tem_regional)
+            or tem_localizacao
+            or tem_municipio
+            or tem_cidade
+            or tem_sede
+        ):
             return nome_original
 
     return None
