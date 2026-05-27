@@ -287,12 +287,21 @@ def tratar_responsaveis(df: pd.DataFrame) -> pd.DataFrame:
 
         area_da_coluna = inferir_area_tecnica(coluna)
         nome_coluna = normalizar_texto(coluna)
+        # A aba de responsáveis pode vir de duas formas:
+        # 1) Formato tradicional: uma coluna de responsável + uma coluna indicando a área;
+        # 2) Formato largo: uma coluna chamada apenas "Civil" e outra chamada "Elétrica".
+        # No segundo caso, o nome da coluna já é a área técnica e os valores são os responsáveis.
         parece_coluna_de_responsavel = any(
             termo in nome_coluna
             for termo in ["responsavel", "responsavel tecnico", "engenheiro", "eng", "tecnico", "equipe"]
         )
+        coluna_e_area_direta = nome_coluna in {
+            "civil", "area civil", "engenharia civil", "eng civil",
+            "eletrica", "eletrico", "area eletrica", "engenharia eletrica",
+            "eng eletrica", "eletrotecnica", "eletrotecnico"
+        }
 
-        if area_da_coluna and parece_coluna_de_responsavel:
+        if area_da_coluna and (parece_coluna_de_responsavel or coluna_e_area_direta):
             colunas_responsaveis_por_area.append((coluna, area_da_coluna))
 
     linhas = []
@@ -1352,8 +1361,8 @@ body {
                             </div>
                             <div class="legend">
                                 <div class="legend-row"><span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span><b id="legClim">0</b></div>
-                                <div class="legend-row"><span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span><b id="legAnd">0</b></div>
-                                <div class="legend-row"><span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota</span><b id="legRota">0</b></div>
+                                <div class="legend-row"><span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span><b id="legAnd">0</b></div>
+                                <div class="legend-row"><span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota</span><b id="legRota">0</b></div>
                                 <div class="legend-row" style="justify-content:center;margin-top:6px;"><b>Total de Escolas: <span id="legTotal">0</span></b></div>
                             </div>
                         </div>
@@ -1373,8 +1382,8 @@ body {
                 <div class="chart-title" id="panoramaTitle">Panorama por GRE</div>
                 <div class="legend-top">
                     <span><span class="dot" style="background:var(--azul-escuro);"></span>Climatizadas</span>
-                    <span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span>
-                    <span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota</span>
                 </div>
                 <div class="panorama-horizontal" id="panorama"></div>
                 <div class="info-box" id="panoramaInfo">Informação principal será exibida aqui.</div>
@@ -1384,8 +1393,8 @@ body {
                 <div class="chart-title" id="rankingTitle">Ranking de Pendências</div>
                 <div style="font-size:13px;color:#516174;font-weight:750;">Total em andamento + em rota de climatização</div>
                 <div class="rank-legend">
-                    <span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span>
-                    <span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota</span>
                 </div>
                 <div id="ranking"></div>
                 <div class="alert" id="rankingAlert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
@@ -1402,8 +1411,8 @@ body {
                 <div class="panel-head">Quadro de Status por Setorização</div>
                 <div class="panel-body">
                     <div class="sector-legend">
-                        <span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span>
-                        <span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota de climatização</span>
+                        <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                        <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota de climatização</span>
                     </div>
                     <div class="sector-grid" id="sectorGrid"></div>
                 </div>
@@ -1416,8 +1425,8 @@ body {
             <div class="panel panel-pad">
                 <div class="chart-title" id="pendenciasFullTitle">Ranking de Pendências Totais</div>
                 <div class="rank-legend" id="pendenciasFullLegend">
-                    <span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span>
-                    <span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota</span>
                 </div>
                 <div id="rankingTotalFull"></div>
             </div>
@@ -1464,8 +1473,8 @@ body {
             <div class="panel-head">Quadro de Status por Setorização</div>
             <div class="panel-body">
                 <div class="sector-legend">
-                    <span><span class="dot" style="background:linear-gradient(90deg, #0B4EA2, #7CC5FF);"></span>Em andamento</span>
-                    <span><span class="dot" style="background:linear-gradient(90deg, #B91C1C, #FF9A9A);"></span>Em rota de climatização</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                    <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota de climatização</span>
                 </div>
                 <div class="sector-grid" id="sectorGridSolo"></div>
             </div>
@@ -1555,25 +1564,28 @@ function canonicalArea(value) {
     const txt = normalizarTextoJS(value);
     if (!txt) return "Não informado";
     if (txt.includes("civil")) return "Civil";
-    if (txt.includes("eletr")) return "Elétrica";
+    if (txt.includes("eletr") || txt.includes("eletrot") || txt.includes("energia") || txt.includes("energisa")) return "Elétrica";
     return String(value).trim();
 }
 
-function areaMatches(row, selectedArea) {
-    if (!selectedArea || selectedArea === "Todas") return true;
-
-    const areaSelecionada = normalizarTextoJS(selectedArea);
-    const textoLinha = normalizarTextoJS([
+function technicalAreaOfResponsible(row) {
+    const campos = [
         row?.["Área"],
         row?.["Tipo Profissional"],
         row?.["Equipe"],
         row?.["Responsável Técnico"]
-    ].join(" "));
+    ];
+    const textoLinha = normalizarTextoJS(campos.join(" "));
 
-    if (areaSelecionada === "civil") return textoLinha.includes("civil");
-    if (areaSelecionada.includes("eletr")) return textoLinha.includes("eletr") || textoLinha.includes("eletrot");
+    if (textoLinha.includes("civil")) return "Civil";
+    if (textoLinha.includes("eletr") || textoLinha.includes("eletrot") || textoLinha.includes("energia") || textoLinha.includes("energisa")) return "Elétrica";
 
-    return canonicalArea(row?.["Área"]) === selectedArea;
+    return canonicalArea(row?.["Área"]);
+}
+
+function areaMatches(row, selectedArea) {
+    if (!selectedArea || selectedArea === "Todas") return true;
+    return technicalAreaOfResponsible(row) === selectedArea;
 }
 
 function greLabel(d) {
@@ -1639,7 +1651,10 @@ function initializeFilters() {
         : (periodos.includes("2026") ? "2026" : periodos[0]);
     setOptions(periodFilter, periodos, periodoInicial);
 
-    const areas = ["Todas", ...uniqueValues(respData.map(d => canonicalArea(d["Área"]))).sort()];
+    const areasDescobertas = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
+        .filter(a => a && !["Todas", "Civil", "Elétrica", "Não informado"].includes(a))
+        .sort();
+    const areas = ["Todas", "Civil", "Elétrica", ...areasDescobertas];
     const areaInicial = saved.area && areas.includes(saved.area) ? saved.area : "Todas";
     setOptions(areaFilter, areas, areaInicial);
 
@@ -1656,6 +1671,13 @@ function initializeFilters() {
     areaFilter.addEventListener("change", () => {
         updateResponsavelOptions();
         updateGreOptions();
+
+        // Quando o usuário escolhe Civil ou Elétrica, o painel entra direto
+        // na visão mais adequada: carteira técnica dos responsáveis daquele setor.
+        if (areaFilter.value !== "Todas") {
+            safeSelectValue(viewFilter, "Responsáveis", "Geral");
+        }
+
         saveDashboardState();
         renderDashboard();
     });
@@ -1985,7 +2007,8 @@ function renderResponsaveis(rows) {
 
     const respNames = uniqueValues(respRows.map(d => d["Responsável Técnico"]));
     const linkedGres = new Set(respRows.map(d => d.GRE));
-    const totals = getTotals(baseData.filter(d => linkedGres.has(d.GRE)));
+    const baseRowsFiltradas = rows.filter(d => linkedGres.has(d.GRE));
+    const totals = getTotals(baseRowsFiltradas);
     const pct = totals.total ? totals.climatizadas / totals.total : 0;
 
     document.getElementById("respQtd").textContent = fmtNum(respNames.length);
@@ -2002,21 +2025,21 @@ function renderResponsaveis(rows) {
     const areaTexto = f.area !== "Todas" ? ` do setor ${escapeHtml(f.area)}` : "";
     const respTexto = f.responsavel !== "Todos" ? ` de ${escapeHtml(f.responsavel)}` : "";
     document.getElementById("respInfo").innerHTML =
-        `A visão técnica considera as GREs vinculadas aos responsáveis${respTexto}${areaTexto}. Para totais gerais, cada GRE é contada apenas uma vez.`;
+        `Esta visão mostra os resultados${areaTexto}${respTexto}, considerando as GREs vinculadas aos responsáveis técnicos selecionados. Para evitar duplicidade, cada GRE entra apenas uma vez no total.`;
 
     const agrupado = {};
     respRows.forEach(r => {
         const nome = r["Responsável Técnico"];
         if (!agrupado[nome]) agrupado[nome] = { areas:new Set(), tipos:new Set(), gres:new Set() };
-        agrupado[nome].areas.add(r["Área"]);
-        agrupado[nome].tipos.add(r["Tipo Profissional"]);
+        agrupado[nome].areas.add(technicalAreaOfResponsible(r));
+        agrupado[nome].tipos.add(r["Tipo Profissional"] || technicalAreaOfResponsible(r));
         agrupado[nome].gres.add(r.GRE);
     });
 
     let html = "";
     Object.entries(agrupado).sort((a,b) => a[0].localeCompare(b[0])).forEach(([nome, obj]) => {
         const greSet = obj.gres;
-        const baseRows = baseData.filter(d => greSet.has(d.GRE));
+        const baseRows = rows.filter(d => greSet.has(d.GRE));
         const t = getTotals(baseRows);
         const conclusao = t.total ? t.climatizadas / t.total : 0;
         const labels = baseRows
