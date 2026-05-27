@@ -1073,6 +1073,91 @@ body {
     line-height:1;
 }
 
+.area-stats-grid {
+    display:grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin: 14px 0 16px 0;
+}
+
+.area-stat-card {
+    border:1px solid #D9E8FA;
+    border-radius:16px;
+    padding:15px;
+    background:linear-gradient(180deg, #FFFFFF 0%, #F7FBFF 100%);
+    box-shadow:0 6px 16px rgba(10,40,80,.06);
+}
+
+.area-stat-title {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    color:var(--azul-noite);
+    font-weight:950;
+    font-size:15px;
+    margin-bottom:10px;
+}
+
+.area-pill {
+    padding:5px 10px;
+    border-radius:999px;
+    background:var(--azul-gelo);
+    color:var(--azul-escuro);
+    font-size:11px;
+    font-weight:900;
+    white-space:nowrap;
+}
+
+.area-stat-numbers {
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:8px;
+    margin-bottom:11px;
+}
+
+.area-stat-numbers div {
+    background:#FFFFFF;
+    border:1px solid #E5EEF8;
+    border-radius:12px;
+    padding:9px;
+}
+
+.area-stat-numbers small {
+    display:block;
+    color:var(--texto-suave);
+    font-size:10px;
+    font-weight:850;
+    line-height:1.15;
+}
+
+.area-stat-numbers b {
+    display:block;
+    margin-top:4px;
+    color:var(--azul-escuro);
+    font-size:20px;
+    line-height:1;
+}
+
+.area-stack-track {
+    height:22px;
+    border-radius:999px;
+    background:#ECF1F7;
+    overflow:hidden;
+    display:flex;
+}
+
+.area-seg-clim { background:var(--azul-escuro); }
+.area-seg-and { background:var(--azul-andamento-grad); }
+.area-seg-rota { background:var(--vermelho-rota-grad); }
+
+.area-stat-note {
+    margin-top:8px;
+    color:#516174;
+    font-size:12px;
+    font-weight:750;
+}
+
 .resp-table, .op-table {
     width:100%;
     border-collapse:collapse;
@@ -1155,8 +1240,13 @@ body {
     .grid-bottom,
     .visao-grid,
     .sector-grid,
-    .mini-kpis {
+    .mini-kpis,
+    .area-stats-grid {
         grid-template-columns: 1fr;
+    }
+
+    .area-stat-numbers {
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .header {
@@ -1447,10 +1537,12 @@ body {
             <div class="mini-kpis">
                 <div class="mini-kpi"><small>Responsáveis no filtro</small><b id="respQtd">0</b></div>
                 <div class="mini-kpi"><small>GREs vinculadas</small><b id="respGres">0</b></div>
-                <div class="mini-kpi"><small>Pendências da carteira</small><b id="respPend">0</b></div>
-                <div class="mini-kpi"><small>Conclusão da carteira</small><b id="respConc">0,0%</b></div>
+                <div class="mini-kpi"><small>Pendências da área/carteira</small><b id="respPend">0</b></div>
+                <div class="mini-kpi"><small>Conclusão da área/carteira</small><b id="respConc">0,0%</b></div>
             </div>
             <div class="info-box" id="respInfo">Selecione um responsável ou área para analisar a carteira técnica.</div>
+            <div class="area-stats-grid" id="areaStatsGrid"></div>
+            <div class="info-box" id="areaStatsInfo">Os dados de climatização por área técnica serão exibidos aqui.</div>
             <table class="resp-table">
                 <thead>
                     <tr>
@@ -1493,7 +1585,7 @@ const respData = __RESP_JSON__;
 const acompData = __ACOMP_JSON__;
 const configData = __CONFIG_JSON__;
 
-const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v3";
+const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v5";
 
 function loadDashboardState() {
     try {
@@ -1997,6 +2089,84 @@ function renderSummary(rows, totals) {
         <div class="summary-line"><span class="check"></span><span>Maior volume em rota: <strong>${escapeHtml(greLabel(maiorRota))}</strong>, com <strong>${fmtNum(maiorRota["Em rota"])}</strong> escolas.</span></div>`;
 }
 
+
+function rowsBaseForArea(areaName) {
+    const f = getSelectedFilters();
+    let respRows = respData.slice().filter(d => areaMatches(d, areaName));
+
+    if (f.responsavel !== "Todos") {
+        respRows = respRows.filter(d => d["Responsável Técnico"] === f.responsavel);
+    }
+
+    if (f.gre !== "Todas") {
+        respRows = respRows.filter(d => d.GRE === f.gre);
+    }
+
+    const greSet = new Set(respRows.map(d => d.GRE));
+    let baseRows = baseData.slice();
+
+    if (f.periodo !== "Todos") {
+        baseRows = baseRows.filter(d => String(d.Periodo) === String(f.periodo));
+    }
+
+    if (f.gre !== "Todas") {
+        baseRows = baseRows.filter(d => d.GRE === f.gre);
+    }
+
+    baseRows = baseRows.filter(d => greSet.has(d.GRE));
+    return { respRows, baseRows, greSet };
+}
+
+function renderAreaStats() {
+    const f = getSelectedFilters();
+    const grid = document.getElementById("areaStatsGrid");
+    const info = document.getElementById("areaStatsInfo");
+    const areas = f.area !== "Todas" ? [f.area] : ["Civil", "Elétrica"];
+
+    let html = "";
+    const resumo = [];
+
+    areas.forEach(areaName => {
+        const areaData = rowsBaseForArea(areaName);
+        const totals = getTotals(areaData.baseRows);
+        const conclusao = totals.total ? totals.climatizadas / totals.total : 0;
+        const wClim = totals.total ? (totals.climatizadas / totals.total) * 100 : 0;
+        const wAnd = totals.total ? (totals.andamento / totals.total) * 100 : 0;
+        const wRota = totals.total ? (totals.rota / totals.total) * 100 : 0;
+        const responsaveis = uniqueValues(areaData.respRows.map(d => d["Responsável Técnico"]));
+
+        resumo.push(`${areaName}: ${fmtNum(totals.climatizadas)} climatizadas`);
+
+        html += `
+            <div class="area-stat-card">
+                <div class="area-stat-title">
+                    <span>Climatização — ${escapeHtml(areaName)}</span>
+                    <span class="area-pill">${fmtNum(areaData.greSet.size)} GREs · ${fmtNum(responsaveis.length)} responsáveis</span>
+                </div>
+                <div class="area-stat-numbers">
+                    <div><small>Total da área</small><b>${fmtNum(totals.total)}</b></div>
+                    <div><small>Climatizadas</small><b>${fmtNum(totals.climatizadas)}</b></div>
+                    <div><small>Em andamento</small><b>${fmtNum(totals.andamento)}</b></div>
+                    <div><small>Em rota</small><b>${fmtNum(totals.rota)}</b></div>
+                </div>
+                <div class="area-stack-track" title="Climatizadas: ${fmtNum(totals.climatizadas)} | Em andamento: ${fmtNum(totals.andamento)} | Em rota: ${fmtNum(totals.rota)}">
+                    <div class="area-seg-clim" style="width:${wClim}%;"></div>
+                    <div class="area-seg-and" style="width:${wAnd}%;"></div>
+                    <div class="area-seg-rota" style="width:${wRota}%;"></div>
+                </div>
+                <div class="area-stat-note">Conclusão da carteira da área: <strong>${fmtPct(conclusao)}</strong>. A contagem usa as GREs vinculadas aos responsáveis desse setor.</div>
+            </div>`;
+    });
+
+    grid.innerHTML = html;
+
+    if (f.area !== "Todas") {
+        info.innerHTML = `Você está vendo somente a carteira da área <strong>${escapeHtml(f.area)}</strong>. Os KPIs superiores, rankings e tabela foram recalculados para essa área técnica.`;
+    } else {
+        info.innerHTML = `Comparativo por área técnica: ${resumo.map(escapeHtml).join(" · ")}. Quando clicar em Civil ou Elétrica, o painel passa a mostrar somente a carteira daquela área.`;
+    }
+}
+
 function renderResponsaveis(rows) {
     const f = getSelectedFilters();
     let respRows = respData.slice();
@@ -2015,6 +2185,8 @@ function renderResponsaveis(rows) {
     document.getElementById("respGres").textContent = fmtNum(linkedGres.size);
     document.getElementById("respPend").textContent = fmtNum(totals.pendencias);
     document.getElementById("respConc").textContent = fmtPct(pct);
+
+    renderAreaStats();
 
     if (respRows.length === 0) {
         document.getElementById("respInfo").textContent = "Nenhum responsável encontrado para os filtros aplicados.";
