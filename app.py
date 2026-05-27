@@ -151,6 +151,30 @@ def numero_para_float(valor) -> float:
         return 0.0
 
 
+def periodo_para_texto(valor) -> str:
+    """Padroniza o campo de período/ano para o filtro do dashboard."""
+    if pd.isna(valor):
+        return "Todo o período"
+
+    texto_original = str(valor).strip()
+    texto = normalizar_texto(texto_original)
+
+    if not texto or texto in {"nan", "none", "todos", "todo", "geral", "total", "2026"}:
+        return "Todo o período"
+
+    match = re.search(r"(20\d{2})", texto_original)
+    if match:
+        ano = match.group(1)
+        if ano == "2026":
+            return "Todo o período"
+        return ano
+
+    if "periodo" in texto or "geral" in texto:
+        return "Todo o período"
+
+    return texto_original
+
+
 def padronizar_gre(valor: str) -> str | None:
     if pd.isna(valor):
         return None
@@ -203,6 +227,7 @@ def tratar_base_geral(df: pd.DataFrame) -> pd.DataFrame:
     col_conc = achar_coluna(df, ["% Conclusão", "% Conclusao", "Conclusão", "Conclusao"], obrigatoria=False)
     col_prioridade = achar_coluna(df, ["Prioridade"], obrigatoria=False)
     col_obs = achar_coluna(df, ["Observação", "Observacao"], obrigatoria=False)
+    col_periodo = achar_coluna(df, ["Período", "Periodo", "Ano", "Ano de Referência", "Ano Referencia"], obrigatoria=False)
 
     dados = pd.DataFrame()
     dados["GRE"] = df[col_gre].apply(padronizar_gre)
@@ -222,7 +247,7 @@ def tratar_base_geral(df: pd.DataFrame) -> pd.DataFrame:
 
     dados["Prioridade"] = df[col_prioridade].astype(str).str.strip() if col_prioridade else ""
     dados["Observação"] = df[col_obs].astype(str).str.strip() if col_obs else ""
-    dados["Periodo"] = "2026"
+    dados["Periodo"] = df[col_periodo].apply(periodo_para_texto) if col_periodo else "Todo o período"
 
     dados = dados[dados["GRE"].notna()].copy()
     dados = dados[dados[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
@@ -374,6 +399,7 @@ def tratar_acompanhamento(df: pd.DataFrame) -> pd.DataFrame:
     col_status = achar_coluna(df, ["Status"], obrigatoria=False)
     col_data = achar_coluna(df, ["Data Última Mov.", "Data Ultima Mov.", "Data", "Última atualização"], obrigatoria=False)
     col_obs = achar_coluna(df, ["Observações", "Observacao", "Observação"], obrigatoria=False)
+    col_periodo = achar_coluna(df, ["Período", "Periodo", "Ano", "Ano de Referência", "Ano Referencia"], obrigatoria=False)
 
     dados = pd.DataFrame()
     dados["Fonte_Aba"] = df[col_fonte].astype(str).str.strip() if col_fonte else ""
@@ -388,7 +414,7 @@ def tratar_acompanhamento(df: pd.DataFrame) -> pd.DataFrame:
     dados["Status"] = dados["Status"].apply(lambda x: x.strip().upper() if str(x).strip() else "(SEM STATUS)")
     dados["Data Última Mov."] = df[col_data].astype(str).str.strip() if col_data else ""
     dados["Observações"] = df[col_obs].astype(str).str.strip() if col_obs else ""
-    dados["Periodo"] = "2026"
+    dados["Periodo"] = df[col_periodo].apply(periodo_para_texto) if col_periodo else "Todo o período"
 
     dados = dados[dados["GRE"].notna()].copy()
     dados["Ordem"] = dados["GRE"].str.extract(r"(\d+)").astype(int)
@@ -585,6 +611,34 @@ body {
     align-items:center;
     justify-content:center;
     text-align:center;
+}
+
+.period-note {
+    background: linear-gradient(90deg, #EEF7FF, #FFFFFF);
+    border: 1px solid #D5E8FA;
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(10,40,80,.07);
+    padding: 14px 18px;
+    margin: 12px 0 16px 0;
+    color: #17365D;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.period-note strong {
+    color: var(--azul-escuro);
+}
+
+.kpis.period-simple {
+    grid-template-columns: minmax(280px, 440px);
+}
+
+.grid-main.period-simple-grid {
+    grid-template-columns: 1fr;
+}
+
+.grid-bottom.period-simple-bottom {
+    grid-template-columns: 1fr;
 }
 
 .kpis {
@@ -1408,6 +1462,8 @@ body {
         </div>
     </section>
 
+    <section class="period-note hidden" id="periodNote">Layout anual preparado para exibir somente a quantidade de escolas climatizadas.</section>
+
     <section class="kpis">
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
             <div class="kpi-title">Total de Escolas</div>
@@ -1585,7 +1641,29 @@ const respData = __RESP_JSON__;
 const acompData = __ACOMP_JSON__;
 const configData = __CONFIG_JSON__;
 
-const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v5";
+const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v6";
+const PERIODOS_FIXOS = ["Todo o período", "2025", "2024"];
+
+function isTodoPeriodo(periodo) {
+    const p = String(periodo || "").trim();
+    return p === "" || p === "Todos" || p === "Todo o período" || p === "2026";
+}
+
+function isPeriodoAnual(periodo) {
+    const p = String(periodo || "").trim();
+    return p === "2024" || p === "2025";
+}
+
+function rowPeriodo(row) {
+    const p = String(row.Periodo || "Todo o período").trim();
+    return isTodoPeriodo(p) ? "Todo o período" : p;
+}
+
+function matchesPeriodo(row, periodo) {
+    if (isTodoPeriodo(periodo)) return true;
+    return rowPeriodo(row) === String(periodo || "").trim();
+}
+
 
 function loadDashboardState() {
     try {
@@ -1735,12 +1813,12 @@ function initializeFilters() {
     const viewFilter = document.getElementById("viewFilter");
     const saved = loadDashboardState();
 
-    let periodos = uniqueValues(baseData.map(d => String(d.Periodo || "2026")));
-    periodos.sort();
-    if (periodos.length > 1) periodos = ["Todos", ...periodos];
-    const periodoInicial = saved.periodo && periodos.includes(saved.periodo)
-        ? saved.periodo
-        : (periodos.includes("2026") ? "2026" : periodos[0]);
+    const periodosDaPlanilha = uniqueValues(baseData.map(d => rowPeriodo(d)))
+        .filter(p => p && !PERIODOS_FIXOS.includes(p))
+        .sort();
+    const periodos = [...PERIODOS_FIXOS, ...periodosDaPlanilha];
+    const periodoSalvo = isTodoPeriodo(saved.periodo) ? "Todo o período" : String(saved.periodo || "").trim();
+    const periodoInicial = periodoSalvo && periodos.includes(periodoSalvo) ? periodoSalvo : "Todo o período";
     setOptions(periodFilter, periodos, periodoInicial);
 
     const areasDescobertas = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
@@ -1806,6 +1884,11 @@ function responsaveisFiltrados() {
 function linkedGresFromResponsaveis() {
     const f = getSelectedFilters();
 
+    // Nas visões anuais 2024/2025, o painel fica mais simples e geral: somente ano + GRE.
+    if (isPeriodoAnual(f.periodo)) {
+        return null;
+    }
+
     if (f.responsavel === "Todos" && f.area === "Todas") {
         return null;
     }
@@ -1819,8 +1902,8 @@ function updateGreOptions(preferredValue = null) {
 
     let filtered = baseData.slice();
 
-    if (f.periodo && f.periodo !== "Todos") {
-        filtered = filtered.filter(d => String(d.Periodo) === String(f.periodo));
+    if (!isTodoPeriodo(f.periodo)) {
+        filtered = filtered.filter(d => matchesPeriodo(d, f.periodo));
     }
 
     const linked = linkedGresFromResponsaveis();
@@ -1854,8 +1937,8 @@ function filterBase() {
     const f = getSelectedFilters();
     let rows = baseData.slice();
 
-    if (f.periodo !== "Todos") {
-        rows = rows.filter(d => String(d.Periodo) === String(f.periodo));
+    if (!isTodoPeriodo(f.periodo)) {
+        rows = rows.filter(d => matchesPeriodo(d, f.periodo));
     }
 
     const linked = linkedGresFromResponsaveis();
@@ -1874,8 +1957,8 @@ function filterAcompanhamento() {
     const f = getSelectedFilters();
     let rows = acompData.slice();
 
-    if (f.periodo !== "Todos") {
-        rows = rows.filter(d => String(d.Periodo) === String(f.periodo));
+    if (!isTodoPeriodo(f.periodo)) {
+        rows = rows.filter(d => matchesPeriodo(d, f.periodo));
     }
 
     const linked = linkedGresFromResponsaveis();
@@ -1944,7 +2027,42 @@ function renderPanorama(rows) {
 
     if (rows.length === 0) {
         panel.innerHTML = "";
-        info.textContent = "Nenhum dado encontrado para o filtro selecionado.";
+        if (isPeriodoAnual(f.periodo)) {
+            info.innerHTML = `A visão de <strong>${escapeHtml(f.periodo)}</strong> já está pronta, mas ainda não há registros anuais vinculados a esse período na planilha.`;
+        } else {
+            info.textContent = "Nenhum dado encontrado para o filtro selecionado.";
+        }
+        return;
+    }
+
+    if (isPeriodoAnual(f.periodo)) {
+        const maxClim = Math.max(...rows.map(d => Number(d.Climatizadas || 0)), 1);
+        let htmlAnual = "";
+
+        rows.forEach(d => {
+            const climatizadas = Number(d.Climatizadas || 0);
+            const width = Math.max(3, (climatizadas / maxClim) * 100);
+
+            htmlAnual += `
+                <div class="gre-row">
+                    <div class="gre-name">${escapeHtml(greLabel(d))}</div>
+                    <div class="gre-track">
+                        <div class="gre-stack" style="width:${width}%;">
+                            <div class="gre-seg gre-clim" style="width:100%;">${climatizadas >= 1 ? fmtNum(climatizadas) : ""}</div>
+                        </div>
+                    </div>
+                    <div class="gre-total">${fmtNum(climatizadas)}</div>
+                </div>`;
+        });
+
+        panel.innerHTML = htmlAnual;
+        const totalClim = rows.reduce((sum, d) => sum + Number(d.Climatizadas || 0), 0);
+        if (f.gre !== "Todas") {
+            const d = rows[0];
+            info.innerHTML = `Em <strong>${escapeHtml(f.periodo)}</strong>, a <strong>${escapeHtml(greLabel(d))}</strong> apresenta <strong>${fmtNum(d.Climatizadas)}</strong> escolas climatizadas.`;
+        } else {
+            info.innerHTML = `Em <strong>${escapeHtml(f.periodo)}</strong>, o painel anual mostra somente as escolas climatizadas: <strong>${fmtNum(totalClim)}</strong> no filtro atual.`;
+        }
         return;
     }
 
@@ -2062,11 +2180,23 @@ function renderSummary(rows, totals) {
     const f = getSelectedFilters();
 
     if (rows.length === 0) {
-        panel.innerHTML = "";
+        if (isPeriodoAnual(f.periodo)) {
+            panel.innerHTML = `<div class="summary-line"><span class="check"></span><span>O layout de <strong>${escapeHtml(f.periodo)}</strong> está preparado para receber os dados anuais de escolas climatizadas.</span></div>`;
+        } else {
+            panel.innerHTML = "";
+        }
         return;
     }
 
     const pctClim = totals.total ? totals.climatizadas / totals.total : 0;
+
+    if (isPeriodoAnual(f.periodo)) {
+        panel.innerHTML = `
+            <div class="summary-line"><span class="check"></span><span>Período selecionado: <strong>${escapeHtml(f.periodo)}</strong>.</span></div>
+            <div class="summary-line"><span class="check"></span><span>Quantidade de escolas climatizadas no filtro atual: <strong>${fmtNum(totals.climatizadas)}</strong>.</span></div>
+            <div class="summary-line"><span class="check"></span><span>A visão anual foi mantida simples, com resultado geral e distribuição por GRE.</span></div>`;
+        return;
+    }
 
     if (f.gre !== "Todas") {
         const d = rows[0];
@@ -2105,8 +2235,8 @@ function rowsBaseForArea(areaName) {
     const greSet = new Set(respRows.map(d => d.GRE));
     let baseRows = baseData.slice();
 
-    if (f.periodo !== "Todos") {
-        baseRows = baseRows.filter(d => String(d.Periodo) === String(f.periodo));
+    if (!isTodoPeriodo(f.periodo)) {
+        baseRows = baseRows.filter(d => matchesPeriodo(d, f.periodo));
     }
 
     if (f.gre !== "Todas") {
@@ -2322,6 +2452,46 @@ function showOnly(viewName) {
     if (viewName === "Setorização") document.getElementById("viewSetorizacao").classList.remove("hidden");
 }
 
+function applyPeriodLayout(rows, totals) {
+    const f = getSelectedFilters();
+    const anual = isPeriodoAnual(f.periodo);
+
+    const kpiGrid = document.querySelector(".kpis");
+    const kpiCards = document.querySelectorAll(".kpis .kpi");
+    if (kpiGrid) kpiGrid.classList.toggle("period-simple", anual);
+    kpiCards.forEach((card, index) => {
+        // Na visão 2024/2025, deixa em destaque somente o cartão de climatizadas.
+        card.classList.toggle("hidden", anual && index !== 1);
+    });
+
+    const note = document.getElementById("periodNote");
+    if (note) {
+        note.classList.toggle("hidden", !anual);
+        if (anual) {
+            note.innerHTML = `Visão anual <strong>${escapeHtml(f.periodo)}</strong>: layout simplificado para mostrar apenas a quantidade de escolas climatizadas, com recorte geral e por GRE.`;
+        }
+    }
+
+    const filtrosTecnicos = ["responsavelFilter", "areaFilter", "viewFilter"];
+    filtrosTecnicos.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.closest(".filter")) el.closest(".filter").classList.toggle("hidden", anual);
+    });
+
+    const gridMain = document.querySelector("#viewGeral .grid-main");
+    const gridBottom = document.querySelector("#viewGeral .grid-bottom");
+    if (gridMain) gridMain.classList.toggle("period-simple-grid", anual);
+    if (gridBottom) gridBottom.classList.toggle("period-simple-bottom", anual);
+
+    const generalPanel = document.getElementById("generalPanel");
+    const rankingPanel = document.querySelector("#viewGeral .grid-main > .panel:nth-child(3)");
+    const setorPanel = document.querySelector("#viewGeral .grid-bottom > .panel:nth-child(2)");
+
+    if (generalPanel) generalPanel.classList.toggle("hidden", anual);
+    if (rankingPanel) rankingPanel.classList.toggle("hidden", anual);
+    if (setorPanel) setorPanel.classList.toggle("hidden", anual);
+}
+
 function renderDashboard() {
     const rows = filterBase();
     const totals = getTotals(rows);
@@ -2359,7 +2529,8 @@ function renderDashboard() {
         document.getElementById("rankingRotaFull").parentElement.classList.remove("hidden");
     }
 
-    showOnly(f.visao);
+    showOnly(isPeriodoAnual(f.periodo) ? "Geral" : f.visao);
+    applyPeriodLayout(rows, totals);
 
     const titulo = configData["Título"] || "Painel de Monitoramento da Climatização Escolar na Paraíba";
     document.getElementById("mainTitle").textContent = titulo;
@@ -2367,7 +2538,11 @@ function renderDashboard() {
     document.getElementById("subtitle").textContent =
         "Secretaria de Estado da Educação - Gerência de Obras";
 
-    document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Panorama da ${labelFromSelectedGre(f.gre)}` : "Panorama por GRE";
+    if (isPeriodoAnual(f.periodo)) {
+        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Climatizadas em ${f.periodo} — ${labelFromSelectedGre(f.gre)}` : `Climatizadas por GRE — ${f.periodo}`;
+    } else {
+        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Panorama da ${labelFromSelectedGre(f.gre)}` : "Panorama por GRE";
+    }
     document.getElementById("rankingTitle").textContent = f.gre !== "Todas" ? `Pendências da ${labelFromSelectedGre(f.gre)}` : "Ranking de Pendências";
 
     const atualizacaoOficial = configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "";
