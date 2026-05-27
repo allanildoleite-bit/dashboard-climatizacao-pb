@@ -71,7 +71,8 @@ iframe {
     .sector-grid,
     .mini-kpis,
     .year-grid,
-    .area-grid {
+    .area-grid,
+    .analytics-grid {
         grid-template-columns: 1fr;
     }
 
@@ -166,7 +167,8 @@ iframe {
     .sector-grid,
     .mini-kpis,
     .year-grid,
-    .area-grid {
+    .area-grid,
+    .analytics-grid {
         grid-template-columns: 1fr !important;
         gap: 10px;
     }
@@ -1470,6 +1472,237 @@ body {
     margin:2px 4px 2px 0;
 }
 
+
+/* ============================================================
+   GRÁFICOS ADICIONAIS — ANÁLISES EXECUTIVAS
+   ============================================================ */
+
+.waffle-layout {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 18px;
+    align-items: center;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px dashed #CAD8EA;
+}
+
+.waffle-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+    width: 142px;
+    height: 142px;
+}
+
+.waffle-cell {
+    border-radius: 4px;
+    background: #E6EDF6;
+    border: 1px solid rgba(0,31,73,.05);
+}
+
+.waffle-cell.clim {
+    background: linear-gradient(135deg, #002D66, #1F77D0);
+}
+
+.waffle-cell.and {
+    background: var(--azul-andamento-grad);
+}
+
+.waffle-cell.rota {
+    background: var(--vermelho-rota-grad);
+}
+
+.waffle-info {
+    display: grid;
+    gap: 8px;
+}
+
+.waffle-title {
+    font-size: 14px;
+    font-weight: 950;
+    color: var(--azul-noite);
+}
+
+.waffle-text {
+    font-size: 13px;
+    color: #4D5D73;
+    font-weight: 750;
+    line-height: 1.35;
+}
+
+.waffle-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 850;
+    color: #44556D;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: 1.25fr .95fr;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.analytics-panel {
+    min-height: 360px;
+}
+
+.bubble-chart-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.bubble-svg {
+    width: 100%;
+    min-width: 620px;
+    height: 360px;
+    display: block;
+}
+
+.bubble-axis {
+    stroke: #B7C6D9;
+    stroke-width: 1.2;
+}
+
+.bubble-grid-line {
+    stroke: #E5EDF7;
+    stroke-width: 1;
+}
+
+.bubble-label {
+    font-size: 11px;
+    fill: #25364F;
+    font-weight: 800;
+}
+
+.bubble-note {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #5B6A7D;
+    font-weight: 750;
+    line-height: 1.35;
+}
+
+.heatmap {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.heat-row {
+    display: grid;
+    grid-template-columns: 88px repeat(3, 1fr);
+    gap: 6px;
+    align-items: stretch;
+}
+
+.heat-head,
+.heat-label,
+.heat-cell {
+    min-height: 34px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.heat-head {
+    background: #EEF5FC;
+    color: var(--azul-noite);
+    border: 1px solid #D8E6F5;
+}
+
+.heat-label {
+    background: var(--azul-noite);
+    color: white;
+    padding: 0 6px;
+}
+
+.heat-cell {
+    color: #0D2745;
+    border: 1px solid rgba(0,31,73,.08);
+}
+
+.heat-cell.clim { background: rgba(0,59,115, var(--alpha)); color: white; }
+.heat-cell.and { background: rgba(31,119,208, var(--alpha)); color: white; }
+.heat-cell.rota { background: rgba(239,68,68, var(--alpha)); color: white; }
+
+.pareto-panel {
+    margin-top: 16px;
+}
+
+.pareto-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pareto-svg {
+    width: 100%;
+    min-width: 720px;
+    height: 390px;
+    display: block;
+}
+
+.pareto-bar {
+    fill: url(#paretoBarGrad);
+}
+
+.pareto-line {
+    fill: none;
+    stroke: #EF4444;
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.pareto-point {
+    fill: #EF4444;
+    stroke: white;
+    stroke-width: 2;
+}
+
+.pareto-text {
+    font-size: 11px;
+    fill: #263B59;
+    font-weight: 850;
+}
+
+.pareto-small {
+    font-size: 10px;
+    fill: #5E6D80;
+    font-weight: 750;
+}
+
+@media (max-width: 900px) {
+    .waffle-layout,
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .waffle-grid {
+        margin: 0 auto;
+    }
+
+    .heat-row {
+        grid-template-columns: 70px repeat(3, minmax(68px, 1fr));
+    }
+
+    .heat-head,
+    .heat-label,
+    .heat-cell {
+        font-size: 10px;
+        min-height: 32px;
+    }
+}
+
 .hidden { display: none !important; }
 
 .footer {
@@ -1717,6 +1950,19 @@ body {
                             <div class="info-box" id="progressInfo">Dados filtrados serão exibidos aqui.</div>
                         </div>
                     </div>
+
+                    <div class="waffle-layout" id="waffleBlock">
+                        <div class="waffle-grid" id="waffleGrid"></div>
+                        <div class="waffle-info">
+                            <div class="waffle-title">Composição visual da carteira</div>
+                            <div class="waffle-text" id="waffleText">Cada quadrado representa aproximadamente 1% do universo filtrado.</div>
+                            <div class="waffle-legend">
+                                <span><span class="dot" style="background:linear-gradient(135deg, #002D66, #1F77D0);"></span>Climatizadas</span>
+                                <span><span class="dot" style="background:linear-gradient(90deg, #063B7A 0%, #0B6BCB 52%, #8ED4FF 100%);"></span>Em andamento</span>
+                                <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1740,6 +1986,22 @@ body {
                 </div>
                 <div id="ranking"></div>
                 <div class="alert" id="rankingAlert">Priorize as GREs com maior volume de pendências para acelerar a conclusão.</div>
+            </div>
+        </section>
+
+        <section class="analytics-grid" id="advancedAnalytics">
+            <div class="panel panel-pad analytics-panel">
+                <div class="chart-title">Matriz de Prioridade por GRE</div>
+                <div style="font-size:13px;color:#516174;font-weight:750;">Bolhas maiores indicam maior quantidade de pendências.</div>
+                <div class="bubble-chart-wrap" id="bubbleMatrix"></div>
+                <div class="bubble-note" id="bubbleInfo">A matriz cruza total de escolas, percentual climatizado e pendências.</div>
+            </div>
+
+            <div class="panel panel-pad analytics-panel">
+                <div class="chart-title">Mapa de Calor — GRE x Status</div>
+                <div style="font-size:13px;color:#516174;font-weight:750;">Cores mais intensas indicam maior concentração dentro de cada status.</div>
+                <div class="heatmap" id="heatmapStatus"></div>
+                <div class="bubble-note" id="heatmapInfo">Leitura rápida da concentração de climatizadas, em andamento e em rota.</div>
             </div>
         </section>
 
@@ -1780,6 +2042,13 @@ body {
                 <div class="chart-title">Ranking Em Rota</div>
                 <div id="rankingRotaFull"></div>
             </div>
+        </div>
+
+        <div class="panel panel-pad pareto-panel" id="paretoPanel">
+            <div class="chart-title">Pareto de Pendências por GRE</div>
+            <div style="font-size:13px;color:#516174;font-weight:750;">Barras ordenadas por pendência e linha com percentual acumulado.</div>
+            <div class="pareto-wrap" id="paretoPendencias"></div>
+            <div class="bubble-note" id="paretoInfo">O Pareto indica onde a maior parte das pendências está concentrada.</div>
         </div>
     </section>
 
@@ -2637,6 +2906,262 @@ function renderAcompanhamento(rows) {
     document.getElementById("opTableBody").innerHTML = tableHtml;
 }
 
+
+function renderWaffle(totals) {
+    const grid = document.getElementById("waffleGrid");
+    const text = document.getElementById("waffleText");
+    if (!grid || !text) return;
+
+    if (!totals.total) {
+        grid.innerHTML = Array.from({length: 100}, () => `<div class="waffle-cell"></div>`).join("");
+        text.textContent = "Sem registros para o filtro atual.";
+        return;
+    }
+
+    const pctClim = totals.climatizadas / totals.total;
+    const pctAnd = totals.andamento / totals.total;
+    let nClim = Math.round(pctClim * 100);
+    let nAnd = Math.round(pctAnd * 100);
+    let nRota = Math.max(0, 100 - nClim - nAnd);
+
+    if (nClim + nAnd + nRota > 100) nRota = Math.max(0, 100 - nClim - nAnd);
+
+    const cells = [];
+    for (let i = 0; i < nClim; i++) cells.push("clim");
+    for (let i = 0; i < nAnd; i++) cells.push("and");
+    for (let i = 0; i < nRota; i++) cells.push("rota");
+    while (cells.length < 100) cells.push("");
+
+    grid.innerHTML = cells.slice(0, 100).map(c => `<div class="waffle-cell ${c}"></div>`).join("");
+    text.innerHTML =
+        `Cada quadrado representa aproximadamente <strong>1%</strong> do universo filtrado. ` +
+        `A composição atual é de <strong>${fmtPct(pctClim)}</strong> climatizadas, ` +
+        `<strong>${fmtPct(totals.andamento / totals.total)}</strong> em andamento e ` +
+        `<strong>${fmtPct(totals.rota / totals.total)}</strong> em rota.`;
+}
+
+function renderBubbleMatrix(rows) {
+    const panel = document.getElementById("bubbleMatrix");
+    const info = document.getElementById("bubbleInfo");
+    if (!panel || !info) return;
+
+    const validRows = rows.filter(d => Number(d.Total || 0) > 0);
+    if (validRows.length === 0) {
+        panel.innerHTML = `<div class="info-box">Sem dados para montar a matriz de prioridade.</div>`;
+        info.textContent = "A matriz será exibida quando houver registros no filtro atual.";
+        return;
+    }
+
+    const width = 760;
+    const height = 360;
+    const margin = {left: 58, right: 36, top: 28, bottom: 54};
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    const maxTotal = Math.max(...validRows.map(d => Number(d.Total || 0)), 1);
+    const maxPend = Math.max(...validRows.map(d => Number(d.Pendências || 0)), 1);
+
+    const xScale = v => margin.left + (Number(v || 0) / maxTotal) * plotW;
+    const yScale = v => margin.top + plotH - (Number(v || 0) / 100) * plotH;
+    const rScale = v => 6 + Math.sqrt(Number(v || 0) / maxPend) * 22;
+
+    const topLabels = validRows
+        .slice()
+        .sort((a,b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))
+        .slice(0, 7)
+        .map(d => d.GRE);
+
+    let circles = "";
+    validRows.forEach(d => {
+        const total = Number(d.Total || 0);
+        const conclusao = total ? (Number(d.Climatizadas || 0) / total) * 100 : 0;
+        const pend = Number(d.Pendências || 0);
+        const x = xScale(total);
+        const y = yScale(conclusao);
+        const r = rScale(pend);
+        const color = conclusao >= 70 ? "#005FB8" : conclusao >= 50 ? "#1F77D0" : "#EF4444";
+        const label = topLabels.includes(d.GRE) ? `<text class="bubble-label" x="${x + r + 4}" y="${y + 4}">${escapeHtml(greShortLabel(d))}</text>` : "";
+
+        circles += `
+            <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" opacity="0.78">
+                <title>${escapeHtml(greLabel(d))} | Total: ${fmtNum(total)} | Conclusão: ${fmtPct(conclusao / 100)} | Pendências: ${fmtNum(pend)}</title>
+            </circle>
+            ${label}`;
+    });
+
+    const yTicks = [0, 25, 50, 75, 100];
+    const xTicks = [0, .25, .5, .75, 1].map(p => Math.round(maxTotal * p));
+
+    let grid = "";
+    yTicks.forEach(t => {
+        const y = yScale(t);
+        grid += `<line class="bubble-grid-line" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}"></line>`;
+        grid += `<text class="bubble-label" x="12" y="${y + 4}">${t}%</text>`;
+    });
+    xTicks.forEach(t => {
+        const x = xScale(t);
+        grid += `<line class="bubble-grid-line" x1="${x}" y1="${margin.top}" x2="${x}" y2="${height - margin.bottom}"></line>`;
+        grid += `<text class="bubble-label" x="${x - 8}" y="${height - 24}">${fmtNum(t)}</text>`;
+    });
+
+    panel.innerHTML = `
+        <svg class="bubble-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Matriz de prioridade por GRE">
+            ${grid}
+            <line class="bubble-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+            <line class="bubble-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+            ${circles}
+            <text class="bubble-label" x="${width / 2 - 70}" y="${height - 6}">Total de escolas da GRE</text>
+            <text class="bubble-label" transform="translate(14 ${height / 2 + 70}) rotate(-90)">Percentual climatizado</text>
+        </svg>`;
+
+    const pior = validRows.slice().sort((a,b) => {
+        const scoreA = Number(a.Pendências || 0) * (1 - Number(a.Conclusão || 0));
+        const scoreB = Number(b.Pendências || 0) * (1 - Number(b.Conclusão || 0));
+        return scoreB - scoreA;
+    })[0];
+
+    info.innerHTML =
+        `Leitura: bolhas grandes e mais baixas indicam maior atenção. Destaque atual: ` +
+        `<strong>${escapeHtml(greLabel(pior))}</strong>, com <strong>${fmtNum(pior.Pendências)}</strong> pendências.`;
+}
+
+function greShortLabel(row) {
+    return String(row.GRE_Label || row.GRE || "").replace(/\s*GRE\s*/i, "GRE").replace(/\s*Gerência Regional de Educação\s*/i, "GRE").trim();
+}
+
+function renderHeatmap(rows) {
+    const panel = document.getElementById("heatmapStatus");
+    const info = document.getElementById("heatmapInfo");
+    if (!panel || !info) return;
+
+    const validRows = rows
+        .filter(d => Number(d.Total || 0) > 0)
+        .slice()
+        .sort((a,b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))
+        .slice(0, 10);
+
+    if (validRows.length === 0) {
+        panel.innerHTML = `<div class="info-box">Sem dados para montar o mapa de calor.</div>`;
+        info.textContent = "O mapa de calor será exibido quando houver registros no filtro atual.";
+        return;
+    }
+
+    const maxClim = Math.max(...validRows.map(d => Number(d.Climatizadas || 0)), 1);
+    const maxAnd = Math.max(...validRows.map(d => Number(d["Em andamento"] || 0)), 1);
+    const maxRota = Math.max(...validRows.map(d => Number(d["Em rota"] || 0)), 1);
+
+    let html = `
+        <div class="heat-row">
+            <div class="heat-head">GRE</div>
+            <div class="heat-head">Climat.</div>
+            <div class="heat-head">Andam.</div>
+            <div class="heat-head">Rota</div>
+        </div>`;
+
+    validRows.forEach(d => {
+        const clim = Number(d.Climatizadas || 0);
+        const and = Number(d["Em andamento"] || 0);
+        const rota = Number(d["Em rota"] || 0);
+        const alphaClim = 0.25 + (clim / maxClim) * 0.75;
+        const alphaAnd = 0.22 + (and / maxAnd) * 0.78;
+        const alphaRota = 0.22 + (rota / maxRota) * 0.78;
+
+        html += `
+            <div class="heat-row">
+                <div class="heat-label" title="${escapeHtml(greLabel(d))}">${escapeHtml(greShortLabel(d))}</div>
+                <div class="heat-cell clim" style="--alpha:${alphaClim.toFixed(2)};">${fmtNum(clim)}</div>
+                <div class="heat-cell and" style="--alpha:${alphaAnd.toFixed(2)};">${fmtNum(and)}</div>
+                <div class="heat-cell rota" style="--alpha:${alphaRota.toFixed(2)};">${fmtNum(rota)}</div>
+            </div>`;
+    });
+
+    panel.innerHTML = html;
+    info.innerHTML = `Mostrando as <strong>${fmtNum(validRows.length)}</strong> GREs com maior volume de pendências no filtro atual.`;
+}
+
+function renderPareto(rows) {
+    const panel = document.getElementById("paretoPendencias");
+    const info = document.getElementById("paretoInfo");
+    if (!panel || !info) return;
+
+    const sorted = rows
+        .filter(d => Number(d.Pendências || 0) > 0)
+        .slice()
+        .sort((a,b) => Number(b.Pendências || 0) - Number(a.Pendências || 0))
+        .slice(0, 14);
+
+    if (sorted.length === 0) {
+        panel.innerHTML = `<div class="info-box">Sem pendências para montar o Pareto.</div>`;
+        info.textContent = "O gráfico de Pareto será exibido quando houver pendências no filtro atual.";
+        return;
+    }
+
+    const width = 860;
+    const height = 390;
+    const margin = {left: 54, right: 58, top: 28, bottom: 82};
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    const maxPend = Math.max(...sorted.map(d => Number(d.Pendências || 0)), 1);
+    const totalPend = sorted.reduce((sum, d) => sum + Number(d.Pendências || 0), 0);
+    const barGap = 7;
+    const barW = Math.max(20, (plotW / sorted.length) - barGap);
+
+    let acumulado = 0;
+    let bars = "";
+    let points = [];
+    sorted.forEach((d, i) => {
+        const value = Number(d.Pendências || 0);
+        acumulado += value;
+        const x = margin.left + i * (barW + barGap);
+        const h = (value / maxPend) * plotH;
+        const y = margin.top + plotH - h;
+        const cx = x + barW / 2;
+        const cy = margin.top + plotH - (acumulado / totalPend) * plotH;
+
+        points.push([cx, cy, acumulado / totalPend]);
+
+        bars += `
+            <rect class="pareto-bar" x="${x}" y="${y}" width="${barW}" height="${h}" rx="6"></rect>
+            <text class="pareto-small" x="${cx}" y="${y - 5}" text-anchor="middle">${fmtNum(value)}</text>
+            <text class="pareto-small" x="${cx}" y="${height - 48}" text-anchor="end" transform="rotate(-45 ${cx} ${height - 48})">${escapeHtml(greShortLabel(d))}</text>`;
+    });
+
+    const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
+    const pointHtml = points.map(p => `
+        <circle class="pareto-point" cx="${p[0]}" cy="${p[1]}" r="4">
+            <title>Acumulado: ${fmtPct(p[2])}</title>
+        </circle>`).join("");
+
+    const yTicks = [0, .25, .5, .75, 1];
+    let grid = "";
+    yTicks.forEach(t => {
+        const y = margin.top + plotH - t * plotH;
+        grid += `<line class="bubble-grid-line" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}"></line>`;
+        grid += `<text class="pareto-small" x="12" y="${y + 4}">${fmtPct(t)}</text>`;
+    });
+
+    panel.innerHTML = `
+        <svg class="pareto-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Pareto de pendências por GRE">
+            <defs>
+                <linearGradient id="paretoBarGrad" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0%" stop-color="#063B7A"></stop>
+                    <stop offset="55%" stop-color="#0B6BCB"></stop>
+                    <stop offset="100%" stop-color="#8ED4FF"></stop>
+                </linearGradient>
+            </defs>
+            ${grid}
+            <line class="bubble-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+            <line class="bubble-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+            ${bars}
+            <path class="pareto-line" d="${line}"></path>
+            ${pointHtml}
+            <text class="pareto-text" x="${width - 190}" y="22">Linha: % acumulado das pendências</text>
+        </svg>`;
+
+    const top3 = sorted.slice(0, 3).reduce((sum, d) => sum + Number(d.Pendências || 0), 0);
+    info.innerHTML =
+        `As três GREs com maior pendência concentram <strong>${fmtPct(top3 / totalPend)}</strong> das pendências mostradas no Pareto.`;
+}
+
 function showOnly(viewName) {
     ["viewGeral", "viewPendencias", "viewResponsaveis", "viewSetorizacao"].forEach(id => {
         document.getElementById(id).classList.add("hidden");
@@ -2682,10 +3207,12 @@ function applyPeriodLayout(rows, totals) {
     const generalPanel = document.getElementById("generalPanel");
     const rankingPanel = document.querySelector("#viewGeral .grid-main > .panel:nth-child(3)");
     const setorPanel = document.querySelector("#viewGeral .grid-bottom > .panel:nth-child(2)");
+    const advancedAnalytics = document.getElementById("advancedAnalytics");
 
     if (generalPanel) generalPanel.classList.toggle("hidden", anual);
     if (rankingPanel) rankingPanel.classList.toggle("hidden", anual);
     if (setorPanel) setorPanel.classList.toggle("hidden", anual);
+    if (advancedAnalytics) advancedAnalytics.classList.toggle("hidden", anual);
 }
 
 function renderDashboard() {
@@ -2701,6 +3228,10 @@ function renderDashboard() {
     renderRanking("rankingRotaFull", rows, "Em rota", "rota", 16);
     renderSetores();
     renderSummary(rows, totals);
+    renderWaffle(totals);
+    renderBubbleMatrix(rows);
+    renderHeatmap(rows);
+    renderPareto(rows);
     renderResponsaveis(rows);
 
     if (f.visao === "Em andamento") {
