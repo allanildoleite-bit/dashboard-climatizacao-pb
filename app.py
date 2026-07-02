@@ -794,6 +794,84 @@ body {
     cursor: pointer;
 }
 
+.gre-filter-card {
+    position: relative;
+    z-index: 30;
+}
+
+.gre-multiselect {
+    position: relative;
+}
+
+.gre-multiselect-button {
+    width: 100%;
+    min-height: 27px;
+    padding: 0 24px 0 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--azul-escuro);
+    font-size: 18px;
+    font-weight: 900;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+}
+
+.gre-multiselect-button::after {
+    content: "▾";
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+}
+
+.gre-multiselect-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: -14px;
+    right: -14px;
+    max-height: 310px;
+    overflow-y: auto;
+    padding: 9px;
+    background: #FFFFFF;
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    box-shadow: 0 18px 38px rgba(10,40,80,.20);
+    z-index: 1000;
+}
+
+.gre-multiselect-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 9px;
+    border-radius: 9px;
+    color: var(--azul-escuro);
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.gre-multiselect-option:hover {
+    background: var(--azul-gelo);
+}
+
+.gre-multiselect-option input {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--azul-escuro);
+    cursor: pointer;
+}
+
+#greFilter {
+    display: none;
+}
+
 .sync {
     background: white;
     border: 1px solid var(--borda);
@@ -1629,9 +1707,13 @@ body {
             <select id="periodFilter"></select>
         </div>
 
-        <div class="filter">
-            <label for="greFilter">GRE</label>
-            <select id="greFilter"></select>
+        <div class="filter gre-filter-card">
+            <label for="greFilterButton">GRE</label>
+            <div class="gre-multiselect" id="greMultiselect">
+                <button type="button" class="gre-multiselect-button" id="greFilterButton" aria-haspopup="true" aria-expanded="false">Todas</button>
+                <div class="gre-multiselect-menu hidden" id="greFilterMenu"></div>
+                <select id="greFilter" multiple aria-hidden="true" tabindex="-1"></select>
+            </div>
         </div>
 
         <div class="filter">
@@ -1837,8 +1919,8 @@ const respData = __RESP_JSON__;
 const acompData = __ACOMP_JSON__;
 const configData = __CONFIG_JSON__;
 
-const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v6";
-const PERIODOS_FIXOS = ["Todo o período", "2025", "2024"];
+const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v7";
+const PERIODOS_FIXOS = ["Todo o período"];
 
 function isTodoPeriodo(periodo) {
     const p = String(periodo || "").trim();
@@ -1958,16 +2040,113 @@ function greLabel(d) {
     return d?.GRE || "";
 }
 
-function labelFromSelectedGre(greValue) {
-    if (greValue === "Todas") return "Todas";
-    const found = baseData.find(d => d.GRE === greValue);
-    return found ? greLabel(found) : greValue;
+function selectedGreValues() {
+    const greFilter = document.getElementById("greFilter");
+    if (!greFilter) return [];
+    return [...greFilter.selectedOptions].map(option => option.value);
+}
+
+function normalizeGreSelection(value) {
+    if (Array.isArray(value)) {
+        return value.filter(item => item && item !== "Todas");
+    }
+    if (!value || value === "Todas") return [];
+    return [String(value)];
+}
+
+function hasGreFilter(gres) {
+    return Array.isArray(gres) && gres.length > 0;
+}
+
+function matchesGre(row, gres) {
+    return !hasGreFilter(gres) || gres.includes(row.GRE);
+}
+
+function labelFromSelectedGres(gres) {
+    if (!hasGreFilter(gres)) return "Todas as GREs";
+    const labels = gres.map(greValue => {
+        const found = baseData.find(d => d.GRE === greValue);
+        return found ? greLabel(found) : greValue;
+    });
+    if (labels.length <= 3) return labels.join(", ");
+    return `${labels.length} GREs selecionadas`;
+}
+
+function updateGreButtonText() {
+    const button = document.getElementById("greFilterButton");
+    if (!button) return;
+    button.textContent = hasGreFilter(selectedGreValues())
+        ? labelFromSelectedGres(selectedGreValues())
+        : "Todas";
+}
+
+function syncGreMenu() {
+    const greFilter = document.getElementById("greFilter");
+    const menu = document.getElementById("greFilterMenu");
+    if (!greFilter || !menu) return;
+
+    const selected = new Set(selectedGreValues());
+    const allChecked = selected.size === 0;
+    let html = `
+        <label class="gre-multiselect-option">
+            <input type="checkbox" data-gre="__TODAS__" ${allChecked ? "checked" : ""}>
+            <span>Todas</span>
+        </label>`;
+
+    [...greFilter.options].forEach(option => {
+        html += `
+            <label class="gre-multiselect-option">
+                <input type="checkbox" data-gre="${escapeHtml(option.value)}" ${selected.has(option.value) ? "checked" : ""}>
+                <span>${escapeHtml(option.textContent)}</span>
+            </label>`;
+    });
+
+    menu.innerHTML = html;
+    menu.querySelectorAll("input[data-gre]").forEach(input => {
+        input.addEventListener("change", () => {
+            const greValue = input.dataset.gre;
+            if (greValue === "__TODAS__") {
+                if (input.checked) {
+                    [...greFilter.options].forEach(option => option.selected = false);
+                }
+            } else {
+                const option = [...greFilter.options].find(item => item.value === greValue);
+                if (option) option.selected = input.checked;
+            }
+
+            syncGreMenu();
+            updateGreButtonText();
+            greFilter.dispatchEvent(new Event("change"));
+        });
+    });
+
+    updateGreButtonText();
+}
+
+function initializeGreMultiselect() {
+    const wrapper = document.getElementById("greMultiselect");
+    const button = document.getElementById("greFilterButton");
+    const menu = document.getElementById("greFilterMenu");
+    if (!wrapper || !button || !menu) return;
+
+    button.addEventListener("click", event => {
+        event.stopPropagation();
+        const willOpen = menu.classList.contains("hidden");
+        menu.classList.toggle("hidden", !willOpen);
+        button.setAttribute("aria-expanded", String(willOpen));
+    });
+
+    menu.addEventListener("click", event => event.stopPropagation());
+    document.addEventListener("click", () => {
+        menu.classList.add("hidden");
+        button.setAttribute("aria-expanded", "false");
+    });
 }
 
 function getSelectedFilters() {
     return {
         periodo: document.getElementById("periodFilter").value,
-        gre: document.getElementById("greFilter").value,
+        gre: selectedGreValues(),
         responsavel: document.getElementById("responsavelFilter").value,
         area: document.getElementById("areaFilter").value,
         status: "Todos",
@@ -2009,13 +2188,8 @@ function initializeFilters() {
     const viewFilter = document.getElementById("viewFilter");
     const saved = loadDashboardState();
 
-    const periodosDaPlanilha = uniqueValues(baseData.map(d => rowPeriodo(d)))
-        .filter(p => p && !PERIODOS_FIXOS.includes(p))
-        .sort();
-    const periodos = [...PERIODOS_FIXOS, ...periodosDaPlanilha];
-    const periodoSalvo = isTodoPeriodo(saved.periodo) ? "Todo o período" : String(saved.periodo || "").trim();
-    const periodoInicial = periodoSalvo && periodos.includes(periodoSalvo) ? periodoSalvo : "Todo o período";
-    setOptions(periodFilter, periodos, periodoInicial);
+    // O painel passa a trabalhar somente com a visão consolidada de todo o período.
+    setOptions(periodFilter, PERIODOS_FIXOS, "Todo o período");
 
     const areasDescobertas = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
         .filter(a => a && !["Todas", "Civil", "Elétrica", "Não informado"].includes(a))
@@ -2025,7 +2199,8 @@ function initializeFilters() {
     setOptions(areaFilter, areas, areaInicial);
 
     updateResponsavelOptions(saved.responsavel || "Todos");
-    updateGreOptions(saved.gre || "Todas");
+    updateGreOptions(normalizeGreSelection(saved.gre));
+    initializeGreMultiselect();
     safeSelectValue(viewFilter, saved.visao || "Geral", "Geral");
 
     periodFilter.addEventListener("change", () => {
@@ -2107,26 +2282,32 @@ function updateGreOptions(preferredValue = null) {
         filtered = filtered.filter(d => linked.has(d.GRE));
     }
 
-    const oldValue = preferredValue || greFilter.value || "Todas";
-    greFilter.innerHTML = "";
+    const oldValues = preferredValue !== null
+        ? normalizeGreSelection(preferredValue)
+        : selectedGreValues();
 
-    const optTodas = document.createElement("option");
-    optTodas.value = "Todas";
-    optTodas.textContent = "Todas";
-    greFilter.appendChild(optTodas);
-
+    const uniqueGres = [];
+    const seen = new Set();
     filtered
         .slice()
         .sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0))
         .forEach(d => {
-            const option = document.createElement("option");
-            option.value = d.GRE;
-            option.textContent = greLabel(d);
-            greFilter.appendChild(option);
+            if (!seen.has(d.GRE)) {
+                seen.add(d.GRE);
+                uniqueGres.push(d);
+            }
         });
 
-    const possible = [...greFilter.options].map(o => o.value);
-    greFilter.value = possible.includes(oldValue) ? oldValue : "Todas";
+    greFilter.innerHTML = "";
+    uniqueGres.forEach(d => {
+        const option = document.createElement("option");
+        option.value = d.GRE;
+        option.textContent = greLabel(d);
+        option.selected = oldValues.includes(d.GRE);
+        greFilter.appendChild(option);
+    });
+
+    syncGreMenu();
 }
 
 function filterBase() {
@@ -2142,8 +2323,8 @@ function filterBase() {
         rows = rows.filter(d => linked.has(d.GRE));
     }
 
-    if (f.gre !== "Todas") {
-        rows = rows.filter(d => d.GRE === f.gre);
+    if (hasGreFilter(f.gre)) {
+        rows = rows.filter(d => matchesGre(d, f.gre));
     }
 
     return rows.sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
@@ -2162,8 +2343,8 @@ function filterAcompanhamento() {
         rows = rows.filter(d => linked.has(d.GRE));
     }
 
-    if (f.gre !== "Todas") {
-        rows = rows.filter(d => d.GRE === f.gre);
+    if (hasGreFilter(f.gre)) {
+        rows = rows.filter(d => matchesGre(d, f.gre));
     }
 
     if (f.status !== "Todos") {
@@ -2253,7 +2434,7 @@ function renderPanorama(rows) {
 
         panel.innerHTML = htmlAnual;
         const totalClim = rows.reduce((sum, d) => sum + Number(d.Climatizadas || 0), 0);
-        if (f.gre !== "Todas") {
+        if (f.gre.length === 1) {
             const d = rows[0];
             info.innerHTML = `Em <strong>${escapeHtml(f.periodo)}</strong>, a <strong>${escapeHtml(greLabel(d))}</strong> apresenta <strong>${fmtNum(d.Climatizadas)}</strong> escolas climatizadas.`;
         } else {
@@ -2292,7 +2473,7 @@ function renderPanorama(rows) {
 
     panel.innerHTML = html;
 
-    if (f.gre !== "Todas") {
+    if (f.gre.length === 1) {
         const d = rows[0];
         const pendencias = Number(d["Em andamento"] || 0) + Number(d["Em rota"] || 0);
         info.innerHTML =
@@ -2394,7 +2575,7 @@ function renderSummary(rows, totals) {
         return;
     }
 
-    if (f.gre !== "Todas") {
+    if (f.gre.length === 1) {
         const d = rows[0];
         panel.innerHTML = `
             <div class="summary-line"><span class="check"></span><span>A <strong>${escapeHtml(greLabel(d))}</strong> possui <strong>${fmtNum(d.Total)}</strong> escolas na base filtrada.</span></div>
@@ -2424,8 +2605,8 @@ function rowsBaseForArea(areaName) {
         respRows = respRows.filter(d => d["Responsável Técnico"] === f.responsavel);
     }
 
-    if (f.gre !== "Todas") {
-        respRows = respRows.filter(d => d.GRE === f.gre);
+    if (hasGreFilter(f.gre)) {
+        respRows = respRows.filter(d => matchesGre(d, f.gre));
     }
 
     const greSet = new Set(respRows.map(d => d.GRE));
@@ -2435,8 +2616,8 @@ function rowsBaseForArea(areaName) {
         baseRows = baseRows.filter(d => matchesPeriodo(d, f.periodo));
     }
 
-    if (f.gre !== "Todas") {
-        baseRows = baseRows.filter(d => d.GRE === f.gre);
+    if (hasGreFilter(f.gre)) {
+        baseRows = baseRows.filter(d => matchesGre(d, f.gre));
     }
 
     baseRows = baseRows.filter(d => greSet.has(d.GRE));
@@ -2499,7 +2680,7 @@ function renderResponsaveis(rows) {
 
     if (f.area !== "Todas") respRows = respRows.filter(d => areaMatches(d, f.area));
     if (f.responsavel !== "Todos") respRows = respRows.filter(d => d["Responsável Técnico"] === f.responsavel);
-    if (f.gre !== "Todas") respRows = respRows.filter(d => d.GRE === f.gre);
+    if (hasGreFilter(f.gre)) respRows = respRows.filter(d => matchesGre(d, f.gre));
 
     const respNames = uniqueValues(respRows.map(d => d["Responsável Técnico"]));
     const linkedGres = new Set(respRows.map(d => d.GRE));
@@ -2734,12 +2915,13 @@ function renderDashboard() {
     document.getElementById("subtitle").textContent =
         "Secretaria de Estado da Educação - Gerência de Obras";
 
+    const greTitle = labelFromSelectedGres(f.gre);
     if (isPeriodoAnual(f.periodo)) {
-        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Climatizadas em ${f.periodo} — ${labelFromSelectedGre(f.gre)}` : `Climatizadas por GRE — ${f.periodo}`;
+        document.getElementById("panoramaTitle").textContent = hasGreFilter(f.gre) ? `Climatizadas em ${f.periodo} — ${greTitle}` : `Climatizadas por GRE — ${f.periodo}`;
     } else {
-        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Panorama da ${labelFromSelectedGre(f.gre)}` : "Panorama por GRE";
+        document.getElementById("panoramaTitle").textContent = hasGreFilter(f.gre) ? `Panorama — ${greTitle}` : "Panorama por GRE";
     }
-    document.getElementById("rankingTitle").textContent = f.gre !== "Todas" ? `Pendências da ${labelFromSelectedGre(f.gre)}` : "Ranking de Pendências";
+    document.getElementById("rankingTitle").textContent = hasGreFilter(f.gre) ? `Pendências — ${greTitle}` : "Ranking de Pendências";
 
     const atualizacaoOficial = configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "";
     const fonte = configData["Fonte dos dados"] || "GEOBS / Governo da Paraíba";
