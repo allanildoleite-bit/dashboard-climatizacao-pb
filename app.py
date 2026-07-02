@@ -3,11 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-import html as html_lib
 from datetime import datetime
-from io import StringIO
-
-import requests
 
 import pandas as pd
 import streamlit as st
@@ -15,14 +11,10 @@ import streamlit.components.v1 as components
 
 
 # ============================================================
-# LINK DA PLANILHA GERAL PUBLICADA
+# LINKS DA PLANILHA PUBLICADA
 # ============================================================
 
-PLANILHA_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNuA-vcj5XUKy97lqwZYuuztSetij9zIXlNR2IaXv5XHfRLGrZ3q1AvNrN7jtNf7_063rBYxWh0G2h/pubhtml"
-
-# Fontes auxiliares do dashboard original.
-# IMPORTANTE: elas não definem os totais de escolas climatizadas, em andamento ou em rota.
-# Esses quantitativos são calculados exclusivamente a partir de PLANILHA_GERAL_URL.
+BASE_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1725253212&single=true&output=csv"
 SETORIZACAO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1067652461&single=true&output=csv"
 RESPONSAVEIS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=231019302&single=true&output=csv"
 ACOMPANHAMENTO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1974682974&single=true&output=csv"
@@ -270,108 +262,55 @@ iframe {
 
 
 # ============================================================
-# FUNÇÕES DE LEITURA E TRATAMENTO DA PLANILHA GERAL
+# FUNÇÕES DE TRATAMENTO
 # ============================================================
 
-TERMOS_CLIMATIZACAO = (
-    "climatizacao",
-    "climatizado",
-    "climatizada",
-    "climatizar",
-    "ar condicionado",
-    "arcondicionado",
-    "aparelho de ar",
-    "split",
-)
-
-TERMOS_STATUS = (
-    "status",
-    "situacao",
-    "andamento",
-    "progresso",
-    "percentual",
-    "conclusao",
-    "execucao",
-)
-
-TERMOS_CABECALHO = (
-    "gre",
-    "gerencia",
-    "municipio",
-    "cidade",
-    "localizacao",
-    "escola",
-    "unidade escolar",
-    "unidade de ensino",
-    "status",
-    "situacao",
-    "andamento",
-    "progresso",
-    "percentual",
-    "observacao",
-    "responsavel",
-    "tecnico",
-    "climatizacao",
-    "eletrica",
-    "etapa",
-    "setor",
-    "servico",
-)
-
-TERMOS_OUTRAS_AREAS = (
-    "eletrica",
-    "eletrico",
-    "energia",
-    "subestacao",
-    "hidraulica",
-    "hidraulico",
-    "civil",
-    "estrutura",
-    "cobertura",
-    "pintura",
-    "drenagem",
-)
-
-
-def normalizar_texto(texto) -> str:
-    if texto is None or pd.isna(texto):
-        return ""
-
+def normalizar_texto(texto: str) -> str:
     texto = str(texto).strip().lower()
     trocas = {
-        "ã": "a", "á": "a", "à": "a", "â": "a", "ä": "a",
-        "é": "e", "ê": "e", "è": "e", "ë": "e",
-        "í": "i", "ì": "i", "ï": "i",
-        "ó": "o", "ô": "o", "ò": "o", "õ": "o", "ö": "o",
-        "ú": "u", "ù": "u", "ü": "u",
+        "ã": "a", "á": "a", "à": "a", "â": "a",
+        "é": "e", "ê": "e",
+        "í": "i",
+        "ó": "o", "ô": "o",
+        "ú": "u",
         "ç": "c",
     }
     for antigo, novo in trocas.items():
         texto = texto.replace(antigo, novo)
-
-    texto = texto.replace("_", " ").replace("–", "-").replace("—", "-")
-    texto = re.sub(r"\s+", " ", texto)
-    return texto.strip()
-
-
-def contem_algum(texto, termos) -> bool:
-    texto_normalizado = normalizar_texto(texto)
-    return any(termo in texto_normalizado for termo in termos)
+    texto = texto.replace("_", " ").replace("-", " ")
+    texto = " ".join(texto.split())
+    return texto
 
 
-def limpar_valor(valor) -> str:
-    if valor is None or pd.isna(valor):
-        return ""
 
-    texto = str(valor).strip()
-    if normalizar_texto(texto) in {"", "nan", "none", "null", "nat"}:
-        return ""
-    return " ".join(texto.split())
+
+def inferir_area_tecnica(*valores) -> str | None:
+    """Identifica se um texto está ligado ao setor civil ou elétrico."""
+    texto = " ".join(normalizar_texto(valor) for valor in valores if valor is not None)
+
+    if not texto:
+        return None
+
+    termos_eletrica = [
+        "eletrica", "eletrico", "eletricista", "eletrotecnica",
+        "eletrotecnico", "energia", "energisa", "instalacao eletrica"
+    ]
+    termos_civil = [
+        "civil", "engenharia civil", "eng civil", "obra civil",
+        "obras civis", "infraestrutura"
+    ]
+
+    if any(termo in texto for termo in termos_eletrica):
+        return "Elétrica"
+
+    if any(termo in texto for termo in termos_civil):
+        return "Civil"
+
+    return None
 
 
 def achar_coluna(df: pd.DataFrame, opcoes: list[str], obrigatoria: bool = False) -> str | None:
     mapa = {normalizar_texto(col): col for col in df.columns}
-
     for opcao in opcoes:
         chave = normalizar_texto(opcao)
         if chave in mapa:
@@ -390,53 +329,58 @@ def achar_coluna(df: pd.DataFrame, opcoes: list[str], obrigatoria: bool = False)
 
 
 def numero_para_float(valor) -> float:
-    if valor is None or pd.isna(valor):
+    if pd.isna(valor):
         return 0.0
 
-    texto = str(valor).strip().replace("%", "")
+    texto = str(valor).strip()
+    texto = texto.replace("%", "")
     texto = texto.replace(" escolas", "").replace("ESCOLAS", "")
-
-    if "," in texto and "." in texto:
-        if texto.rfind(",") > texto.rfind("."):
-            texto = texto.replace(".", "").replace(",", ".")
-        else:
-            texto = texto.replace(",", "")
-    elif "," in texto:
-        texto = texto.replace(",", ".")
-
+    texto = texto.replace(".", "").replace(",", ".")
     texto = re.sub(r"[^0-9.\-]", "", texto)
-    if texto in {"", "-", "."}:
+
+    if texto in ("", "-", "."):
         return 0.0
 
     try:
         return float(texto)
-    except ValueError:
+    except Exception:
         return 0.0
 
 
-def periodo_para_texto(_valor=None) -> str:
-    return "Todo o período"
+def periodo_para_texto(valor) -> str:
+    """Padroniza o campo de período/ano para o filtro do dashboard."""
+    if pd.isna(valor):
+        return "Todo o período"
 
-
-def padronizar_gre(valor) -> str | None:
-    texto_original = limpar_valor(valor)
-    if not texto_original:
-        return None
-
+    texto_original = str(valor).strip()
     texto = normalizar_texto(texto_original)
-    if any(termo in texto for termo in ["total geral", "status geral", "quantitativo geral"]):
+
+    if not texto or texto in {"nan", "none", "todos", "todo", "geral", "total", "2026"}:
+        return "Todo o período"
+
+    match = re.search(r"(20\d{2})", texto_original)
+    if match:
+        ano = match.group(1)
+        if ano == "2026":
+            return "Todo o período"
+        return ano
+
+    if "periodo" in texto or "geral" in texto:
+        return "Todo o período"
+
+    return texto_original
+
+
+def padronizar_gre(valor: str) -> str | None:
+    if pd.isna(valor):
         return None
 
-    tem_identificador = bool(re.search(r"\bgre\b|gerencia", texto))
-    formato_ordinal = bool(re.search(r"\b\d{1,2}\s*[ªaºo]\s*(?:gre|gerencia)", texto))
+    texto = str(valor).strip().upper().replace("º", "ª")
 
-    if not tem_identificador and not formato_ordinal:
+    if not texto or "TOTAL" in texto or "GERAL" in texto or "STATUS" in texto:
         return None
 
-    match = re.search(r"(?:gre|gerencia(?:\s+regional)?)\s*(?:de\s+ensino\s*)?[:\-]?\s*(\d{1,2})", texto)
-    if not match:
-        match = re.search(r"\b(\d{1,2})\s*[ªaºo]?\s*(?:gre|gerencia)", texto)
-
+    match = re.search(r"(\d+)", texto)
     if not match:
         return None
 
@@ -447,1171 +391,78 @@ def padronizar_gre(valor) -> str | None:
     return f"{numero}ª GRE"
 
 
-def extrair_gre_de_linha(celulas: list[str], cabecalhos: dict[int, str] | None = None) -> str | None:
-    cabecalhos = cabecalhos or {}
-
-    for indice, cabecalho in cabecalhos.items():
-        if indice >= len(celulas):
-            continue
-        cab = normalizar_texto(cabecalho)
-        if cab == "gre" or "gerencia" in cab:
-            valor = limpar_valor(celulas[indice])
-            if re.fullmatch(r"\d{1,2}(?:[.,]0+)?", valor):
-                numero = int(float(valor.replace(",", ".")))
-                if 1 <= numero <= 30:
-                    return f"{numero}ª GRE"
-            gre = padronizar_gre(f"GRE {valor}")
-            if gre:
-                return gre
-
-    texto_linha = " | ".join(celulas)
-    gre = padronizar_gre(texto_linha)
-    if gre:
-        return gre
-
-    # Ex.: uma célula contém "GRE" e a seguinte contém apenas "1".
-    for indice, valor in enumerate(celulas[:-1]):
-        if normalizar_texto(valor) in {"gre", "gerencia", "gerencia regional"}:
-            proximo = limpar_valor(celulas[indice + 1])
-            if re.fullmatch(r"\d{1,2}", proximo):
-                numero = int(proximo)
-                if 1 <= numero <= 30:
-                    return f"{numero}ª GRE"
-
-    return None
-
-
-def extrair_localizacao_gre(texto, gre: str | None) -> str:
-    texto_original = limpar_valor(texto)
-    if not texto_original or not gre:
-        return ""
-
-    numero = gre.split("ª", 1)[0]
-    padroes = [
-        rf"{numero}\s*[ªaºo]?\s*(?:gre|ger[eê]ncia(?:\s+regional)?)\s*[-–—:]\s*(.+)$",
-        rf"(?:gre|ger[eê]ncia(?:\s+regional)?)\s*{numero}\s*[-–—:]\s*(.+)$",
-    ]
-    for padrao in padroes:
-        match = re.search(padrao, texto_original, flags=re.IGNORECASE)
-        if match:
-            localizacao = limpar_valor(match.group(1))
-            localizacao = localizacao.split("|", 1)[0].strip(" -–—:|")
-            return localizacao
-    return ""
-
-
 def split_responsaveis(valor) -> list[str]:
-    texto = limpar_valor(valor)
+    if pd.isna(valor):
+        return []
+
+    texto = str(valor).strip()
     if not texto:
         return []
 
-    partes = re.split(r"[,;/]|\s+e\s+", texto, flags=re.IGNORECASE)
+    partes = re.split(r"[,;/]| e ", texto, flags=re.IGNORECASE)
     saida = []
     for parte in partes:
-        nome = " ".join(parte.strip().split())
-        if nome and normalizar_texto(nome) not in {"nao informado", "sem responsavel"}:
+        nome = " ".join(str(parte).strip().split())
+        if nome:
             saida.append(nome.title())
+
     return saida
 
 
-def inferir_area_tecnica(*valores) -> str | None:
-    texto = " ".join(normalizar_texto(valor) for valor in valores if valor is not None)
-    if not texto:
-        return None
+def tratar_base_geral(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_gre = achar_coluna(df, ["GRE"], obrigatoria=True)
+    col_local = achar_coluna(df, ["Localização", "Localizacao", "Município", "Municipio", "Cidade"], obrigatoria=False)
+    col_clim = achar_coluna(df, ["Climatizadas"], obrigatoria=True)
+    col_and = achar_coluna(df, ["Em andamento"], obrigatoria=True)
+    col_rota = achar_coluna(df, ["Em rota"], obrigatoria=True)
+    col_total = achar_coluna(df, ["Total"], obrigatoria=False)
+    col_pend = achar_coluna(df, ["Pendências", "Pendencias"], obrigatoria=False)
+    col_conc = achar_coluna(df, ["% Conclusão", "% Conclusao", "Conclusão", "Conclusao"], obrigatoria=False)
+    col_prioridade = achar_coluna(df, ["Prioridade"], obrigatoria=False)
+    col_obs = achar_coluna(df, ["Observação", "Observacao"], obrigatoria=False)
+    col_periodo = achar_coluna(df, ["Período", "Periodo", "Ano", "Ano de Referência", "Ano Referencia"], obrigatoria=False)
+
+    dados = pd.DataFrame()
+    dados["GRE"] = df[col_gre].apply(padronizar_gre)
+    dados["Localização"] = df[col_local].astype(str).str.strip() if col_local else ""
+    dados["Climatizadas"] = df[col_clim].apply(numero_para_float)
+    dados["Em andamento"] = df[col_and].apply(numero_para_float)
+    dados["Em rota"] = df[col_rota].apply(numero_para_float)
+    dados["Total"] = df[col_total].apply(numero_para_float) if col_total else dados["Climatizadas"] + dados["Em andamento"] + dados["Em rota"]
+    dados["Pendências"] = df[col_pend].apply(numero_para_float) if col_pend else dados["Em andamento"] + dados["Em rota"]
+
+    if col_conc:
+        conc = df[col_conc].apply(numero_para_float)
+        # Se veio como 64,1, converte para 0,641
+        dados["Conclusão"] = conc.apply(lambda x: x / 100 if x > 1 else x)
+    else:
+        dados["Conclusão"] = dados["Climatizadas"] / dados["Total"].replace(0, pd.NA)
+
+    dados["Prioridade"] = df[col_prioridade].astype(str).str.strip() if col_prioridade else ""
+    dados["Observação"] = df[col_obs].astype(str).str.strip() if col_obs else ""
+    dados["Periodo"] = df[col_periodo].apply(periodo_para_texto) if col_periodo else "Todo o período"
+
+    dados = dados[dados["GRE"].notna()].copy()
+    dados = dados[dados[["Climatizadas", "Em andamento", "Em rota"]].sum(axis=1) > 0].copy()
+
+    dados["Ordem"] = dados["GRE"].str.extract(r"(\d+)").astype(int)
+    dados = dados.sort_values("Ordem")
+
+    dados["Total"] = dados["Total"].where(dados["Total"] > 0, dados["Climatizadas"] + dados["Em andamento"] + dados["Em rota"])
+    dados["Pendências"] = dados["Pendências"].where(dados["Pendências"] > 0, dados["Em andamento"] + dados["Em rota"])
+    dados["Conclusão"] = dados["Conclusão"].fillna(dados["Climatizadas"] / dados["Total"].replace(0, pd.NA)).fillna(0)
 
-    if contem_algum(texto, TERMOS_CLIMATIZACAO):
-        return "Climatização"
-    if any(termo in texto for termo in ["eletrica", "eletrico", "eletrotecnica", "energia"]):
-        return "Elétrica"
-    if any(termo in texto for termo in ["civil", "obra civil", "infraestrutura"]):
-        return "Civil"
-    return None
-
-
-def _base_publicacao() -> str:
-    return PLANILHA_GERAL_URL.split("/pubhtml", 1)[0].rstrip("/")
-
-
-def _baixar_texto(url: str) -> str:
-    resposta = requests.get(
-        url,
-        timeout=40,
-        headers={
-            "User-Agent": "Mozilla/5.0 (compatible; PainelClimatizacao/1.0)",
-            "Accept": "text/html,application/xhtml+xml,text/csv,*/*",
-        },
-    )
-    resposta.raise_for_status()
-    resposta.encoding = resposta.apparent_encoding or "utf-8"
-    return resposta.text
-
-
-def _remover_tags(texto: str) -> str:
-    texto = re.sub(r"<script.*?</script>", " ", texto, flags=re.IGNORECASE | re.DOTALL)
-    texto = re.sub(r"<style.*?</style>", " ", texto, flags=re.IGNORECASE | re.DOTALL)
-    texto = re.sub(r"<[^>]+>", " ", texto)
-    texto = html_lib.unescape(texto)
-    return " ".join(texto.split())
-
-
-def descobrir_abas_publicadas() -> list[tuple[str, str | None]]:
-    """Descobre os gids das abas visíveis na publicação do Google Sheets."""
-    pagina = _baixar_texto(PLANILHA_GERAL_URL)
-    abas_por_gid: dict[str, str] = {}
-
-    # Links dos botões das abas na página publicada.
-    padrao_link = re.compile(
-        r"<a[^>]+href=[\"'][^\"']*?(?:\?|&amp;|&)gid=(\d+)[^\"']*[\"'][^>]*>(.*?)</a>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    for gid, rotulo_html in padrao_link.findall(pagina):
-        rotulo = _remover_tags(rotulo_html) or f"Aba {gid}"
-        abas_por_gid.setdefault(gid, rotulo)
-
-    # Formatos de configuração JavaScript usados por versões diferentes do Sheets.
-    padroes_json = [
-        re.compile(r'"sheetId"\s*:\s*"?(\d+)"?.{0,240}?"(?:name|title)"\s*:\s*"([^"]+)"', re.DOTALL),
-        re.compile(r'"(?:name|title)"\s*:\s*"([^"]+)".{0,240}?"sheetId"\s*:\s*"?(\d+)"?', re.DOTALL),
-        re.compile(r'"gid"\s*:\s*"?(\d+)"?.{0,240}?"(?:name|title)"\s*:\s*"([^"]+)"', re.DOTALL),
-    ]
-
-    for indice, padrao in enumerate(padroes_json):
-        for primeiro, segundo in padrao.findall(pagina):
-            if indice == 1:
-                nome, gid = primeiro, segundo
-            else:
-                gid, nome = primeiro, segundo
-            nome = html_lib.unescape(nome).replace("\\u0027", "'").strip()
-            abas_por_gid.setdefault(gid, nome or f"Aba {gid}")
-
-    # Mesmo sem o nome, qualquer gid encontrado é aproveitado.
-    for gid in re.findall(r"(?:gid=|gid%3D|\"gid\"\s*:\s*\"?)(\d+)", pagina):
-        abas_por_gid.setdefault(gid, f"Aba {gid}")
-
-    if not abas_por_gid:
-        return [("Planilha geral", None)]
-
-    def ordem_aba(item):
-        gid, nome = item
-        gre = padronizar_gre(nome)
-        if gre:
-            return (0, int(gre.split("ª", 1)[0]), nome)
-        return (1, 999, nome)
-
-    return [(nome, gid) for gid, nome in sorted(abas_por_gid.items(), key=ordem_aba)]
-
-
-def _limpar_matriz(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    df = df.copy().fillna("")
-    df = df.apply(lambda coluna: coluna.map(limpar_valor))
-    df = df.loc[~df.apply(lambda linha: all(not limpar_valor(v) for v in linha), axis=1)]
-
-    if not df.empty:
-        colunas_validas = [
-            coluna for coluna in df.columns
-            if any(limpar_valor(v) for v in df[coluna].tolist())
-        ]
-        df = df[colunas_validas]
-
-    return df.reset_index(drop=True)
-
-
-def ler_aba_publicada(nome: str, gid: str | None) -> pd.DataFrame:
-    base = _base_publicacao()
-    parametros = "output=csv"
-    if gid is not None:
-        parametros = f"gid={gid}&single=true&output=csv"
-    url_csv = f"{base}/pub?{parametros}"
-
-    try:
-        conteudo = _baixar_texto(url_csv)
-        df = pd.read_csv(
-            StringIO(conteudo),
-            header=None,
-            dtype=str,
-            keep_default_na=False,
-            on_bad_lines="skip",
-        )
-        df = _limpar_matriz(df)
-        if not df.empty:
-            return df
-    except Exception:
-        pass
-
-    # Alternativa para publicações em que o CSV não é disponibilizado.
-    url_html = PLANILHA_GERAL_URL
-    if gid is not None:
-        separador = "&" if "?" in url_html else "?"
-        url_html = f"{url_html}{separador}gid={gid}&single=true"
-
-    pagina = _baixar_texto(url_html)
-    tabelas = pd.read_html(StringIO(pagina), header=None)
-    if not tabelas:
-        raise ValueError(f"A aba {nome!r} não contém uma tabela legível.")
-
-    maior_tabela = max(tabelas, key=lambda tabela: tabela.shape[0] * tabela.shape[1])
-    return _limpar_matriz(maior_tabela)
-
-
-def carregar_abas_publicadas() -> list[tuple[str, str | None, pd.DataFrame]]:
-    abas = []
-    erros = []
-
-    for nome, gid in descobrir_abas_publicadas():
-        try:
-            df = ler_aba_publicada(nome, gid)
-            if not df.empty:
-                abas.append((nome, gid, df))
-        except Exception as erro:
-            erros.append(f"{nome}: {erro}")
-
-    if not abas:
-        detalhes = " | ".join(erros[:5])
-        raise ValueError(
-            "Não foi possível ler nenhuma aba da planilha geral publicada. "
-            + (f"Detalhes: {detalhes}" if detalhes else "")
-        )
-
-    return abas
-
-
-def _marcador_area(texto: str) -> str | None:
-    texto = normalizar_texto(texto)
-    if not texto:
-        return None
-    if contem_algum(texto, TERMOS_CLIMATIZACAO):
-        return "climatizacao"
-    if any(termo in texto for termo in ["eletrica", "eletrico", "energia", "subestacao"]):
-        return "eletrica"
-    if any(termo in texto for termo in ["civil", "estrutura", "cobertura", "pintura"]):
-        return "civil"
-    if any(termo in texto for termo in ["hidraulica", "hidraulico", "drenagem"]):
-        return "hidraulica"
-    return None
-
-
-def _linha_parece_cabecalho(celulas: list[str]) -> bool:
-    nao_vazias = [normalizar_texto(c) for c in celulas if limpar_valor(c)]
-    if not nao_vazias:
-        return False
-
-    pontuacao = 0
-    for celula in nao_vazias:
-        if any(termo == celula or termo in celula for termo in TERMOS_CABECALHO):
-            pontuacao += 1
-
-    tem_status = any(any(termo in celula for termo in TERMOS_STATUS) for celula in nao_vazias)
-    tem_area = any(_marcador_area(celula) for celula in nao_vazias)
-    tem_identificador = any(
-        any(termo in celula for termo in ["escola", "unidade", "municipio", "gre", "gerencia"])
-        for celula in nao_vazias
-    )
-
-    return pontuacao >= 2 or (tem_area and (tem_status or tem_identificador))
-
-
-def _atualizar_secoes(celulas: list[str], secoes: list[str]) -> bool:
-    marcadores = []
-    for indice, celula in enumerate(celulas):
-        area = _marcador_area(celula)
-        if area:
-            marcadores.append((indice, area))
-
-    if not marcadores:
-        return False
-
-    # Só considera a linha como faixa de seções quando ela tem aparência de cabeçalho.
-    if not _linha_parece_cabecalho(celulas) and len(marcadores) == 1:
-        return False
-
-    for posicao, (inicio, area) in enumerate(marcadores):
-        limites = [marcadores[posicao + 1][0]] if posicao + 1 < len(marcadores) else []
-
-        # Um cabeçalho geral, como "Responsável", encerra a faixa da área anterior.
-        for coluna in range(inicio + 1, len(celulas)):
-            valor = normalizar_texto(celulas[coluna])
-            if not valor:
-                continue
-            if _marcador_area(valor):
-                limites.append(coluna)
-                break
-            eh_cabecalho_geral = any(
-                termo in valor
-                for termo in [
-                    "responsavel", "municipio", "cidade", "escola", "unidade escolar",
-                    "gre", "gerencia", "data", "contrato", "lote",
-                ]
-            )
-            if eh_cabecalho_geral:
-                limites.append(coluna)
-                break
-
-        fim = min(limites) if limites else len(secoes)
-        for coluna in range(inicio, fim):
-            secoes[coluna] = area
-    return True
-
-
-def _montar_cabecalhos(
-    celulas: list[str],
-    secoes: list[str],
-    cabecalhos_anteriores: dict[int, str] | None = None,
-) -> dict[int, str]:
-    cabecalhos = dict(cabecalhos_anteriores or {})
-    for indice, celula in enumerate(celulas):
-        nome = limpar_valor(celula)
-        if not nome:
-            continue
-        secao = secoes[indice] if indice < len(secoes) else ""
-        if secao and normalizar_texto(nome) != secao:
-            nome = f"{secao} {nome}".strip()
-        cabecalhos[indice] = nome
-    return cabecalhos
-
-
-def _valor_por_cabecalho(
-    celulas: list[str],
-    cabecalhos: dict[int, str],
-    opcoes: list[str],
-    exigir_climatizacao: bool = False,
-) -> str:
-    opcoes_norm = [normalizar_texto(opcao) for opcao in opcoes]
-
-    for indice, cabecalho in cabecalhos.items():
-        if indice >= len(celulas):
-            continue
-        cab = normalizar_texto(cabecalho)
-        if exigir_climatizacao and not contem_algum(cab, TERMOS_CLIMATIZACAO):
-            continue
-        if any(opcao == cab or opcao in cab for opcao in opcoes_norm):
-            valor = limpar_valor(celulas[indice])
-            if valor:
-                return valor
-    return ""
-
-
-def _colunas_climatizacao(cabecalhos: dict[int, str], secoes: list[str]) -> list[int]:
-    colunas = set()
-    for indice, cabecalho in cabecalhos.items():
-        if contem_algum(cabecalho, TERMOS_CLIMATIZACAO):
-            colunas.add(indice)
-    for indice, secao in enumerate(secoes):
-        if secao == "climatizacao":
-            colunas.add(indice)
-    return sorted(colunas)
-
-
-def _extrair_percentual(texto: str) -> float | None:
-    texto_original = limpar_valor(texto)
-    if not texto_original:
-        return None
-
-    percentuais = []
-    for numero in re.findall(r"(?<!\d)(\d{1,3}(?:[.,]\d+)?)\s*%", texto_original):
-        valor = float(numero.replace(",", "."))
-        if 0 <= valor <= 100:
-            percentuais.append(valor)
-
-    # Células de barra de progresso costumam ser armazenadas como decimal
-    # (por exemplo, 0,45), embora sejam exibidas como 45% na planilha.
-    numero_isolado = re.fullmatch(r"\s*(0(?:[.,]\d+)?|1(?:[.,]0+)?)\s*", texto_original)
-    if numero_isolado:
-        valor_decimal = float(numero_isolado.group(1).replace(",", "."))
-        percentuais.append(valor_decimal * 100)
-
-    # Barras feitas com caracteres, como █████░░░░░.
-    preenchidos = sum(texto_original.count(c) for c in "█▓■●🟩✅")
-    vazios = sum(texto_original.count(c) for c in "░▒□○⬜⬛")
-    if preenchidos + vazios >= 3:
-        percentuais.append(100 * preenchidos / (preenchidos + vazios))
-
-    return max(percentuais) if percentuais else None
-
-
-def _classificar_status(texto_status: str) -> tuple[str | None, float | None, str]:
-    original = limpar_valor(texto_status)
-    texto = normalizar_texto(original)
-    percentual = _extrair_percentual(original)
-
-    termos_excluir = [
-        "nao se aplica",
-        "sem necessidade",
-        "fora do escopo",
-        "nao contemplada",
-        "nao contemplado",
-        "cancelada",
-        "cancelado",
-        "duplicado",
-    ]
-    if any(termo in texto for termo in termos_excluir):
-        return None, percentual, original
-
-    termos_nao_concluido = ["nao concluido", "nao finalizado", "incompleto"]
-    termos_concluido = [
-        "concluido", "concluida", "finalizado", "finalizada",
-        "climatizado", "climatizada", "executado", "executada",
-        "instalado", "instalada", "entregue", "pronto", "100 por cento",
-    ]
-    termos_andamento = [
-        "em andamento", "andamento", "em execucao", "execucao",
-        "executando", "em instalacao", "instalando", "iniciado",
-        "iniciada", "parcial", "obra em curso", "servico em curso",
-    ]
-    termos_rota = [
-        "em rota", "rota de climatizacao", "programado", "programada",
-        "agendado", "agendada", "planejado", "planejada", "a iniciar",
-        "nao iniciado", "nao iniciada", "aguardando", "pendente",
-        "licitacao", "a contratar", "vistoria", "levantamento",
-        "sem status", "a definir", "na fila",
-    ]
-
-    if percentual is not None:
-        if percentual >= 99.5:
-            return "Climatizadas", percentual, original or "100%"
-        if percentual > 0:
-            return "Em andamento", percentual, original
-        return "Em rota", percentual, original or "0%"
-
-    if any(termo in texto for termo in termos_nao_concluido):
-        return "Em andamento", percentual, original
-    if any(termo in texto for termo in termos_concluido) or any(simbolo in original for simbolo in ["✅", "☑", "✔"]):
-        return "Climatizadas", 100.0, original
-    if any(termo in texto for termo in termos_andamento):
-        return "Em andamento", percentual, original
-    if any(termo in texto for termo in termos_rota):
-        return "Em rota", percentual, original
-
-    if texto in {"sim", "ok", "feito", "x"}:
-        return "Climatizadas", 100.0, original
-    if texto in {"nao", "não", "-", "0"}:
-        return "Em rota", 0.0, original
-
-    # Um campo de climatização preenchido, mas sem rótulo reconhecido, continua
-    # aparecendo como pendência para não ser descartado silenciosamente.
-    if original:
-        return "Em rota", percentual, original
-    return "Em rota", percentual, "(SEM STATUS)"
-
-
-def _parece_nome_escola(texto: str) -> bool:
-    original = limpar_valor(texto)
-    normalizado = normalizar_texto(original)
-    if len(original) < 4:
-        return False
-    if any(termo in normalizado for termo in TERMOS_STATUS + TERMOS_CLIMATIZACAO + TERMOS_OUTRAS_AREAS):
-        return False
-    if padronizar_gre(original):
-        return False
-    if re.fullmatch(r"[\d\s.,%/-]+", original):
-        return False
-    return bool(
-        re.search(r"\b(escola|colegio|eeef|eeefm|ecit|eeci|e\.e\.|unidade)\b", normalizado)
-        or len(original) >= 12
-    )
-
-
-def _escolher_nome_escola(
-    celulas: list[str],
-    cabecalhos: dict[int, str],
-    colunas_clima: list[int],
-) -> str:
-    valor = _valor_por_cabecalho(
-        celulas,
-        cabecalhos,
-        ["unidade escolar", "unidade de ensino", "nome da escola", "escola", "colegio"],
-    )
-    if valor:
-        return valor
-
-    colunas_bloqueadas = set(colunas_clima)
-    for indice, cabecalho in cabecalhos.items():
-        cab = normalizar_texto(cabecalho)
-        if any(termo in cab for termo in ["status", "situacao", "observacao", "responsavel", "municipio", "gre", "gerencia", "data"]):
-            colunas_bloqueadas.add(indice)
-
-    candidatos = []
-    for indice, celula in enumerate(celulas):
-        if indice in colunas_bloqueadas:
-            continue
-        valor = limpar_valor(celula)
-        if _parece_nome_escola(valor):
-            candidatos.append(valor)
-
-    if not candidatos:
-        return ""
-    return max(candidatos, key=len)
-
-
-def _status_climatizacao(
-    celulas: list[str],
-    cabecalhos: dict[int, str],
-    secoes: list[str],
-    colunas_clima: list[int],
-    linha_menciona_clima: bool,
-) -> str:
-    candidatos = []
-
-    for indice in colunas_clima:
-        if indice < len(celulas):
-            valor = limpar_valor(celulas[indice])
-            if valor:
-                candidatos.append(valor)
-
-    for indice, cabecalho in cabecalhos.items():
-        if indice >= len(celulas):
-            continue
-        cab = normalizar_texto(cabecalho)
-        eh_status = any(termo in cab for termo in TERMOS_STATUS)
-        secao_clima = indice < len(secoes) and secoes[indice] == "climatizacao"
-        if eh_status and (secao_clima or contem_algum(cab, TERMOS_CLIMATIZACAO) or linha_menciona_clima):
-            valor = limpar_valor(celulas[indice])
-            if valor:
-                candidatos.append(valor)
-
-    if linha_menciona_clima:
-        for celula in celulas:
-            valor = limpar_valor(celula)
-            texto = normalizar_texto(valor)
-            if _extrair_percentual(valor) is not None or any(
-                termo in texto
-                for termo in [
-                    "conclu", "finaliz", "andamento", "execucao", "rota",
-                    "pendente", "aguardando", "programad", "iniciad", "climatiz",
-                ]
-            ):
-                candidatos.append(valor)
-
-    # Remove repetições preservando a ordem.
-    unicos = []
-    vistos = set()
-    for candidato in candidatos:
-        chave = normalizar_texto(candidato)
-        if chave and chave not in vistos:
-            vistos.add(chave)
-            unicos.append(candidato)
-
-    return " | ".join(unicos)
-
-
-
-def _converter_gre_direta(valor) -> str | None:
-    """Converte o conteúdo da coluna GRE da própria escola para o padrão do painel."""
-    texto = limpar_valor(valor)
-    if not texto:
-        return None
-
-    # A coluna pode conter apenas 1, 2, 3... ou textos como "1ª GRE".
-    if re.fullmatch(r"\d{1,2}(?:[.,]0+)?", texto):
-        numero = int(float(texto.replace(",", ".")))
-        if 1 <= numero <= 30:
-            return f"{numero}ª GRE"
-
-    gre = padronizar_gre(texto)
-    if gre:
-        return gre
-
-    gre = padronizar_gre(f"GRE {texto}")
-    return gre
-
-
-def _secoes_da_linha(celulas: list[str]) -> list[str]:
-    """Propaga somente faixas técnicas reconhecidas em cabeçalhos mesclados."""
-    secoes = [""] * len(celulas)
-    secao_atual = ""
-
-    for indice, celula in enumerate(celulas):
-        texto = normalizar_texto(celula)
-        area = _marcador_area(texto)
-        if area:
-            secao_atual = area
-            secoes[indice] = area
-            continue
-
-        # Cabeçalhos gerais encerram uma faixa técnica anterior.
-        if any(
-            termo in texto
-            for termo in [
-                "gre", "gerencia", "escola", "unidade escolar", "municipio",
-                "cidade", "responsavel", "data", "observacao", "contrato", "lote",
-            ]
-        ):
-            secao_atual = ""
-
-        if secao_atual:
-            secoes[indice] = secao_atual
-
-    return secoes
-
-
-def _cabecalhos_candidatos(matriz: pd.DataFrame, indice_linha: int) -> dict[int, str]:
-    """Combina até três linhas de cabeçalho sem usar dados de outras escolas."""
-    atual = [limpar_valor(v) for v in matriz.iloc[indice_linha].tolist()]
-    anteriores = []
-
-    for deslocamento in (2, 1):
-        posicao = indice_linha - deslocamento
-        if posicao >= 0:
-            anteriores.append([limpar_valor(v) for v in matriz.iloc[posicao].tolist()])
-        else:
-            anteriores.append([""] * len(atual))
-
-    secoes = [""] * len(atual)
-    for linha_superior in anteriores:
-        secoes_linha = _secoes_da_linha(linha_superior)
-        for coluna, secao in enumerate(secoes_linha):
-            if secao:
-                secoes[coluna] = secao
-
-    cabecalhos = {}
-    for coluna in range(len(atual)):
-        partes = []
-        secao = secoes[coluna]
-        if secao:
-            partes.append(secao)
-
-        for linha_superior in anteriores:
-            valor = limpar_valor(linha_superior[coluna])
-            if valor and _marcador_area(valor) is None:
-                partes.append(valor)
-
-        if atual[coluna]:
-            partes.append(atual[coluna])
-
-        # Remove partes repetidas, preservando a ordem.
-        unicas = []
-        vistas = set()
-        for parte in partes:
-            chave = normalizar_texto(parte)
-            if chave and chave not in vistas:
-                vistas.add(chave)
-                unicas.append(parte)
-
-        cabecalhos[coluna] = " ".join(unicas).strip()
-
-    return cabecalhos
-
-
-def _indice_cabecalho(cabecalhos: dict[int, str], grupos: list[list[str]]) -> int | None:
-    """Encontra uma coluna exigindo que ao menos um termo de cada grupo apareça."""
-    melhor_indice = None
-    melhor_pontuacao = -1
-
-    for indice, cabecalho in cabecalhos.items():
-        texto = normalizar_texto(cabecalho)
-        if not texto:
-            continue
-
-        corresponde = True
-        pontuacao = 0
-        for grupo in grupos:
-            grupo_norm = [normalizar_texto(termo) for termo in grupo]
-            encontrados = [termo for termo in grupo_norm if termo and termo in texto]
-            if not encontrados:
-                corresponde = False
-                break
-            pontuacao += max(len(termo.split()) for termo in encontrados)
-
-        if corresponde and pontuacao > melhor_pontuacao:
-            melhor_indice = indice
-            melhor_pontuacao = pontuacao
-
-    return melhor_indice
-
-
-def _mapear_colunas_planilha_geral(
-    matriz: pd.DataFrame,
-) -> tuple[int, dict[str, int | None]] | None:
-    """
-    Localiza, na planilha geral, as colunas explícitas da escola, GRE e
-    status de climatização. Não infere GRE por bloco ou título de aba.
-    """
-    limite = min(len(matriz), 80)
-    melhor = None
-    melhor_pontuacao = -1
-
-    for indice_linha in range(limite):
-        cabecalhos = _cabecalhos_candidatos(matriz, indice_linha)
-
-        coluna_gre = _indice_cabecalho(
-            cabecalhos,
-            [["gre", "gerência", "gerencia regional", "regional de ensino"]],
-        )
-        coluna_escola = _indice_cabecalho(
-            cabecalhos,
-            [["unidade escolar", "nome da escola", "escola", "unidade de ensino"]],
-        )
-
-        # O status precisa pertencer explicitamente à climatização.
-        coluna_status = _indice_cabecalho(
-            cabecalhos,
-            [
-                ["climatização", "climatizacao", "ar condicionado", "ar-condicionado", "split"],
-                ["status", "situação", "situacao", "progresso", "percentual", "%", "execução", "execucao"],
-            ],
-        )
-
-        # Algumas bases usam apenas "Climatização" como nome da coluna do status.
-        if coluna_status is None:
-            candidatos = []
-            for coluna, cabecalho in cabecalhos.items():
-                texto = normalizar_texto(cabecalho)
-                if contem_algum(texto, TERMOS_CLIMATIZACAO):
-                    if not any(termo in texto for termo in TERMOS_OUTRAS_AREAS):
-                        candidatos.append(coluna)
-            if len(candidatos) == 1:
-                coluna_status = candidatos[0]
-
-        if coluna_gre is None or coluna_escola is None or coluna_status is None:
-            continue
-
-        pontuacao = 10
-        status_cab = normalizar_texto(cabecalhos.get(coluna_status, ""))
-        if "status" in status_cab or "situacao" in status_cab:
-            pontuacao += 3
-        if "unidade escolar" in normalizar_texto(cabecalhos.get(coluna_escola, "")):
-            pontuacao += 2
-        if normalizar_texto(cabecalhos.get(coluna_gre, "")) == "gre":
-            pontuacao += 2
-
-        if pontuacao > melhor_pontuacao:
-            melhor_pontuacao = pontuacao
-            melhor = (
-                indice_linha,
-                {
-                    "gre": coluna_gre,
-                    "escola": coluna_escola,
-                    "status": coluna_status,
-                    "municipio": _indice_cabecalho(cabecalhos, [["municipio", "cidade"]]),
-                    "localizacao_gre": _indice_cabecalho(cabecalhos, [["localizacao gre", "sede gre", "regional"]]),
-                    "data": _indice_cabecalho(cabecalhos, [["data", "atualizacao", "última movimentação", "ultima movimentacao"]]),
-                    "observacao": _indice_cabecalho(cabecalhos, [["observacao", "observações", "observacoes", "comentario"]]),
-                    "responsavel": _indice_cabecalho(cabecalhos, [["responsavel", "fiscal", "engenheiro", "tecnico"]]),
-                    "tipo_profissional": _indice_cabecalho(cabecalhos, [["tipo profissional", "cargo", "funcao", "formacao"]]),
-                    "setor": _indice_cabecalho(cabecalhos, [["setor", "lote", "contrato", "frente"]]),
-                    "uc": _indice_cabecalho(cabecalhos, [["unidade consumidora", "uc"]]),
-                    "padrao": _indice_cabecalho(cabecalhos, [["padrao de ligacao", "padrão de ligação", "padrao"]]),
-                },
-            )
-
-    return melhor
-
-
-def _valor_da_coluna(celulas: list[str], indice: int | None) -> str:
-    if indice is None or indice < 0 or indice >= len(celulas):
-        return ""
-    return limpar_valor(celulas[indice])
-
-
-
-def _coluna_por_alias(cabecalhos: dict[int, str], aliases: list[str]) -> int | None:
-    """Localiza uma coluna priorizando nomes exatos antes de correspondências parciais."""
-    aliases_norm = [normalizar_texto(alias) for alias in aliases]
-
-    for indice, cabecalho in cabecalhos.items():
-        texto = normalizar_texto(cabecalho)
-        if texto in aliases_norm:
-            return indice
-
-    candidatos = []
-    for indice, cabecalho in cabecalhos.items():
-        texto = normalizar_texto(cabecalho)
-        for alias in aliases_norm:
-            if alias and (alias in texto or texto in alias):
-                candidatos.append((len(alias), -len(texto), indice))
-    if not candidatos:
-        return None
-    return max(candidatos)[2]
-
-
-def _mapear_colunas_planilha_geral_estrito(
-    matriz: pd.DataFrame,
-) -> tuple[int, dict[str, int | None], dict[int, str]] | None:
-    """
-    Encontra uma única tabela com colunas explícitas para escola, GRE e status
-    de climatização. A coluna de status só é aceita quando o cabeçalho menciona
-    climatização/ar-condicionado, evitando confusão com status elétrico.
-    """
-    limite = min(len(matriz), 100)
-    melhor = None
-    melhor_pontuacao = -1
-
-    aliases_gre = [
-        "GRE", "Gerência", "Gerência Regional", "Gerência Regional de Ensino",
-        "Regional de Ensino", "Número da GRE", "Nº GRE",
-    ]
-    aliases_escola = [
-        "Unidade Escolar", "Nome da Escola", "Escola", "Unidade de Ensino",
-        "Nome da Unidade Escolar",
-    ]
-
-    for indice_linha in range(limite):
-        cabecalhos = _cabecalhos_candidatos(matriz, indice_linha)
-        coluna_gre = _coluna_por_alias(cabecalhos, aliases_gre)
-        coluna_escola = _coluna_por_alias(cabecalhos, aliases_escola)
-
-        candidatos_status = []
-        for coluna, cabecalho in cabecalhos.items():
-            texto = normalizar_texto(cabecalho)
-            if not texto:
-                continue
-            menciona_clima = contem_algum(texto, TERMOS_CLIMATIZACAO)
-            menciona_outra_area = any(termo in texto for termo in TERMOS_OUTRAS_AREAS)
-            if not menciona_clima or menciona_outra_area:
-                continue
-
-            pontos = 10
-            if any(termo in texto for termo in TERMOS_STATUS):
-                pontos += 8
-            if texto in {"climatizacao", "status climatizacao", "status de climatizacao"}:
-                pontos += 8
-            if "status" in texto or "situacao" in texto:
-                pontos += 4
-            if "percentual" in texto or "progresso" in texto or "%" in texto:
-                pontos += 3
-            candidatos_status.append((pontos, -len(texto), coluna))
-
-        coluna_status = max(candidatos_status)[2] if candidatos_status else None
-
-        if coluna_gre is None or coluna_escola is None or coluna_status is None:
-            continue
-        if len({coluna_gre, coluna_escola, coluna_status}) < 3:
-            continue
-
-        pontuacao = 20
-        gre_cab = normalizar_texto(cabecalhos.get(coluna_gre, ""))
-        escola_cab = normalizar_texto(cabecalhos.get(coluna_escola, ""))
-        status_cab = normalizar_texto(cabecalhos.get(coluna_status, ""))
-        if gre_cab == "gre":
-            pontuacao += 5
-        if "unidade escolar" in escola_cab or "nome da escola" in escola_cab:
-            pontuacao += 5
-        if "status" in status_cab or "situacao" in status_cab:
-            pontuacao += 5
-
-        colunas = {
-            "gre": coluna_gre,
-            "escola": coluna_escola,
-            "status": coluna_status,
-            "municipio": _coluna_por_alias(cabecalhos, ["Município", "Cidade"]),
-            "localizacao_gre": _coluna_por_alias(cabecalhos, ["Localização GRE", "Sede GRE", "Regional"]),
-            "data": _coluna_por_alias(cabecalhos, ["Data", "Atualização", "Última Movimentação", "Data de Atualização"]),
-            "observacao": _coluna_por_alias(cabecalhos, ["Observação", "Observações", "Comentário"]),
-            "responsavel": _coluna_por_alias(cabecalhos, ["Responsável", "Responsável Técnico", "Fiscal", "Engenheiro", "Técnico"]),
-            "tipo_profissional": _coluna_por_alias(cabecalhos, ["Tipo Profissional", "Cargo", "Função", "Formação"]),
-            "setor": _coluna_por_alias(cabecalhos, ["Setor", "Lote", "Contrato", "Frente"]),
-            "uc": _coluna_por_alias(cabecalhos, ["Unidade Consumidora", "UC"]),
-            "padrao": _coluna_por_alias(cabecalhos, ["Padrão de Ligação", "Padrão"]),
-        }
-
-        if pontuacao > melhor_pontuacao:
-            melhor_pontuacao = pontuacao
-            melhor = (indice_linha, colunas, cabecalhos)
-
-    return melhor
-
-
-def _chave_unica_escola(gre: str, escola: str, municipio: str = "") -> str:
-    """Chave conservadora: não tenta fundir escolas apenas por semelhança textual."""
-    partes = [normalizar_texto(gre), normalizar_texto(municipio), normalizar_texto(escola)]
-    return "|".join(partes)
-
-
-def _extrair_registros_de_uma_aba(
-    nome_aba: str,
-    gid: str | None,
-    matriz: pd.DataFrame,
-) -> tuple[pd.DataFrame, dict]:
-    matriz = _limpar_matriz(matriz)
-    auditoria = {
-        "aba": nome_aba,
-        "gid": gid or "",
-        "linhas_matriz": int(len(matriz)),
-        "cabecalho_encontrado": False,
-        "linhas_apos_cabecalho": 0,
-        "linhas_validas_antes_duplicidade": 0,
-        "escolas_unicas": 0,
-        "duplicidades_removidas": 0,
-        "sem_gre": 0,
-        "sem_escola": 0,
-        "totais_subtotais_ignorados": 0,
-        "fora_escopo_ignorados": 0,
-        "cabecalhos": {},
-    }
-    if matriz.empty:
-        return pd.DataFrame(), auditoria
-
-    mapeamento = _mapear_colunas_planilha_geral_estrito(matriz)
-    if mapeamento is None:
-        return pd.DataFrame(), auditoria
-
-    linha_cabecalho, colunas, cabecalhos = mapeamento
-    auditoria["cabecalho_encontrado"] = True
-    auditoria["linha_cabecalho"] = int(linha_cabecalho + 1)
-    auditoria["cabecalhos"] = {
-        campo: cabecalhos.get(indice, "") if indice is not None else ""
-        for campo, indice in colunas.items()
-    }
-    auditoria["linhas_apos_cabecalho"] = max(0, int(len(matriz) - linha_cabecalho - 1))
-
-    registros = []
-    for indice_linha in range(linha_cabecalho + 1, len(matriz)):
-        celulas = [limpar_valor(v) for v in matriz.iloc[indice_linha].tolist()]
-        if not any(celulas):
-            continue
-
-        gre_bruta = _valor_da_coluna(celulas, colunas["gre"])
-        escola = _valor_da_coluna(celulas, colunas["escola"])
-        status_bruto = _valor_da_coluna(celulas, colunas["status"])
-        municipio = _valor_da_coluna(celulas, colunas["municipio"])
-
-        gre = _converter_gre_direta(gre_bruta)
-        escola_norm = normalizar_texto(escola)
-
-        if not escola:
-            auditoria["sem_escola"] += 1
-            continue
-        if escola_norm in {"escola", "unidade escolar", "nome da escola", "unidade de ensino"}:
-            continue
-        if any(termo in escola_norm for termo in ["total geral", "subtotal", "quantitativo", "total de escolas"]):
-            auditoria["totais_subtotais_ignorados"] += 1
-            continue
-        if not gre:
-            auditoria["sem_gre"] += 1
-            continue
-
-        categoria, percentual, status_original = _classificar_status(status_bruto)
-        if categoria is None:
-            auditoria["fora_escopo_ignorados"] += 1
-            continue
-
-        localizacao = _valor_da_coluna(celulas, colunas["localizacao_gre"])
-        data_mov = _valor_da_coluna(celulas, colunas["data"])
-        observacao = _valor_da_coluna(celulas, colunas["observacao"])
-        responsavel = _valor_da_coluna(celulas, colunas["responsavel"])
-        tipo_profissional = _valor_da_coluna(celulas, colunas["tipo_profissional"])
-        setor = _valor_da_coluna(celulas, colunas["setor"]) or "Climatização"
-        uc = _valor_da_coluna(celulas, colunas["uc"])
-        padrao = _valor_da_coluna(celulas, colunas["padrao"])
-
-        registros.append({
-            "Fonte_Aba": nome_aba,
-            "Fonte_GID": gid or "",
-            "Fonte_Linha": indice_linha + 1,
-            "GRE": gre,
-            "GRE_Original": gre_bruta,
-            "Localização_GRE": localizacao,
-            "Município": municipio,
-            "Unidade Escolar": escola,
-            "UC": uc,
-            "Padrão de Ligação": padrao,
-            "Status": status_original or status_bruto or "(SEM STATUS)",
-            "Status_Original": status_bruto,
-            "Categoria": categoria,
-            "Percentual": percentual,
-            "Data Última Mov.": data_mov,
-            "Observações": observacao,
-            "Responsável Técnico": responsavel,
-            "Tipo Profissional": tipo_profissional,
-            "Setor": setor,
-            "Periodo": "Todo o período",
-            "_chave_escola": _chave_unica_escola(gre, escola, municipio),
-        })
-
-    dados = pd.DataFrame(registros)
-    auditoria["linhas_validas_antes_duplicidade"] = int(len(dados))
-    if dados.empty:
-        return dados, auditoria
-
-    dados["_data_ordenacao"] = pd.to_datetime(
-        dados["Data Última Mov."], dayfirst=True, errors="coerce"
-    )
-    dados = dados.sort_values(
-        ["_chave_escola", "_data_ordenacao", "Fonte_Linha"],
-        na_position="first",
-    )
-    antes = len(dados)
-    dados = dados.drop_duplicates(subset=["_chave_escola"], keep="last")
-    auditoria["duplicidades_removidas"] = int(antes - len(dados))
-    auditoria["escolas_unicas"] = int(len(dados))
-
-    dados["Ordem"] = dados["GRE"].str.extract(r"(\d+)", expand=False).astype(int)
     dados["GRE_Label"] = dados.apply(
-        lambda linha: (
-            f'{linha["GRE"]} — {linha["Localização_GRE"]}'
-            if limpar_valor(linha["Localização_GRE"])
-            else linha["GRE"]
-        ),
+        lambda linha: f'{linha["GRE"]} — {linha["Localização"]}'
+        if str(linha.get("Localização", "")).strip()
+        else str(linha["GRE"]),
         axis=1,
     )
 
-    return dados.drop(columns=["_data_ordenacao", "_chave_escola"]), auditoria
-
-
-def extrair_registros_climatizacao(
-    abas: list[tuple[str, str | None, pd.DataFrame]],
-) -> tuple[pd.DataFrame, dict]:
-    """
-    Analisa cada aba separadamente e seleciona somente a tabela que representa
-    a base geral mais completa. Não soma abas diferentes.
-    """
-    candidatos = []
-    auditorias = []
-
-    for nome_aba, gid, df in abas:
-        dados, auditoria = _extrair_registros_de_uma_aba(nome_aba, gid, df)
-        auditorias.append(auditoria)
-        if dados.empty:
-            continue
-
-        nome_norm = normalizar_texto(nome_aba)
-        bonus_nome = 0
-        if any(termo in nome_norm for termo in ["geral", "base", "dados", "escolas", "climatizacao"]):
-            bonus_nome = 5
-        # O número de escolas é o critério principal. O nome serve só como desempate.
-        pontuacao = int(len(dados)) * 100 + bonus_nome
-        candidatos.append((pontuacao, nome_aba, gid, dados, auditoria))
-
-    if not candidatos:
-        resumo = "; ".join(
-            f'{a["aba"]}: cabeçalho={a["cabecalho_encontrado"]}, linhas={a["linhas_matriz"]}'
-            for a in auditorias[:8]
-        )
-        raise ValueError(
-            "A planilha foi aberta, mas nenhuma aba apresentou simultaneamente "
-            "as colunas GRE, Unidade Escolar e Status de Climatização. "
-            f"Auditoria: {resumo}"
-        )
-
-    candidatos.sort(key=lambda item: item[0], reverse=True)
-    _, nome_escolhido, gid_escolhido, dados, auditoria_escolhida = candidatos[0]
-
-    totais_status = dados["Categoria"].value_counts().to_dict()
-    status_originais = dados["Status"].value_counts(dropna=False).head(20).to_dict()
-    auditoria_final = {
-        "aba_escolhida": nome_escolhido,
-        "gid_escolhido": gid_escolhido or "",
-        "total_escolas_unicas": int(len(dados)),
-        "climatizadas": int(totais_status.get("Climatizadas", 0)),
-        "em_andamento": int(totais_status.get("Em andamento", 0)),
-        "em_rota": int(totais_status.get("Em rota", 0)),
-        "soma_status": int(sum(totais_status.values())),
-        "status_originais": status_originais,
-        "aba": auditoria_escolhida,
-        "abas_analisadas": auditorias,
-    }
-    return dados.reset_index(drop=True), auditoria_final
-
-
-def montar_base_geral(registros: pd.DataFrame) -> pd.DataFrame:
-    linhas = []
-
-    for gre, grupo in registros.groupby("GRE", sort=False):
-        localizacoes = [limpar_valor(v) for v in grupo["Localização_GRE"] if limpar_valor(v)]
-        localizacao = max(set(localizacoes), key=localizacoes.count) if localizacoes else ""
-
-        # O total é a quantidade real de escolas únicas da GRE, e não a soma
-        # de tabelas auxiliares ou de abas diferentes.
-        total = int(len(grupo))
-        climatizadas = int((grupo["Categoria"] == "Climatizadas").sum())
-        andamento = int((grupo["Categoria"] == "Em andamento").sum())
-        rota = int((grupo["Categoria"] == "Em rota").sum())
-        pendencias = andamento + rota
-
-        if climatizadas + andamento + rota != total:
-            raise ValueError(
-                f"Inconsistência interna na {gre}: total={total}, "
-                f"status={climatizadas + andamento + rota}."
-            )
-
-        linhas.append({
-            "GRE": gre,
-            "Localização": localizacao,
-            "Climatizadas": climatizadas,
-            "Em andamento": andamento,
-            "Em rota": rota,
-            "Total": total,
-            "Pendências": pendencias,
-            "Conclusão": climatizadas / total if total else 0,
-            "Prioridade": "Maior número de pendências" if pendencias else "Concluída",
-            "Observação": f"{total} escolas únicas lidas diretamente da aba geral selecionada.",
-            "Periodo": "Todo o período",
-            "Ordem": int(gre.split("ª", 1)[0]),
-            "GRE_Label": f"{gre} — {localizacao}" if localizacao else gre,
-        })
-
-    return pd.DataFrame(linhas).sort_values("Ordem").reset_index(drop=True)
-
-
-def montar_setorizacao(registros: pd.DataFrame) -> pd.DataFrame:
-    linhas = []
-    registros = registros.copy()
-    registros["Setor"] = registros["Setor"].apply(lambda valor: limpar_valor(valor) or "Climatização")
-
-    for setor, grupo in registros.groupby("Setor", sort=True):
-        andamento = int((grupo["Categoria"] == "Em andamento").sum())
-        rota = int((grupo["Categoria"] == "Em rota").sum())
-        linhas.append({
-            "Setor": setor,
-            "Em andamento": andamento,
-            "Rota de climatização": rota,
-            "Total": andamento + rota,
-            "Observação": "Somente pendências de climatização.",
-        })
-
-    return pd.DataFrame(linhas)
-
-
-def montar_responsaveis(registros: pd.DataFrame) -> pd.DataFrame:
-    linhas = []
-
-    for _, registro in registros.iterrows():
-        responsaveis = split_responsaveis(registro.get("Responsável Técnico", ""))
-        for responsavel in responsaveis:
-            linhas.append({
-                "GRE": registro["GRE"],
-                "Localização": registro["Localização_GRE"],
-                "Responsável Técnico": responsavel,
-                "Área": "Climatização",
-                "Tipo Profissional": limpar_valor(registro.get("Tipo Profissional")) or "Climatização",
-                "Equipe": "GEOBS",
-                "Ordem": registro["Ordem"],
-                "GRE_Label": registro["GRE_Label"],
-            })
-
-    colunas = [
-        "GRE", "Localização", "Responsável Técnico", "Área",
-        "Tipo Profissional", "Equipe", "Ordem", "GRE_Label",
-    ]
-    if not linhas:
-        return pd.DataFrame(columns=colunas)
-
-    return pd.DataFrame(linhas).drop_duplicates().sort_values(
-        ["Responsável Técnico", "Ordem"]
-    )
-
-
-def montar_acompanhamento(registros: pd.DataFrame) -> pd.DataFrame:
-    dados = registros[[
-        "Fonte_Aba",
-        "GRE",
-        "Localização_GRE",
-        "Município",
-        "Unidade Escolar",
-        "UC",
-        "Padrão de Ligação",
-        "Status",
-        "Data Última Mov.",
-        "Observações",
-        "Periodo",
-        "Ordem",
-        "GRE_Label",
-    ]].copy()
-
-    dados["Status"] = dados["Status"].apply(lambda valor: limpar_valor(valor).upper() or "(SEM STATUS)")
-    return dados.sort_values(["Ordem", "Município", "Unidade Escolar"])
+    return dados
 
 
 def tratar_setorizacao(df: pd.DataFrame) -> pd.DataFrame:
@@ -1793,55 +644,14 @@ def tratar_config(df: pd.DataFrame) -> dict:
 
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
 def carregar_dados():
-    # 1. Quantitativos principais: exclusivamente da aba geral mais completa.
-    abas = carregar_abas_publicadas()
-    registros_climatizacao, auditoria = extrair_registros_climatizacao(abas)
-    base = montar_base_geral(registros_climatizacao)
-
-    # 2. Conteúdos auxiliares: permanecem nas planilhas específicas do painel original.
+    base = tratar_base_geral(pd.read_csv(BASE_GERAL_URL))
     setor = tratar_setorizacao(pd.read_csv(SETORIZACAO_URL))
     responsaveis = tratar_responsaveis(pd.read_csv(RESPONSAVEIS_URL))
     acompanhamento = tratar_acompanhamento(pd.read_csv(ACOMPANHAMENTO_URL))
     config = tratar_config(pd.read_csv(CONFIG_URL))
 
-    # As fontes auxiliares servem apenas para completar rótulos/localizações.
-    mapa_localizacao = {}
-    for tabela, coluna_local in [
-        (responsaveis, "Localização"),
-        (acompanhamento, "Localização_GRE"),
-    ]:
-        if tabela is None or tabela.empty or coluna_local not in tabela.columns:
-            continue
-        for _, linha in tabela.iterrows():
-            gre = limpar_valor(linha.get("GRE"))
-            local = limpar_valor(linha.get(coluna_local))
-            if gre and local and gre not in mapa_localizacao:
-                mapa_localizacao[gre] = local
+    return base, setor, responsaveis, acompanhamento, config
 
-    if not base.empty:
-        base["Localização"] = base.apply(
-            lambda linha: limpar_valor(linha.get("Localização"))
-            or mapa_localizacao.get(limpar_valor(linha.get("GRE")), ""),
-            axis=1,
-        )
-        base["GRE_Label"] = base.apply(
-            lambda linha: (
-                f'{linha["GRE"]} — {linha["Localização"]}'
-                if limpar_valor(linha.get("Localização"))
-                else str(linha["GRE"])
-            ),
-            axis=1,
-        )
-
-    config = dict(config or {})
-    config.setdefault("Título", "Painel de Monitoramento da Climatização Escolar na Paraíba")
-    config["Fonte dos dados"] = (
-        "Resultados de climatização: aba geral selecionada automaticamente; "
-        "setorização, responsáveis e acompanhamento: planilhas auxiliares GEOBS"
-    )
-    config["Última atualização oficial"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-    return base, setor, responsaveis, acompanhamento, config, auditoria, registros_climatizacao
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -1982,84 +792,6 @@ body {
     font-size: 18px;
     font-weight: 900;
     cursor: pointer;
-}
-
-.gre-filter-card {
-    position: relative;
-    z-index: 30;
-}
-
-.gre-multiselect {
-    position: relative;
-}
-
-.gre-multiselect-button {
-    width: 100%;
-    min-height: 27px;
-    padding: 0 24px 0 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--azul-escuro);
-    font-size: 18px;
-    font-weight: 900;
-    text-align: left;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    position: relative;
-}
-
-.gre-multiselect-button::after {
-    content: "▾";
-    position: absolute;
-    right: 2px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 14px;
-}
-
-.gre-multiselect-menu {
-    position: absolute;
-    top: calc(100% + 10px);
-    left: -14px;
-    right: -14px;
-    max-height: 310px;
-    overflow-y: auto;
-    padding: 9px;
-    background: #FFFFFF;
-    border: 1px solid var(--borda);
-    border-radius: 14px;
-    box-shadow: 0 18px 38px rgba(10,40,80,.20);
-    z-index: 1000;
-}
-
-.gre-multiselect-option {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 8px 9px;
-    border-radius: 9px;
-    color: var(--azul-escuro);
-    font-size: 13px;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.gre-multiselect-option:hover {
-    background: var(--azul-gelo);
-}
-
-.gre-multiselect-option input {
-    width: 17px;
-    height: 17px;
-    accent-color: var(--azul-escuro);
-    cursor: pointer;
-}
-
-#greFilter {
-    display: none;
 }
 
 .sync {
@@ -2897,13 +1629,9 @@ body {
             <select id="periodFilter"></select>
         </div>
 
-        <div class="filter gre-filter-card">
-            <label for="greFilterButton">GRE</label>
-            <div class="gre-multiselect" id="greMultiselect">
-                <button type="button" class="gre-multiselect-button" id="greFilterButton" aria-haspopup="true" aria-expanded="false">Todas</button>
-                <div class="gre-multiselect-menu hidden" id="greFilterMenu"></div>
-                <select id="greFilter" multiple aria-hidden="true" tabindex="-1"></select>
-            </div>
+        <div class="filter">
+            <label for="greFilter">GRE</label>
+            <select id="greFilter"></select>
         </div>
 
         <div class="filter">
@@ -3109,8 +1837,8 @@ const respData = __RESP_JSON__;
 const acompData = __ACOMP_JSON__;
 const configData = __CONFIG_JSON__;
 
-const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v7";
-const PERIODOS_FIXOS = ["Todo o período"];
+const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v6";
+const PERIODOS_FIXOS = ["Todo o período", "2025", "2024"];
 
 function isTodoPeriodo(periodo) {
     const p = String(periodo || "").trim();
@@ -3230,113 +1958,16 @@ function greLabel(d) {
     return d?.GRE || "";
 }
 
-function selectedGreValues() {
-    const greFilter = document.getElementById("greFilter");
-    if (!greFilter) return [];
-    return [...greFilter.selectedOptions].map(option => option.value);
-}
-
-function normalizeGreSelection(value) {
-    if (Array.isArray(value)) {
-        return value.filter(item => item && item !== "Todas");
-    }
-    if (!value || value === "Todas") return [];
-    return [String(value)];
-}
-
-function hasGreFilter(gres) {
-    return Array.isArray(gres) && gres.length > 0;
-}
-
-function matchesGre(row, gres) {
-    return !hasGreFilter(gres) || gres.includes(row.GRE);
-}
-
-function labelFromSelectedGres(gres) {
-    if (!hasGreFilter(gres)) return "Todas as GREs";
-    const labels = gres.map(greValue => {
-        const found = baseData.find(d => d.GRE === greValue);
-        return found ? greLabel(found) : greValue;
-    });
-    if (labels.length <= 3) return labels.join(", ");
-    return `${labels.length} GREs selecionadas`;
-}
-
-function updateGreButtonText() {
-    const button = document.getElementById("greFilterButton");
-    if (!button) return;
-    button.textContent = hasGreFilter(selectedGreValues())
-        ? labelFromSelectedGres(selectedGreValues())
-        : "Todas";
-}
-
-function syncGreMenu() {
-    const greFilter = document.getElementById("greFilter");
-    const menu = document.getElementById("greFilterMenu");
-    if (!greFilter || !menu) return;
-
-    const selected = new Set(selectedGreValues());
-    const allChecked = selected.size === 0;
-    let html = `
-        <label class="gre-multiselect-option">
-            <input type="checkbox" data-gre="__TODAS__" ${allChecked ? "checked" : ""}>
-            <span>Todas</span>
-        </label>`;
-
-    [...greFilter.options].forEach(option => {
-        html += `
-            <label class="gre-multiselect-option">
-                <input type="checkbox" data-gre="${escapeHtml(option.value)}" ${selected.has(option.value) ? "checked" : ""}>
-                <span>${escapeHtml(option.textContent)}</span>
-            </label>`;
-    });
-
-    menu.innerHTML = html;
-    menu.querySelectorAll("input[data-gre]").forEach(input => {
-        input.addEventListener("change", () => {
-            const greValue = input.dataset.gre;
-            if (greValue === "__TODAS__") {
-                if (input.checked) {
-                    [...greFilter.options].forEach(option => option.selected = false);
-                }
-            } else {
-                const option = [...greFilter.options].find(item => item.value === greValue);
-                if (option) option.selected = input.checked;
-            }
-
-            syncGreMenu();
-            updateGreButtonText();
-            greFilter.dispatchEvent(new Event("change"));
-        });
-    });
-
-    updateGreButtonText();
-}
-
-function initializeGreMultiselect() {
-    const wrapper = document.getElementById("greMultiselect");
-    const button = document.getElementById("greFilterButton");
-    const menu = document.getElementById("greFilterMenu");
-    if (!wrapper || !button || !menu) return;
-
-    button.addEventListener("click", event => {
-        event.stopPropagation();
-        const willOpen = menu.classList.contains("hidden");
-        menu.classList.toggle("hidden", !willOpen);
-        button.setAttribute("aria-expanded", String(willOpen));
-    });
-
-    menu.addEventListener("click", event => event.stopPropagation());
-    document.addEventListener("click", () => {
-        menu.classList.add("hidden");
-        button.setAttribute("aria-expanded", "false");
-    });
+function labelFromSelectedGre(greValue) {
+    if (greValue === "Todas") return "Todas";
+    const found = baseData.find(d => d.GRE === greValue);
+    return found ? greLabel(found) : greValue;
 }
 
 function getSelectedFilters() {
     return {
         periodo: document.getElementById("periodFilter").value,
-        gre: selectedGreValues(),
+        gre: document.getElementById("greFilter").value,
         responsavel: document.getElementById("responsavelFilter").value,
         area: document.getElementById("areaFilter").value,
         status: "Todos",
@@ -3378,19 +2009,23 @@ function initializeFilters() {
     const viewFilter = document.getElementById("viewFilter");
     const saved = loadDashboardState();
 
-    // O painel passa a trabalhar somente com a visão consolidada de todo o período.
-    setOptions(periodFilter, PERIODOS_FIXOS, "Todo o período");
+    const periodosDaPlanilha = uniqueValues(baseData.map(d => rowPeriodo(d)))
+        .filter(p => p && !PERIODOS_FIXOS.includes(p))
+        .sort();
+    const periodos = [...PERIODOS_FIXOS, ...periodosDaPlanilha];
+    const periodoSalvo = isTodoPeriodo(saved.periodo) ? "Todo o período" : String(saved.periodo || "").trim();
+    const periodoInicial = periodoSalvo && periodos.includes(periodoSalvo) ? periodoSalvo : "Todo o período";
+    setOptions(periodFilter, periodos, periodoInicial);
 
     const areasDescobertas = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
-        .filter(a => a && !["Todas", "Não informado"].includes(a))
+        .filter(a => a && !["Todas", "Civil", "Elétrica", "Não informado"].includes(a))
         .sort();
-    const areas = ["Todas", ...areasDescobertas];
+    const areas = ["Todas", "Civil", "Elétrica", ...areasDescobertas];
     const areaInicial = saved.area && areas.includes(saved.area) ? saved.area : "Todas";
     setOptions(areaFilter, areas, areaInicial);
 
     updateResponsavelOptions(saved.responsavel || "Todos");
-    updateGreOptions(normalizeGreSelection(saved.gre));
-    initializeGreMultiselect();
+    updateGreOptions(saved.gre || "Todas");
     safeSelectValue(viewFilter, saved.visao || "Geral", "Geral");
 
     periodFilter.addEventListener("change", () => {
@@ -3403,7 +2038,8 @@ function initializeFilters() {
         updateResponsavelOptions();
         updateGreOptions();
 
-        // Ao escolher uma área técnica, o painel abre a carteira dos responsáveis.
+        // Quando o usuário escolhe Civil ou Elétrica, o painel entra direto
+        // na visão mais adequada: carteira técnica dos responsáveis daquele setor.
         if (areaFilter.value !== "Todas") {
             safeSelectValue(viewFilter, "Responsáveis", "Geral");
         }
@@ -3471,32 +2107,26 @@ function updateGreOptions(preferredValue = null) {
         filtered = filtered.filter(d => linked.has(d.GRE));
     }
 
-    const oldValues = preferredValue !== null
-        ? normalizeGreSelection(preferredValue)
-        : selectedGreValues();
+    const oldValue = preferredValue || greFilter.value || "Todas";
+    greFilter.innerHTML = "";
 
-    const uniqueGres = [];
-    const seen = new Set();
+    const optTodas = document.createElement("option");
+    optTodas.value = "Todas";
+    optTodas.textContent = "Todas";
+    greFilter.appendChild(optTodas);
+
     filtered
         .slice()
         .sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0))
         .forEach(d => {
-            if (!seen.has(d.GRE)) {
-                seen.add(d.GRE);
-                uniqueGres.push(d);
-            }
+            const option = document.createElement("option");
+            option.value = d.GRE;
+            option.textContent = greLabel(d);
+            greFilter.appendChild(option);
         });
 
-    greFilter.innerHTML = "";
-    uniqueGres.forEach(d => {
-        const option = document.createElement("option");
-        option.value = d.GRE;
-        option.textContent = greLabel(d);
-        option.selected = oldValues.includes(d.GRE);
-        greFilter.appendChild(option);
-    });
-
-    syncGreMenu();
+    const possible = [...greFilter.options].map(o => o.value);
+    greFilter.value = possible.includes(oldValue) ? oldValue : "Todas";
 }
 
 function filterBase() {
@@ -3512,8 +2142,8 @@ function filterBase() {
         rows = rows.filter(d => linked.has(d.GRE));
     }
 
-    if (hasGreFilter(f.gre)) {
-        rows = rows.filter(d => matchesGre(d, f.gre));
+    if (f.gre !== "Todas") {
+        rows = rows.filter(d => d.GRE === f.gre);
     }
 
     return rows.sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
@@ -3532,8 +2162,8 @@ function filterAcompanhamento() {
         rows = rows.filter(d => linked.has(d.GRE));
     }
 
-    if (hasGreFilter(f.gre)) {
-        rows = rows.filter(d => matchesGre(d, f.gre));
+    if (f.gre !== "Todas") {
+        rows = rows.filter(d => d.GRE === f.gre);
     }
 
     if (f.status !== "Todos") {
@@ -3623,7 +2253,7 @@ function renderPanorama(rows) {
 
         panel.innerHTML = htmlAnual;
         const totalClim = rows.reduce((sum, d) => sum + Number(d.Climatizadas || 0), 0);
-        if (f.gre.length === 1) {
+        if (f.gre !== "Todas") {
             const d = rows[0];
             info.innerHTML = `Em <strong>${escapeHtml(f.periodo)}</strong>, a <strong>${escapeHtml(greLabel(d))}</strong> apresenta <strong>${fmtNum(d.Climatizadas)}</strong> escolas climatizadas.`;
         } else {
@@ -3662,7 +2292,7 @@ function renderPanorama(rows) {
 
     panel.innerHTML = html;
 
-    if (f.gre.length === 1) {
+    if (f.gre !== "Todas") {
         const d = rows[0];
         const pendencias = Number(d["Em andamento"] || 0) + Number(d["Em rota"] || 0);
         info.innerHTML =
@@ -3764,7 +2394,7 @@ function renderSummary(rows, totals) {
         return;
     }
 
-    if (f.gre.length === 1) {
+    if (f.gre !== "Todas") {
         const d = rows[0];
         panel.innerHTML = `
             <div class="summary-line"><span class="check"></span><span>A <strong>${escapeHtml(greLabel(d))}</strong> possui <strong>${fmtNum(d.Total)}</strong> escolas na base filtrada.</span></div>
@@ -3794,8 +2424,8 @@ function rowsBaseForArea(areaName) {
         respRows = respRows.filter(d => d["Responsável Técnico"] === f.responsavel);
     }
 
-    if (hasGreFilter(f.gre)) {
-        respRows = respRows.filter(d => matchesGre(d, f.gre));
+    if (f.gre !== "Todas") {
+        respRows = respRows.filter(d => d.GRE === f.gre);
     }
 
     const greSet = new Set(respRows.map(d => d.GRE));
@@ -3805,8 +2435,8 @@ function rowsBaseForArea(areaName) {
         baseRows = baseRows.filter(d => matchesPeriodo(d, f.periodo));
     }
 
-    if (hasGreFilter(f.gre)) {
-        baseRows = baseRows.filter(d => matchesGre(d, f.gre));
+    if (f.gre !== "Todas") {
+        baseRows = baseRows.filter(d => d.GRE === f.gre);
     }
 
     baseRows = baseRows.filter(d => greSet.has(d.GRE));
@@ -3817,16 +2447,7 @@ function renderAreaStats() {
     const f = getSelectedFilters();
     const grid = document.getElementById("areaStatsGrid");
     const info = document.getElementById("areaStatsInfo");
-    const areasDisponiveis = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
-        .filter(a => a && !["Todas", "Não informado"].includes(a))
-        .sort();
-    const areas = f.area !== "Todas" ? [f.area] : areasDisponiveis;
-
-    if (areas.length === 0) {
-        grid.innerHTML = "";
-        info.textContent = "A planilha geral não informou responsáveis técnicos para os registros de climatização.";
-        return;
-    }
+    const areas = f.area !== "Todas" ? [f.area] : ["Civil", "Elétrica"];
 
     let html = "";
     const resumo = [];
@@ -3878,7 +2499,7 @@ function renderResponsaveis(rows) {
 
     if (f.area !== "Todas") respRows = respRows.filter(d => areaMatches(d, f.area));
     if (f.responsavel !== "Todos") respRows = respRows.filter(d => d["Responsável Técnico"] === f.responsavel);
-    if (hasGreFilter(f.gre)) respRows = respRows.filter(d => matchesGre(d, f.gre));
+    if (f.gre !== "Todas") respRows = respRows.filter(d => d.GRE === f.gre);
 
     const respNames = uniqueValues(respRows.map(d => d["Responsável Técnico"]));
     const linkedGres = new Set(respRows.map(d => d.GRE));
@@ -4113,13 +2734,12 @@ function renderDashboard() {
     document.getElementById("subtitle").textContent =
         "Secretaria de Estado da Educação - Gerência de Obras";
 
-    const greTitle = labelFromSelectedGres(f.gre);
     if (isPeriodoAnual(f.periodo)) {
-        document.getElementById("panoramaTitle").textContent = hasGreFilter(f.gre) ? `Climatizadas em ${f.periodo} — ${greTitle}` : `Climatizadas por GRE — ${f.periodo}`;
+        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Climatizadas em ${f.periodo} — ${labelFromSelectedGre(f.gre)}` : `Climatizadas por GRE — ${f.periodo}`;
     } else {
-        document.getElementById("panoramaTitle").textContent = hasGreFilter(f.gre) ? `Panorama — ${greTitle}` : "Panorama por GRE";
+        document.getElementById("panoramaTitle").textContent = f.gre !== "Todas" ? `Panorama da ${labelFromSelectedGre(f.gre)}` : "Panorama por GRE";
     }
-    document.getElementById("rankingTitle").textContent = hasGreFilter(f.gre) ? `Pendências — ${greTitle}` : "Ranking de Pendências";
+    document.getElementById("rankingTitle").textContent = f.gre !== "Todas" ? `Pendências da ${labelFromSelectedGre(f.gre)}` : "Ranking de Pendências";
 
     const atualizacaoOficial = configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "";
     const fonte = configData["Fonte dos dados"] || "GEOBS / Governo da Paraíba";
@@ -4161,45 +2781,11 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, responsaveis: pd.DataFr
 
 def renderizar():
     try:
-        base, setor, responsaveis, acompanhamento, config, auditoria, registros = carregar_dados()
-
-        with st.expander("Conferência da leitura da planilha geral", expanded=False):
-            st.write(
-                f'**Aba utilizada:** {auditoria.get("aba_escolhida", "")}  '
-                f'| **Escolas únicas:** {auditoria.get("total_escolas_unicas", 0)}  '
-                f'| **Climatizadas:** {auditoria.get("climatizadas", 0)}  '
-                f'| **Em andamento:** {auditoria.get("em_andamento", 0)}  '
-                f'| **Em rota:** {auditoria.get("em_rota", 0)}'
-            )
-            aba_audit = auditoria.get("aba", {})
-            st.caption(
-                "Linhas válidas antes da remoção de duplicidades: "
-                f'{aba_audit.get("linhas_validas_antes_duplicidade", 0)}; '
-                "duplicidades exatas removidas: "
-                f'{aba_audit.get("duplicidades_removidas", 0)}; '
-                "linhas sem GRE: "
-                f'{aba_audit.get("sem_gre", 0)}; '
-                "linhas sem escola: "
-                f'{aba_audit.get("sem_escola", 0)}.'
-            )
-            colunas_auditoria = [
-                "Fonte_Linha", "GRE_Original", "GRE", "Município",
-                "Unidade Escolar", "Status_Original", "Categoria",
-            ]
-            colunas_auditoria = [c for c in colunas_auditoria if c in registros.columns]
-            st.dataframe(
-                registros[colunas_auditoria].sort_values(["GRE", "Unidade Escolar"]),
-                use_container_width=True,
-                hide_index=True,
-            )
-
+        base, setor, responsaveis, acompanhamento, config = carregar_dados()
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
         components.html(html, height=6200, scrolling=True)
     except Exception as erro:
-        st.error(
-            "Erro ao carregar os dados. A versão auditada usa somente a aba geral "
-            "mais completa e calcula o total pela quantidade de escolas únicas."
-        )
+        st.error("Erro ao montar o dashboard. Verifique se as abas publicadas continuam acessíveis e com os nomes de colunas esperados.")
         st.exception(erro)
 
 
