@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
+from io import BytesIO
+from typing import List, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import streamlit as st
@@ -284,7 +289,7 @@ def normalizar_texto(texto: str) -> str:
 
 
 
-def inferir_area_tecnica(*valores) -> str | None:
+def inferir_area_tecnica(*valores) -> Optional[str]:
     """Identifica se um texto está ligado ao setor civil ou elétrico."""
     texto = " ".join(normalizar_texto(valor) for valor in valores if valor is not None)
 
@@ -309,7 +314,7 @@ def inferir_area_tecnica(*valores) -> str | None:
     return None
 
 
-def achar_coluna(df: pd.DataFrame, opcoes: list[str], obrigatoria: bool = False) -> str | None:
+def achar_coluna(df: pd.DataFrame, opcoes: List[str], obrigatoria: bool = False) -> Optional[str]:
     mapa = {normalizar_texto(col): col for col in df.columns}
     for opcao in opcoes:
         chave = normalizar_texto(opcao)
@@ -371,7 +376,7 @@ def periodo_para_texto(valor) -> str:
     return texto_original
 
 
-def padronizar_gre(valor: str) -> str | None:
+def padronizar_gre(valor: str) -> Optional[str]:
     if pd.isna(valor):
         return None
 
@@ -391,7 +396,7 @@ def padronizar_gre(valor: str) -> str | None:
     return f"{numero}ª GRE"
 
 
-def split_responsaveis(valor) -> list[str]:
+def split_responsaveis(valor) -> List[str]:
     if pd.isna(valor):
         return []
 
@@ -642,13 +647,57 @@ def tratar_config(df: pd.DataFrame) -> dict:
     return config
 
 
+def ler_csv_publicado(url: str, nome_aba: str, tentativas: int = 3) -> pd.DataFrame:
+    """Baixa uma aba publicada do Google Sheets com timeout e novas tentativas.
+
+    O uso de ``urllib`` evita dependências adicionais e fornece mensagens de erro
+    mais claras no Streamlit Community Cloud.
+    """
+    ultimo_erro = None
+
+    for tentativa in range(1, tentativas + 1):
+        try:
+            requisicao = Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; StreamlitDashboard/1.0)",
+                    "Accept": "text/csv,text/plain,*/*",
+                },
+            )
+
+            with urlopen(requisicao, timeout=35) as resposta:
+                conteudo = resposta.read()
+
+            if not conteudo:
+                raise ValueError("A resposta recebida está vazia.")
+
+            inicio = conteudo.lstrip()[:80].lower()
+            if inicio.startswith(b"<!doctype html") or inicio.startswith(b"<html"):
+                raise ValueError(
+                    "O Google retornou uma página HTML em vez do CSV. "
+                    "Confirme se a aba está publicada na web."
+                )
+
+            return pd.read_csv(BytesIO(conteudo))
+
+        except (HTTPError, URLError, TimeoutError, ValueError, pd.errors.ParserError) as erro:
+            ultimo_erro = erro
+            if tentativa < tentativas:
+                time.sleep(1.5 * tentativa)
+
+    raise RuntimeError(
+        f"Não foi possível carregar a aba '{nome_aba}' após {tentativas} tentativas. "
+        f"Detalhe: {ultimo_erro}"
+    ) from ultimo_erro
+
+
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
 def carregar_dados():
-    base = tratar_base_geral(pd.read_csv(BASE_GERAL_URL))
-    setor = tratar_setorizacao(pd.read_csv(SETORIZACAO_URL))
-    responsaveis = tratar_responsaveis(pd.read_csv(RESPONSAVEIS_URL))
-    acompanhamento = tratar_acompanhamento(pd.read_csv(ACOMPANHAMENTO_URL))
-    config = tratar_config(pd.read_csv(CONFIG_URL))
+    base = tratar_base_geral(ler_csv_publicado(BASE_GERAL_URL, "Base Geral"))
+    setor = tratar_setorizacao(ler_csv_publicado(SETORIZACAO_URL, "Setorização"))
+    responsaveis = tratar_responsaveis(ler_csv_publicado(RESPONSAVEIS_URL, "Responsáveis"))
+    acompanhamento = tratar_acompanhamento(ler_csv_publicado(ACOMPANHAMENTO_URL, "Acompanhamento"))
+    config = tratar_config(ler_csv_publicado(CONFIG_URL, "Configuração"))
 
     return base, setor, responsaveis, acompanhamento, config
 
@@ -2971,11 +3020,23 @@ def renderizar():
         st.exception(erro)
 
 
-if hasattr(st, "fragment"):
-    @st.fragment(run_every=f"{REFRESH_SECONDS}s")
-    def painel():
-        renderizar()
+def iniciar_dashboard():
+    """Inicia o painel sem quebrar em versões antigas do Streamlit."""
+    fragmento = getattr(st, "fragment", None)
 
-    painel()
-else:
+    if callable(fragmento):
+        try:
+            @fragmento(run_every=f"{REFRESH_SECONDS}s")
+            def painel():
+                renderizar()
+
+            painel()
+            return
+        except TypeError:
+            # Algumas versões antigas possuem API de fragmentos diferente.
+            pass
+
     renderizar()
+
+
+iniciar_dashboard()
