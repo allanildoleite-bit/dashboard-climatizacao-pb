@@ -79,7 +79,7 @@ st.markdown(
 }
 .block-container {
     max-width: 1800px;
-    padding: 0;
+    padding: 0.55rem 0.75rem 0 0.75rem;
 }
 [data-testid="stSidebar"],
 [data-testid="stToolbar"],
@@ -1394,59 +1394,69 @@ def renderizar_gerador_relatorio(
     st.markdown(
         """
         <style>
-        div[data-testid="stExpander"] {
-            margin: 12px 18px 0 18px;
-            border: 1px solid #D9E4F2;
-            border-radius: 14px;
-            background: #FFFFFF;
-            box-shadow: 0 8px 22px rgba(10,40,80,.075);
-        }
         div[data-testid="stDownloadButton"] button {
             background: linear-gradient(90deg, #001F49, #0059A8);
             color: white;
             border: 0;
             font-weight: 800;
-            min-height: 44px;
+            min-height: 46px;
+        }
+        div[data-testid="stTabs"] button {
+            font-size: 1rem;
+            font-weight: 800;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    with st.expander("📄 Gerar relatório em PDF", expanded=False):
-        if not REPORTLAB_DISPONIVEL:
-            st.error("O gerador de PDF precisa da biblioteca ReportLab. Adicione `reportlab` ao requirements.txt.")
-            return
+    st.markdown("## 📄 Relatório de climatização em PDF")
+    st.caption(
+        "Defina os filtros abaixo. O arquivo será montado com os indicadores, "
+        "gráficos, resultados por GRE, responsáveis, setorização e acompanhamento operacional."
+    )
 
-        periodos_encontrados = []
-        if "Periodo" in base.columns:
-            periodos_encontrados = [
-                str(valor)
-                for valor in base["Periodo"].dropna().unique()
-                if str(valor).strip() and str(valor).strip() != "Todo o período"
-            ]
-        periodos = ["Todo o período"] + sorted(set(periodos_encontrados))
-
-        mapa_gres = (
-            base[["GRE", "GRE_Label"]]
-            .drop_duplicates("GRE")
-            .sort_values("Ordem")
-            .set_index("GRE")["GRE_Label"]
-            .astype(str)
-            .to_dict()
+    if not REPORTLAB_DISPONIVEL:
+        st.error(
+            "O gerador de PDF precisa da biblioteca ReportLab. "
+            "Instale com `pip install reportlab` ou inclua `reportlab` no requirements.txt."
         )
-        opcoes_gre = list(mapa_gres.keys())
+        return
 
-        resp_opcoes = responsaveis.copy()
-        resp_opcoes["_Área Relatório"] = resp_opcoes.apply(_area_tecnica_linha, axis=1)
-        areas = ["Todas"] + sorted(
-            valor for valor in resp_opcoes["_Área Relatório"].dropna().astype(str).unique() if valor
-        )
+    periodos_encontrados = []
+    if "Periodo" in base.columns:
+        periodos_encontrados = [
+            str(valor)
+            for valor in base["Periodo"].dropna().unique()
+            if str(valor).strip() and str(valor).strip() != "Todo o período"
+        ]
+    periodos = ["Todo o período"] + sorted(set(periodos_encontrados))
 
-        c1, c2, c3, c4 = st.columns([1.0, 1.8, 1.1, 1.5])
+    mapa_gres = (
+        base[["GRE", "GRE_Label", "Ordem"]]
+        .drop_duplicates("GRE")
+        .sort_values("Ordem")
+        .set_index("GRE")["GRE_Label"]
+        .astype(str)
+        .to_dict()
+    )
+    opcoes_gre = list(mapa_gres.keys())
+
+    resp_opcoes = responsaveis.copy()
+    resp_opcoes["_Área Relatório"] = resp_opcoes.apply(_area_tecnica_linha, axis=1)
+    areas = ["Todas"] + sorted(
+        valor for valor in resp_opcoes["_Área Relatório"].dropna().astype(str).unique() if valor
+    )
+
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
         with c1:
             periodo = st.selectbox("Período do relatório", periodos, key="pdf_periodo")
         with c2:
+            area = st.selectbox("Área técnica", areas, key="pdf_area")
+
+        c3, c4 = st.columns(2)
+        with c3:
             gres = st.multiselect(
                 "GRE",
                 opcoes_gre,
@@ -1454,17 +1464,21 @@ def renderizar_gerador_relatorio(
                 placeholder="Todas as GREs",
                 key="pdf_gres",
             )
-        with c3:
-            area = st.selectbox("Área técnica", areas, key="pdf_area")
 
         resp_area = resp_opcoes.copy()
         if area != "Todas":
             resp_area = resp_area[resp_area["_Área Relatório"] == area]
         nomes_responsaveis = ["Todos"] + sorted(
-            valor for valor in resp_area["Responsável Técnico"].dropna().astype(str).unique() if valor
+            valor
+            for valor in resp_area["Responsável Técnico"].dropna().astype(str).unique()
+            if valor
         )
         with c4:
-            responsavel = st.selectbox("Responsável técnico", nomes_responsaveis, key="pdf_responsavel")
+            responsavel = st.selectbox(
+                "Responsável técnico",
+                nomes_responsaveis,
+                key="pdf_responsavel",
+            )
 
         incluir_detalhes = st.checkbox(
             "Incluir detalhamento dos registros operacionais no PDF",
@@ -1472,7 +1486,8 @@ def renderizar_gerador_relatorio(
             key="pdf_incluir_detalhes",
         )
 
-        try:
+    try:
+        with st.spinner("Preparando o relatório..."):
             pdf = gerar_relatorio_pdf(
                 base=base,
                 setor=setor,
@@ -1485,21 +1500,20 @@ def renderizar_gerador_relatorio(
                 responsavel=responsavel,
                 incluir_detalhes_operacionais=incluir_detalhes,
             )
-            sufixo = datetime.now().strftime("%Y%m%d_%H%M")
-            st.download_button(
-                label="Baixar relatório em PDF",
-                data=pdf,
-                file_name=f"relatorio_climatizacao_{sufixo}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                key="download_relatorio_climatizacao",
-            )
-            st.caption(
-                "O PDF usa os filtros definidos acima e contém indicadores, gráficos, resumo executivo, resultados por GRE, prioridades, responsáveis, setorização e acompanhamento operacional."
-            )
-        except Exception as erro:
-            st.error("Não foi possível montar o relatório com os filtros selecionados.")
-            st.exception(erro)
+
+        sufixo = datetime.now().strftime("%Y%m%d_%H%M")
+        st.success("Relatório pronto para download.")
+        st.download_button(
+            label="⬇️ Baixar relatório em PDF",
+            data=pdf,
+            file_name=f"relatorio_climatizacao_{sufixo}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key="download_relatorio_climatizacao",
+        )
+    except Exception as erro:
+        st.error("Não foi possível montar o relatório com os filtros selecionados.")
+        st.exception(erro)
 
 
 HTML_TEMPLATE = r"""
@@ -3813,11 +3827,29 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, responsaveis: pd.DataFr
 def renderizar():
     try:
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
-        renderizar_gerador_relatorio(base, setor, responsaveis, acompanhamento, config)
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
-        components.html(html, height=6200, scrolling=True)
+
+        aba_dashboard, aba_relatorio = st.tabs([
+            "📊 Dashboard",
+            "📄 Gerar relatório PDF",
+        ])
+
+        with aba_dashboard:
+            components.html(html, height=6200, scrolling=True)
+
+        with aba_relatorio:
+            renderizar_gerador_relatorio(
+                base,
+                setor,
+                responsaveis,
+                acompanhamento,
+                config,
+            )
     except Exception as erro:
-        st.error("Erro ao montar o dashboard. Verifique se as abas publicadas continuam acessíveis e com os nomes de colunas esperados.")
+        st.error(
+            "Erro ao montar o dashboard. Verifique se as abas publicadas continuam "
+            "acessíveis e com os nomes de colunas esperados."
+        )
         st.exception(erro)
 
 
