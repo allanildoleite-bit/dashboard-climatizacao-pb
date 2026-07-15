@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import time
@@ -13,6 +14,35 @@ from urllib.request import Request, urlopen
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+
+# ============================================================
+# DEPENDÊNCIAS OPCIONAIS PARA O RELATÓRIO EM PDF
+# ============================================================
+
+try:
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing, Rect, String
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        KeepTogether,
+        LongTable,
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+        Image as RLImage,
+    )
+
+    REPORTLAB_DISPONIVEL = True
+except ImportError:
+    REPORTLAB_DISPONIVEL = False
 
 
 # ============================================================
@@ -700,6 +730,776 @@ def carregar_dados():
     config = tratar_config(ler_csv_publicado(CONFIG_URL, "Configuração"))
 
     return base, setor, responsaveis, acompanhamento, config
+
+
+# ============================================================
+# RELATÓRIO EM PDF
+# ============================================================
+
+AZUL_NOITE = colors.HexColor("#001F49") if REPORTLAB_DISPONIVEL else None
+AZUL_ESCURO = colors.HexColor("#003B73") if REPORTLAB_DISPONIVEL else None
+AZUL_MEDIO = colors.HexColor("#1F77D0") if REPORTLAB_DISPONIVEL else None
+AZUL_CLARO = colors.HexColor("#8ED4FF") if REPORTLAB_DISPONIVEL else None
+AZUL_GELO = colors.HexColor("#EAF4FF") if REPORTLAB_DISPONIVEL else None
+VERMELHO = colors.HexColor("#EF4444") if REPORTLAB_DISPONIVEL else None
+VERMELHO_ESCURO = colors.HexColor("#B91C1C") if REPORTLAB_DISPONIVEL else None
+CINZA_TEXTO = colors.HexColor("#435268") if REPORTLAB_DISPONIVEL else None
+CINZA_BORDA = colors.HexColor("#D9E4F2") if REPORTLAB_DISPONIVEL else None
+
+
+def _fmt_num_br(valor) -> str:
+    try:
+        numero = int(round(float(valor or 0)))
+    except (TypeError, ValueError):
+        numero = 0
+    return f"{numero:,}".replace(",", ".")
+
+
+def _fmt_pct_br(valor) -> str:
+    try:
+        numero = float(valor or 0) * 100
+    except (TypeError, ValueError):
+        numero = 0.0
+    return f"{numero:,.1f}%".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _texto_pdf(valor) -> str:
+    texto = "" if valor is None else str(valor)
+    substituicoes = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "—": "-",
+        "–": "-",
+        "•": "-",
+        "“": '"',
+        "”": '"',
+        "’": "'",
+    }
+    for antigo, novo in substituicoes.items():
+        texto = texto.replace(antigo, novo)
+    return texto
+
+
+def _area_tecnica_linha(linha) -> str:
+    area = inferir_area_tecnica(
+        linha.get("Área", ""),
+        linha.get("Tipo Profissional", ""),
+        linha.get("Equipe", ""),
+        linha.get("Responsável Técnico", ""),
+    )
+    if area:
+        return area
+    valor = str(linha.get("Área", "")).strip()
+    return valor if valor else "Não informado"
+
+
+def _data_uri_para_imagem(data_uri: str, largura_max: float, altura_max: float):
+    if not REPORTLAB_DISPONIVEL or not data_uri or "," not in data_uri:
+        return Spacer(largura_max, altura_max)
+
+    try:
+        conteudo = base64.b64decode(data_uri.split(",", 1)[1])
+        imagem = RLImage(BytesIO(conteudo))
+        escala = min(
+            largura_max / max(float(imagem.imageWidth), 1),
+            altura_max / max(float(imagem.imageHeight), 1),
+        )
+        imagem.drawWidth = imagem.imageWidth * escala
+        imagem.drawHeight = imagem.imageHeight * escala
+        return imagem
+    except Exception:
+        return Spacer(largura_max, altura_max)
+
+
+def _filtrar_relatorio(
+    base: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    periodo: str,
+    gres_selecionadas: List[str],
+    area: str,
+    responsavel: str,
+):
+    base_filtrada = base.copy()
+    resp_filtrados = responsaveis.copy()
+    acomp_filtrado = acompanhamento.copy()
+
+    if "_Área Relatório" not in resp_filtrados.columns:
+        resp_filtrados["_Área Relatório"] = resp_filtrados.apply(_area_tecnica_linha, axis=1)
+
+    if periodo and periodo != "Todo o período":
+        if "Periodo" in base_filtrada.columns:
+            base_filtrada = base_filtrada[base_filtrada["Periodo"].astype(str) == str(periodo)]
+        if "Periodo" in acomp_filtrado.columns:
+            acomp_filtrado = acomp_filtrado[acomp_filtrado["Periodo"].astype(str) == str(periodo)]
+
+    if area and area != "Todas":
+        resp_filtrados = resp_filtrados[resp_filtrados["_Área Relatório"] == area]
+
+    if responsavel and responsavel != "Todos":
+        resp_filtrados = resp_filtrados[
+            resp_filtrados["Responsável Técnico"].astype(str) == str(responsavel)
+        ]
+
+    aplicar_vinculo_tecnico = (area and area != "Todas") or (responsavel and responsavel != "Todos")
+    if aplicar_vinculo_tecnico:
+        gres_vinculadas = set(resp_filtrados["GRE"].dropna().astype(str))
+        base_filtrada = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_vinculadas)]
+        acomp_filtrado = acomp_filtrado[acomp_filtrado["GRE"].astype(str).isin(gres_vinculadas)]
+
+    if gres_selecionadas:
+        gres_set = set(str(gre) for gre in gres_selecionadas)
+        base_filtrada = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_set)]
+        resp_filtrados = resp_filtrados[resp_filtrados["GRE"].astype(str).isin(gres_set)]
+        acomp_filtrado = acomp_filtrado[acomp_filtrado["GRE"].astype(str).isin(gres_set)]
+
+    if "Ordem" in base_filtrada.columns:
+        base_filtrada = base_filtrada.sort_values("Ordem")
+    if "Ordem" in resp_filtrados.columns:
+        resp_filtrados = resp_filtrados.sort_values(["_Área Relatório", "Responsável Técnico", "Ordem"])
+    if "Ordem" in acomp_filtrado.columns:
+        acomp_filtrado = acomp_filtrado.sort_values(["Ordem", "Município", "Unidade Escolar"])
+
+    return base_filtrada, resp_filtrados, acomp_filtrado
+
+
+def _totais_relatorio(base_filtrada: pd.DataFrame) -> dict:
+    if base_filtrada.empty:
+        return {
+            "total": 0,
+            "climatizadas": 0,
+            "andamento": 0,
+            "rota": 0,
+            "pendencias": 0,
+            "conclusao": 0.0,
+        }
+
+    climatizadas = float(base_filtrada["Climatizadas"].sum())
+    andamento = float(base_filtrada["Em andamento"].sum())
+    rota = float(base_filtrada["Em rota"].sum())
+    total = float(base_filtrada["Total"].sum())
+    pendencias = andamento + rota
+    conclusao = climatizadas / total if total else 0.0
+
+    return {
+        "total": total,
+        "climatizadas": climatizadas,
+        "andamento": andamento,
+        "rota": rota,
+        "pendencias": pendencias,
+        "conclusao": conclusao,
+    }
+
+
+def _estilos_relatorio():
+    estilos_base = getSampleStyleSheet()
+    return {
+        "titulo": ParagraphStyle(
+            "TituloRelatorio",
+            parent=estilos_base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=20,
+            leading=24,
+            textColor=AZUL_NOITE,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        ),
+        "subtitulo": ParagraphStyle(
+            "SubtituloRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=CINZA_TEXTO,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        ),
+        "secao": ParagraphStyle(
+            "SecaoRelatorio",
+            parent=estilos_base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            leading=16,
+            textColor=AZUL_ESCURO,
+            spaceBefore=10,
+            spaceAfter=7,
+            keepWithNext=True,
+        ),
+        "corpo": ParagraphStyle(
+            "CorpoRelatorio",
+            parent=estilos_base["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#25364B"),
+            alignment=TA_JUSTIFY,
+            spaceAfter=5,
+        ),
+        "corpo_esquerda": ParagraphStyle(
+            "CorpoEsquerdaRelatorio",
+            parent=estilos_base["BodyText"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#25364B"),
+            alignment=TA_LEFT,
+        ),
+        "pequeno": ParagraphStyle(
+            "PequenoRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            leading=10,
+            textColor=CINZA_TEXTO,
+        ),
+        "kpi": ParagraphStyle(
+            "KpiRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            alignment=TA_CENTER,
+            textColor=AZUL_ESCURO,
+        ),
+    }
+
+
+def _grafico_status(totais: dict) -> Drawing:
+    desenho = Drawing(480, 215)
+    desenho.add(String(0, 196, "Distribuição do status geral", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+
+    valores = [totais["climatizadas"], totais["andamento"], totais["rota"]]
+    if sum(valores) <= 0:
+        desenho.add(String(0, 160, "Não há dados para os filtros selecionados.", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        return desenho
+
+    pizza = Pie()
+    pizza.x = 15
+    pizza.y = 30
+    pizza.width = 155
+    pizza.height = 155
+    pizza.data = valores
+    # Os valores já aparecem na legenda; rótulos sobre a pizza poderiam
+    # colidir com o título em telas ou páginas menores.
+    pizza.labels = ["", "", ""]
+    pizza.slices[0].fillColor = AZUL_ESCURO
+    pizza.slices[1].fillColor = AZUL_CLARO
+    pizza.slices[2].fillColor = VERMELHO
+    pizza.slices.strokeColor = colors.white
+    pizza.slices.strokeWidth = 1
+    desenho.add(pizza)
+
+    legenda = [
+        ("Climatizadas", AZUL_ESCURO, totais["climatizadas"]),
+        ("Em andamento", AZUL_CLARO, totais["andamento"]),
+        ("Em rota", VERMELHO, totais["rota"]),
+    ]
+    y = 154
+    for rotulo, cor, valor in legenda:
+        desenho.add(Rect(220, y - 7, 12, 12, fillColor=cor, strokeColor=cor))
+        desenho.add(String(242, y - 4, rotulo, fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        desenho.add(String(425, y - 4, _fmt_num_br(valor), fontName="Helvetica-Bold", fontSize=9, fillColor=AZUL_NOITE, textAnchor="end"))
+        y -= 30
+
+    desenho.add(String(220, 42, "Conclusão geral", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+    desenho.add(String(425, 40, _fmt_pct_br(totais["conclusao"]), fontName="Helvetica-Bold", fontSize=18, fillColor=AZUL_ESCURO, textAnchor="end"))
+    return desenho
+
+
+def _grafico_ranking(base_filtrada: pd.DataFrame, max_linhas: int = 10) -> Drawing:
+    linhas = base_filtrada.copy()
+    if linhas.empty:
+        desenho = Drawing(480, 80)
+        desenho.add(String(0, 58, "Ranking de pendências", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+        desenho.add(String(0, 30, "Não há dados para os filtros selecionados.", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        return desenho
+
+    linhas["_Pendências Relatório"] = linhas["Em andamento"].astype(float) + linhas["Em rota"].astype(float)
+    linhas = linhas.sort_values("_Pendências Relatório", ascending=False).head(max_linhas)
+    altura = 42 + len(linhas) * 24
+    desenho = Drawing(480, altura)
+    desenho.add(String(0, altura - 16, "Ranking de pendências por GRE", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+
+    maximo = max(float(linhas["_Pendências Relatório"].max()), 1.0)
+    y = altura - 44
+    for _, linha in linhas.iterrows():
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        if len(label) > 29:
+            label = label[:27] + "..."
+        andamento = float(linha.get("Em andamento", 0) or 0)
+        rota = float(linha.get("Em rota", 0) or 0)
+        total = andamento + rota
+        largura_total = 245 * total / maximo
+        largura_andamento = largura_total * andamento / total if total else 0
+        largura_rota = largura_total - largura_andamento
+
+        desenho.add(String(0, y + 3, label, fontName="Helvetica", fontSize=7.5, fillColor=CINZA_TEXTO))
+        desenho.add(Rect(165, y, 245, 10, fillColor=colors.HexColor("#EEF3F8"), strokeColor=colors.HexColor("#EEF3F8")))
+        if largura_andamento:
+            desenho.add(Rect(165, y, largura_andamento, 10, fillColor=AZUL_MEDIO, strokeColor=AZUL_MEDIO))
+        if largura_rota:
+            desenho.add(Rect(165 + largura_andamento, y, largura_rota, 10, fillColor=VERMELHO, strokeColor=VERMELHO))
+        desenho.add(String(468, y + 2, _fmt_num_br(total), fontName="Helvetica-Bold", fontSize=8, fillColor=AZUL_NOITE, textAnchor="end"))
+        y -= 24
+
+    return desenho
+
+
+def _tabela_padrao(dados, larguras, repetir_cabecalho=True, fonte=7.5):
+    dados = list(dados)
+    if dados:
+        estilo_cabecalho = ParagraphStyle(
+            "CabecalhoTabelaRelatorio",
+            fontName="Helvetica-Bold",
+            fontSize=fonte,
+            leading=fonte + 2,
+            textColor=colors.white,
+            alignment=TA_CENTER,
+        )
+        cabecalho = []
+        for valor in dados[0]:
+            texto = valor.getPlainText() if isinstance(valor, Paragraph) else str(valor)
+            cabecalho.append(Paragraph(_texto_pdf(texto), estilo_cabecalho))
+        dados = [cabecalho] + dados[1:]
+
+    tabela = LongTable(
+        dados,
+        colWidths=larguras,
+        repeatRows=1 if repetir_cabecalho else 0,
+        hAlign="LEFT",
+    )
+    tabela.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), AZUL_ESCURO),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), fonte),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), fonte),
+            ("GRID", (0, 0), (-1, -1), 0.35, CINZA_BORDA),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F9FC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ])
+    )
+    return tabela
+
+
+def _cabecalho_rodape_pdf(canvas, documento):
+    canvas.saveState()
+    largura, _ = A4
+    canvas.setStrokeColor(CINZA_BORDA)
+    canvas.setLineWidth(0.5)
+    canvas.line(1.6 * cm, 1.35 * cm, largura - 1.6 * cm, 1.35 * cm)
+    canvas.setFont("Helvetica", 7.5)
+    canvas.setFillColor(CINZA_TEXTO)
+    canvas.drawString(1.6 * cm, 0.85 * cm, "Painel de Monitoramento da Climatização Escolar na Paraíba")
+    canvas.drawRightString(largura - 1.6 * cm, 0.85 * cm, f"Página {documento.page}")
+    canvas.restoreState()
+
+
+def gerar_relatorio_pdf(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+    periodo: str = "Todo o período",
+    gres_selecionadas: Optional[List[str]] = None,
+    area: str = "Todas",
+    responsavel: str = "Todos",
+    incluir_detalhes_operacionais: bool = False,
+) -> bytes:
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError("A biblioteca ReportLab não está instalada.")
+
+    gres_selecionadas = gres_selecionadas or []
+    base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
+        base,
+        responsaveis,
+        acompanhamento,
+        periodo,
+        gres_selecionadas,
+        area,
+        responsavel,
+    )
+    totais = _totais_relatorio(base_filtrada)
+    estilos = _estilos_relatorio()
+
+    buffer = BytesIO()
+    documento = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.6 * cm,
+        leftMargin=1.6 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.7 * cm,
+        title="Relatório de Climatização Escolar",
+        author="Secretaria de Estado da Educação - Gerência de Obras",
+    )
+
+    elementos = []
+    logo_gov = _data_uri_para_imagem(GOV_LOGO, 5.2 * cm, 1.8 * cm)
+    logo_geobs = _data_uri_para_imagem(GEOBS_LOGO, 2.1 * cm, 1.8 * cm)
+    cabecalho_logos = Table(
+        [[logo_gov, Spacer(1, 1), logo_geobs]],
+        colWidths=[6.0 * cm, 7.7 * cm, 2.7 * cm],
+        hAlign="CENTER",
+    )
+    cabecalho_logos.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    elementos.extend([cabecalho_logos, Spacer(1, 0.35 * cm)])
+
+    titulo = config.get("Título", "Painel de Monitoramento da Climatização Escolar na Paraíba")
+    elementos.append(Paragraph("RELATÓRIO GERENCIAL DE CLIMATIZAÇÃO ESCOLAR", estilos["titulo"]))
+    elementos.append(Paragraph(_texto_pdf(titulo), estilos["subtitulo"]))
+    elementos.append(Spacer(1, 0.18 * cm))
+
+    gres_texto = "Todas"
+    if gres_selecionadas:
+        mapa_labels = dict(zip(base["GRE"].astype(str), base.get("GRE_Label", base["GRE"]).astype(str)))
+        gres_texto = ", ".join(mapa_labels.get(str(g), str(g)) for g in gres_selecionadas)
+
+    filtros = [
+        ["Data de emissão", datetime.now().strftime("%d/%m/%Y às %H:%M")],
+        ["Período", periodo or "Todo o período"],
+        ["GRE", gres_texto],
+        ["Área técnica", area or "Todas"],
+        ["Responsável", responsavel or "Todos"],
+        ["Fonte", config.get("Fonte dos dados", "GEOBS / Governo da Paraíba")],
+    ]
+    filtros_formatados = [
+        [Paragraph(f"<b>{_texto_pdf(chave)}</b>", estilos["pequeno"]), Paragraph(_texto_pdf(valor), estilos["pequeno"])]
+        for chave, valor in filtros
+    ]
+    tabela_filtros = Table(filtros_formatados, colWidths=[3.4 * cm, 13.0 * cm], hAlign="LEFT")
+    tabela_filtros.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), AZUL_GELO),
+            ("GRID", (0, 0), (-1, -1), 0.35, CINZA_BORDA),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ])
+    )
+    elementos.extend([tabela_filtros, Spacer(1, 0.45 * cm)])
+
+    elementos.append(Paragraph("1. Indicadores principais", estilos["secao"]))
+    kpis = [
+        ("Total de escolas", _fmt_num_br(totais["total"]), "base filtrada"),
+        ("Climatizadas", _fmt_num_br(totais["climatizadas"]), _fmt_pct_br(totais["conclusao"])),
+        ("Conclusão", _fmt_pct_br(totais["conclusao"]), "progresso geral"),
+        ("Em andamento", _fmt_num_br(totais["andamento"]), "execução em curso"),
+        ("Em rota", _fmt_num_br(totais["rota"]), "rota de climatização"),
+        ("Pendências", _fmt_num_br(totais["pendencias"]), "andamento + rota"),
+    ]
+    celulas_kpi = []
+    for nome, valor, complemento in kpis:
+        celulas_kpi.append(
+            Paragraph(
+                f"<b>{_texto_pdf(nome)}</b><br/><font size='16'><b>{_texto_pdf(valor)}</b></font><br/><font size='7'>{_texto_pdf(complemento)}</font>",
+                estilos["kpi"],
+            )
+        )
+    tabela_kpis = Table([celulas_kpi[:3], celulas_kpi[3:]], colWidths=[5.45 * cm] * 3, rowHeights=[1.75 * cm, 1.75 * cm])
+    tabela_kpis.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.7, CINZA_BORDA),
+            ("INNERGRID", (0, 0), (-1, -1), 0.45, CINZA_BORDA),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ])
+    )
+    elementos.extend([tabela_kpis, Spacer(1, 0.35 * cm)])
+
+    elementos.append(_grafico_status(totais))
+    elementos.append(Spacer(1, 0.1 * cm))
+    elementos.append(_grafico_ranking(base_filtrada))
+
+    elementos.append(Paragraph("2. Resumo executivo", estilos["secao"]))
+    if base_filtrada.empty:
+        resumos = ["Não foram encontrados registros para os filtros selecionados."]
+    elif len(base_filtrada) == 1:
+        linha = base_filtrada.iloc[0]
+        resumos = [
+            f"A {_texto_pdf(linha.get('GRE_Label', linha.get('GRE', 'GRE selecionada')))} possui {_fmt_num_br(linha.get('Total', 0))} escolas na base filtrada.",
+            f"Foram climatizadas {_fmt_num_br(linha.get('Climatizadas', 0))} escolas, correspondendo a {_fmt_pct_br(linha.get('Conclusão', 0))} de conclusão.",
+            f"As pendências totalizam {_fmt_num_br(linha.get('Pendências', 0))} escolas: {_fmt_num_br(linha.get('Em andamento', 0))} em andamento e {_fmt_num_br(linha.get('Em rota', 0))} em rota.",
+            f"Prioridade registrada: {_texto_pdf(linha.get('Prioridade', 'não informada') or 'não informada')}.",
+        ]
+    else:
+        trabalho = base_filtrada.copy()
+        trabalho["_Pend"] = trabalho["Em andamento"].astype(float) + trabalho["Em rota"].astype(float)
+        maior_pend = trabalho.sort_values("_Pend", ascending=False).iloc[0]
+        maior_and = trabalho.sort_values("Em andamento", ascending=False).iloc[0]
+        maior_rota = trabalho.sort_values("Em rota", ascending=False).iloc[0]
+        resumos = [
+            f"A conclusão geral do recorte analisado é de {_fmt_pct_br(totais['conclusao'])}, com {_fmt_num_br(totais['climatizadas'])} escolas climatizadas em um universo de {_fmt_num_br(totais['total'])} escolas.",
+            f"A maior pendência total está em {_texto_pdf(maior_pend.get('GRE_Label', maior_pend.get('GRE', '')))}, com {_fmt_num_br(maior_pend.get('_Pend', 0))} escolas.",
+            f"O maior volume em andamento está em {_texto_pdf(maior_and.get('GRE_Label', maior_and.get('GRE', '')))}, com {_fmt_num_br(maior_and.get('Em andamento', 0))} escolas.",
+            f"O maior volume em rota está em {_texto_pdf(maior_rota.get('GRE_Label', maior_rota.get('GRE', '')))}, com {_fmt_num_br(maior_rota.get('Em rota', 0))} escolas.",
+        ]
+
+    for texto_resumo in resumos:
+        elementos.append(Paragraph(f"- {texto_resumo}", estilos["corpo"]))
+
+    elementos.append(Spacer(1, 0.2 * cm))
+    elementos.append(Paragraph("3. Resultados por GRE", estilos["secao"]))
+    cabecalho_gre = ["GRE", "Total", "Climatizadas", "Em andamento", "Em rota", "Pendências", "Conclusão"]
+    dados_gre = [[Paragraph(_texto_pdf(c), estilos["pequeno"]) for c in cabecalho_gre]]
+    for _, linha in base_filtrada.iterrows():
+        conclusao = float(linha.get("Climatizadas", 0) or 0) / float(linha.get("Total", 0) or 1)
+        dados_gre.append([
+            Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+            _fmt_num_br(linha.get("Total", 0)),
+            _fmt_num_br(linha.get("Climatizadas", 0)),
+            _fmt_num_br(linha.get("Em andamento", 0)),
+            _fmt_num_br(linha.get("Em rota", 0)),
+            _fmt_num_br(float(linha.get("Em andamento", 0) or 0) + float(linha.get("Em rota", 0) or 0)),
+            _fmt_pct_br(conclusao),
+        ])
+    if len(dados_gre) == 1:
+        dados_gre.append([Paragraph("Nenhum registro encontrado.", estilos["pequeno"]), "", "", "", "", "", ""])
+    elementos.append(_tabela_padrao(dados_gre, [4.15 * cm, 1.45 * cm, 1.8 * cm, 1.8 * cm, 1.45 * cm, 1.55 * cm, 1.55 * cm]))
+
+    elementos.append(Paragraph("4. Prioridades e observações", estilos["secao"]))
+    dados_prioridade = [[
+        Paragraph("GRE", estilos["pequeno"]),
+        Paragraph("Prioridade", estilos["pequeno"]),
+        Paragraph("Observação", estilos["pequeno"]),
+    ]]
+    for _, linha in base_filtrada.sort_values("Pendências", ascending=False).iterrows():
+        dados_prioridade.append([
+            Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+            Paragraph(_texto_pdf(linha.get("Prioridade", "") or "Não informada"), estilos["pequeno"]),
+            Paragraph(_texto_pdf(linha.get("Observação", "") or "Sem observação"), estilos["pequeno"]),
+        ])
+    if len(dados_prioridade) == 1:
+        dados_prioridade.append([Paragraph("Nenhum registro encontrado.", estilos["pequeno"]), "", ""])
+    elementos.append(_tabela_padrao(dados_prioridade, [4.2 * cm, 3.2 * cm, 9.0 * cm], fonte=7.2))
+
+    elementos.append(Paragraph("5. Responsáveis técnicos", estilos["secao"]))
+    dados_resp = [[
+        Paragraph("Responsável", estilos["pequeno"]),
+        Paragraph("Área", estilos["pequeno"]),
+        Paragraph("GREs vinculadas", estilos["pequeno"]),
+        Paragraph("Total", estilos["pequeno"]),
+        Paragraph("Pendências", estilos["pequeno"]),
+        Paragraph("Conclusão", estilos["pequeno"]),
+    ]]
+    if not resp_filtrados.empty:
+        for (nome, area_resp), grupo in resp_filtrados.groupby(["Responsável Técnico", "_Área Relatório"], dropna=False):
+            gres_grupo = sorted(set(grupo["GRE"].dropna().astype(str)), key=lambda x: int(re.search(r"\d+", x).group()) if re.search(r"\d+", x) else 999)
+            base_grupo = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_grupo)]
+            totais_grupo = _totais_relatorio(base_grupo)
+            dados_resp.append([
+                Paragraph(_texto_pdf(nome), estilos["pequeno"]),
+                Paragraph(_texto_pdf(area_resp), estilos["pequeno"]),
+                Paragraph(_texto_pdf(", ".join(gres_grupo)), estilos["pequeno"]),
+                _fmt_num_br(totais_grupo["total"]),
+                _fmt_num_br(totais_grupo["pendencias"]),
+                _fmt_pct_br(totais_grupo["conclusao"]),
+            ])
+    else:
+        dados_resp.append([Paragraph("Nenhum responsável encontrado.", estilos["pequeno"]), "", "", "", "", ""])
+    elementos.append(_tabela_padrao(dados_resp, [3.4 * cm, 2.1 * cm, 5.0 * cm, 1.6 * cm, 1.9 * cm, 2.0 * cm], fonte=7.0))
+
+    elementos.append(Paragraph("6. Quadro de status por setorização", estilos["secao"]))
+    elementos.append(Paragraph(
+        "A setorização é apresentada conforme a aba específica da planilha e possui caráter consolidado, sem rateio automático por GRE.",
+        estilos["pequeno"],
+    ))
+    dados_setor = [[
+        Paragraph("Setor", estilos["pequeno"]),
+        Paragraph("Em andamento", estilos["pequeno"]),
+        Paragraph("Em rota", estilos["pequeno"]),
+        Paragraph("Total", estilos["pequeno"]),
+        Paragraph("Observação", estilos["pequeno"]),
+    ]]
+    for _, linha in setor.iterrows():
+        dados_setor.append([
+            Paragraph(_texto_pdf(linha.get("Setor", "")), estilos["pequeno"]),
+            _fmt_num_br(linha.get("Em andamento", 0)),
+            _fmt_num_br(linha.get("Rota de climatização", 0)),
+            _fmt_num_br(linha.get("Total", 0)),
+            Paragraph(_texto_pdf(linha.get("Observação", "") or ""), estilos["pequeno"]),
+        ])
+    elementos.append(_tabela_padrao(dados_setor, [3.6 * cm, 2.2 * cm, 2.0 * cm, 1.5 * cm, 7.1 * cm], fonte=7.2))
+
+    elementos.append(Paragraph("7. Acompanhamento operacional", estilos["secao"]))
+    status_contagem = acomp_filtrado["Status"].fillna("(SEM STATUS)").astype(str).value_counts() if not acomp_filtrado.empty else pd.Series(dtype=int)
+    dados_status = [[Paragraph("Status", estilos["pequeno"]), Paragraph("Quantidade", estilos["pequeno"])]]
+    for status, quantidade in status_contagem.items():
+        dados_status.append([Paragraph(_texto_pdf(status), estilos["pequeno"]), _fmt_num_br(quantidade)])
+    if len(dados_status) == 1:
+        dados_status.append([Paragraph("Nenhum registro operacional encontrado.", estilos["pequeno"]), "0"])
+    elementos.append(_tabela_padrao(dados_status, [13.5 * cm, 2.9 * cm], fonte=7.5))
+
+    if incluir_detalhes_operacionais and not acomp_filtrado.empty:
+        elementos.append(Spacer(1, 0.25 * cm))
+        elementos.append(Paragraph("Detalhamento dos registros operacionais", estilos["secao"]))
+        dados_op = [[
+            Paragraph("GRE", estilos["pequeno"]),
+            Paragraph("Município", estilos["pequeno"]),
+            Paragraph("Unidade escolar", estilos["pequeno"]),
+            Paragraph("Status", estilos["pequeno"]),
+            Paragraph("Última movimentação", estilos["pequeno"]),
+            Paragraph("Observações", estilos["pequeno"]),
+        ]]
+        limite = 250
+        for _, linha in acomp_filtrado.head(limite).iterrows():
+            dados_op.append([
+                Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Município", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Unidade Escolar", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Status", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Data Última Mov.", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Observações", "")), estilos["pequeno"]),
+            ])
+        elementos.append(_tabela_padrao(dados_op, [2.2 * cm, 2.4 * cm, 3.7 * cm, 2.8 * cm, 2.2 * cm, 3.1 * cm], fonte=6.3))
+        if len(acomp_filtrado) > limite:
+            elementos.append(Paragraph(
+                f"O detalhamento foi limitado aos primeiros {limite} registros de um total de {_fmt_num_br(len(acomp_filtrado))} registros filtrados.",
+                estilos["pequeno"],
+            ))
+
+    elementos.append(Spacer(1, 0.3 * cm))
+    atualizacao_oficial = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
+    nota_final = "Relatório gerado automaticamente a partir das bases publicadas utilizadas pelo dashboard."
+    if atualizacao_oficial:
+        nota_final += f" Última atualização oficial informada: {_texto_pdf(atualizacao_oficial)}."
+    elementos.append(Paragraph(nota_final, estilos["pequeno"]))
+
+    documento.build(
+        elementos,
+        onFirstPage=_cabecalho_rodape_pdf,
+        onLaterPages=_cabecalho_rodape_pdf,
+    )
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def renderizar_gerador_relatorio(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+):
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stExpander"] {
+            margin: 12px 18px 0 18px;
+            border: 1px solid #D9E4F2;
+            border-radius: 14px;
+            background: #FFFFFF;
+            box-shadow: 0 8px 22px rgba(10,40,80,.075);
+        }
+        div[data-testid="stDownloadButton"] button {
+            background: linear-gradient(90deg, #001F49, #0059A8);
+            color: white;
+            border: 0;
+            font-weight: 800;
+            min-height: 44px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("📄 Gerar relatório em PDF", expanded=False):
+        if not REPORTLAB_DISPONIVEL:
+            st.error("O gerador de PDF precisa da biblioteca ReportLab. Adicione `reportlab` ao requirements.txt.")
+            return
+
+        periodos_encontrados = []
+        if "Periodo" in base.columns:
+            periodos_encontrados = [
+                str(valor)
+                for valor in base["Periodo"].dropna().unique()
+                if str(valor).strip() and str(valor).strip() != "Todo o período"
+            ]
+        periodos = ["Todo o período"] + sorted(set(periodos_encontrados))
+
+        mapa_gres = (
+            base[["GRE", "GRE_Label"]]
+            .drop_duplicates("GRE")
+            .sort_values("Ordem")
+            .set_index("GRE")["GRE_Label"]
+            .astype(str)
+            .to_dict()
+        )
+        opcoes_gre = list(mapa_gres.keys())
+
+        resp_opcoes = responsaveis.copy()
+        resp_opcoes["_Área Relatório"] = resp_opcoes.apply(_area_tecnica_linha, axis=1)
+        areas = ["Todas"] + sorted(
+            valor for valor in resp_opcoes["_Área Relatório"].dropna().astype(str).unique() if valor
+        )
+
+        c1, c2, c3, c4 = st.columns([1.0, 1.8, 1.1, 1.5])
+        with c1:
+            periodo = st.selectbox("Período do relatório", periodos, key="pdf_periodo")
+        with c2:
+            gres = st.multiselect(
+                "GRE",
+                opcoes_gre,
+                format_func=lambda valor: mapa_gres.get(valor, valor),
+                placeholder="Todas as GREs",
+                key="pdf_gres",
+            )
+        with c3:
+            area = st.selectbox("Área técnica", areas, key="pdf_area")
+
+        resp_area = resp_opcoes.copy()
+        if area != "Todas":
+            resp_area = resp_area[resp_area["_Área Relatório"] == area]
+        nomes_responsaveis = ["Todos"] + sorted(
+            valor for valor in resp_area["Responsável Técnico"].dropna().astype(str).unique() if valor
+        )
+        with c4:
+            responsavel = st.selectbox("Responsável técnico", nomes_responsaveis, key="pdf_responsavel")
+
+        incluir_detalhes = st.checkbox(
+            "Incluir detalhamento dos registros operacionais no PDF",
+            value=False,
+            key="pdf_incluir_detalhes",
+        )
+
+        try:
+            pdf = gerar_relatorio_pdf(
+                base=base,
+                setor=setor,
+                responsaveis=responsaveis,
+                acompanhamento=acompanhamento,
+                config=config,
+                periodo=periodo,
+                gres_selecionadas=gres,
+                area=area,
+                responsavel=responsavel,
+                incluir_detalhes_operacionais=incluir_detalhes,
+            )
+            sufixo = datetime.now().strftime("%Y%m%d_%H%M")
+            st.download_button(
+                label="Baixar relatório em PDF",
+                data=pdf,
+                file_name=f"relatorio_climatizacao_{sufixo}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="download_relatorio_climatizacao",
+            )
+            st.caption(
+                "O PDF usa os filtros definidos acima e contém indicadores, gráficos, resumo executivo, resultados por GRE, prioridades, responsáveis, setorização e acompanhamento operacional."
+            )
+        except Exception as erro:
+            st.error("Não foi possível montar o relatório com os filtros selecionados.")
+            st.exception(erro)
 
 
 HTML_TEMPLATE = r"""
@@ -3013,6 +3813,7 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, responsaveis: pd.DataFr
 def renderizar():
     try:
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
+        renderizar_gerador_relatorio(base, setor, responsaveis, acompanhamento, config)
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
         components.html(html, height=6200, scrolling=True)
     except Exception as erro:
@@ -3039,4 +3840,5 @@ def iniciar_dashboard():
     renderizar()
 
 
-iniciar_dashboard()
+if __name__ == "__main__":
+    iniciar_dashboard()
