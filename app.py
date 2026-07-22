@@ -1395,7 +1395,7 @@ def _gerar_relatorio_pdf_legado(
 # mantido para que o botão de download já existente passe a usar o novo
 # template sem exigir alterações no restante do aplicativo.
 
-PDF_AZUL = colors.HexColor("#4774C4")
+PDF_AZUL = colors.HexColor("#436EBE")
 PDF_AZUL_ESCURO = colors.HexColor("#1D3D70")
 PDF_VERMELHO = colors.HexColor("#FF343B")
 PDF_CINZA_FUNDO = colors.HexColor("#F2F3F5")
@@ -2320,6 +2320,517 @@ def gerar_relatorio_pdf(
 
 
 
+
+
+# ============================================================
+# GERADOR BASEADO NO TEMPLATE PDF OFICIAL
+# ============================================================
+
+def _template_pdf_localizar() -> str:
+    """Localiza o arquivo de template que deve acompanhar este aplicativo."""
+    import os
+    from pathlib import Path
+
+    nomes = [
+        "Relatório de Climatização Escolar (1).pdf",
+        "Relatório de Climatização Escolar.pdf",
+        "template_relatorio_climatizacao.pdf",
+    ]
+    candidatos = []
+    caminho_ambiente = os.getenv("GEOBS_TEMPLATE_PDF", "").strip()
+    if caminho_ambiente:
+        candidatos.append(Path(caminho_ambiente))
+
+    pasta_script = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+    for nome in nomes:
+        candidatos.extend([
+            pasta_script / nome,
+            Path.cwd() / nome,
+            Path("/mnt/data") / nome,
+        ])
+
+    vistos = set()
+    for candidato in candidatos:
+        chave = str(candidato.resolve()) if candidato.exists() else str(candidato)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        if candidato.is_file():
+            return str(candidato)
+
+    raise FileNotFoundError(
+        "O template do relatório não foi encontrado. Coloque o arquivo "
+        "'Relatório de Climatização Escolar (1).pdf' na mesma pasta do aplicativo "
+        "ou defina a variável GEOBS_TEMPLATE_PDF com o caminho do arquivo."
+    )
+
+
+def _template_mes_ano(periodo: str) -> tuple[str, str]:
+    meses = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+    }
+    texto = str(periodo or "").strip()
+    encontrados = re.findall(r"20\d{2}", texto)
+    ano = encontrados[-1] if encontrados else str(datetime.now().year)
+
+    if texto and texto != "Todo o período":
+        # Preserva descrições já prontas, como "Março/2026".
+        if len(texto) <= 30:
+            return texto, ano
+    agora = datetime.now()
+    return f"{meses[agora.month]}/{agora.year}", str(agora.year)
+
+
+def _tpl_paragrafo(
+    c,
+    texto: str,
+    x: float,
+    y_topo: float,
+    largura: float,
+    altura_max: float,
+    tamanho: float = 9,
+    entrelinha: Optional[float] = None,
+    cor=colors.black,
+    negrito: bool = False,
+    alinhamento=TA_LEFT,
+):
+    estilo = ParagraphStyle(
+        f"tpl_{id(c)}_{x}_{y_topo}_{tamanho}_{negrito}",
+        fontName="Helvetica-Bold" if negrito else "Helvetica",
+        fontSize=tamanho,
+        leading=entrelinha or tamanho * 1.28,
+        textColor=cor,
+        alignment=alinhamento,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    p = Paragraph(_texto_pdf(texto).replace("\n", "<br/>"), estilo)
+    _, altura = p.wrap(largura, altura_max)
+    p.drawOn(c, x, y_topo - altura)
+    return altura
+
+
+def _tpl_tabela(
+    c,
+    x: float,
+    y: float,
+    largura: float,
+    altura: float,
+    cabecalho: list,
+    linhas: list,
+    colunas: Optional[list] = None,
+    fundo_cabecalho=None,
+    cor_linha=None,
+    tamanho: float = 7.4,
+    texto_cabecalho=colors.white,
+):
+    fundo_cabecalho = fundo_cabecalho or colors.HexColor("#4A74C2")
+    cor_linha = cor_linha or colors.HexColor("#6D3EC7")
+    dados = [cabecalho] + linhas
+    qtd_linhas = max(len(dados), 1)
+    if colunas is None:
+        colunas = [largura / max(len(cabecalho), 1)] * len(cabecalho)
+    alturas = [altura / qtd_linhas] * qtd_linhas
+
+    estilo_head = ParagraphStyle(
+        "tpl_head",
+        fontName="Helvetica-Bold",
+        fontSize=tamanho,
+        leading=tamanho + 1.5,
+        textColor=texto_cabecalho,
+        alignment=TA_CENTER,
+    )
+    estilo_body = ParagraphStyle(
+        "tpl_body",
+        fontName="Helvetica",
+        fontSize=tamanho,
+        leading=tamanho + 1.5,
+        textColor=colors.HexColor("#171717"),
+        alignment=TA_CENTER,
+    )
+    dados_formatados = []
+    for i, linha in enumerate(dados):
+        estilo = estilo_head if i == 0 else estilo_body
+        dados_formatados.append([
+            Paragraph(_texto_pdf(valor), estilo) for valor in linha
+        ])
+
+    tabela = Table(dados_formatados, colWidths=colunas, rowHeights=alturas)
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), fundo_cabecalho),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.7, cor_linha),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    tabela.wrapOn(c, largura, altura)
+    tabela.drawOn(c, x, y)
+
+
+def _tpl_rotulo_gre(linha) -> str:
+    valor = linha.get("GRE_Label", linha.get("GRE", "GRE"))
+    return str(valor).strip() or "GRE"
+
+
+def _tpl_desenhar_card_gre(c, x, y, largura, altura, numero: int, linha):
+    azul = colors.HexColor("#436EBE")
+    cinza = colors.HexColor("#F3F3F3")
+    preto = colors.HexColor("#080808")
+    # Apaga o número provisório do template que ultrapassa o topo do cartão.
+    c.setFillColor(colors.white)
+    c.rect(x + 5, y + altura - 2, 68, 47, stroke=0, fill=1)
+    c.setFillColor(cinza)
+    c.rect(x, y, largura, altura, stroke=0, fill=1)
+
+    c.setFillColor(azul)
+    c.setFont("Helvetica-Bold", 40 if altura >= 165 else 34)
+    c.drawString(x + 15, y + altura - 37, str(numero))
+
+    titulo = _tpl_rotulo_gre(linha)
+    if len(titulo) > 38:
+        titulo = titulo[:36] + "..."
+    y_titulo = y + altura - 66
+    _tpl_paragrafo(c, titulo.upper(), x + 15, y_titulo, largura - 30, 34, 9.2, 10.5, preto, True)
+    c.setStrokeColor(preto)
+    c.setLineWidth(0.65)
+    c.line(x + 15, y_titulo - 18, x + largura - 15, y_titulo - 18)
+
+    climatizadas = float(linha.get("Climatizadas", 0) or 0)
+    andamento = float(linha.get("Em andamento", 0) or 0)
+    rota = float(linha.get("Em rota", 0) or 0)
+    total = float(linha.get("Total", 0) or 0)
+    conclusao = climatizadas / total if total else 0
+    texto = (
+        f"CLIMATIZADAS: {_fmt_num_br(climatizadas)}<br/>"
+        f"EM ANDAMENTO: {_fmt_num_br(andamento)}<br/>"
+        f"EM ROTA: {_fmt_num_br(rota)}<br/>"
+        f"CONCLUSÃO: {_fmt_pct_br(conclusao)}"
+    )
+    estilo = ParagraphStyle(
+        "tpl_card_body",
+        fontName="Helvetica-Bold",
+        fontSize=7.8 if altura < 165 else 8.2,
+        leading=11.4 if altura < 165 else 12.2,
+        textColor=preto,
+        alignment=TA_LEFT,
+    )
+    p = Paragraph(texto, estilo)
+    p.wrapOn(c, largura - 30, altura - 92)
+    p.drawOn(c, x + 15, y + 18)
+
+
+def _tpl_status_contagem(acomp_filtrado: pd.DataFrame):
+    if acomp_filtrado.empty or "Status" not in acomp_filtrado.columns:
+        serie = pd.Series(dtype=str)
+    else:
+        serie = acomp_filtrado["Status"].fillna("").astype(str)
+    superior = serie.str.upper()
+    climatizadas = int((superior.str.contains("CLIMATIZADA", na=False) & ~superior.str.contains("NÃO|NAO", regex=True, na=False)).sum())
+    energisa = int(superior.str.contains("ENERGISA", na=False).sum())
+    aptas = int(superior.str.contains("APTA", na=False).sum())
+    suplan = int(superior.str.contains("SUPLAN", na=False).sum())
+    return {
+        "total": int(len(serie)),
+        "climatizadas": climatizadas,
+        "energisa": energisa,
+        "aptas": aptas,
+        "suplan": suplan,
+        "serie": serie,
+        "superior": superior,
+    }
+
+
+def _tpl_painel_responsabilidade(c, x, y, largura, altura, valor_1, rotulo_1, valor_2, rotulo_2):
+    vermelho = colors.HexColor("#FF3131")
+    c.setFillColor(vermelho)
+    c.rect(x, y, largura, altura, stroke=0, fill=1)
+    c.setFillColor(colors.white)
+
+    centro = x + largura / 2
+    c.setFont("Helvetica", 64)
+    c.drawCentredString(centro, y + altura - 104, _fmt_num_br(valor_1))
+    c.setFont("Helvetica", 12)
+    c.drawCentredString(centro, y + altura - 132, "ESCOLAS")
+    _tpl_paragrafo(c, rotulo_1, x + 18, y + altura - 146, largura - 36, 65, 17, 20, colors.white, False, TA_CENTER)
+
+    c.setFont("Helvetica", 64)
+    c.drawCentredString(centro, y + altura - 292, _fmt_num_br(valor_2))
+    c.setFont("Helvetica", 12)
+    c.drawCentredString(centro, y + altura - 320, "ESCOLAS")
+    _tpl_paragrafo(c, rotulo_2, x + 18, y + altura - 334, largura - 36, 80, 17, 20, colors.white, False, TA_CENTER)
+
+
+def gerar_relatorio_pdf(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+    periodo: str = "Todo o período",
+    gres_selecionadas: Optional[List[str]] = None,
+    area: str = "Todas",
+    responsavel: str = "Todos",
+    incluir_detalhes_operacionais: bool = False,
+) -> bytes:
+    """Preenche o PDF oficial, preservando o desenho original do template."""
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError("A biblioteca ReportLab não está instalada.")
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError as erro:
+        raise RuntimeError(
+            "A biblioteca pypdf é necessária para aplicar os dados ao template. "
+            "Instale com: pip install pypdf"
+        ) from erro
+
+    caminho_template = _template_pdf_localizar()
+    template = PdfReader(caminho_template)
+    if len(template.pages) < 14:
+        raise RuntimeError("O template deve possuir pelo menos 14 páginas.")
+
+    gres_selecionadas = gres_selecionadas or []
+    base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
+        base, responsaveis, acompanhamento, periodo,
+        gres_selecionadas, area, responsavel,
+    )
+    totais = _totais_relatorio(base_filtrada)
+    status = _tpl_status_contagem(acomp_filtrado)
+
+    ranking = base_filtrada.copy()
+    if not ranking.empty:
+        ranking["_Pendencias"] = (
+            pd.to_numeric(ranking.get("Em andamento", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(ranking.get("Em rota", 0), errors="coerce").fillna(0)
+        )
+        if "Ordem" in ranking.columns:
+            ranking = ranking.sort_values("Ordem")
+        else:
+            ranking = ranking.sort_values("GRE")
+    registros_gre = [linha for _, linha in ranking.iterrows()]
+    while len(registros_gre) < 16:
+        registros_gre.append(pd.Series({
+            "GRE": "Sem dados", "Climatizadas": 0, "Em andamento": 0,
+            "Em rota": 0, "Total": 0,
+        }))
+
+    largura = float(template.pages[0].mediabox.width)
+    altura = float(template.pages[0].mediabox.height)
+    buffer_overlay = BytesIO()
+    c = pdfcanvas.Canvas(buffer_overlay, pagesize=(largura, altura))
+
+    azul = colors.HexColor("#436EBE")
+    branco = colors.white
+    preto = colors.HexColor("#111111")
+    vermelho = colors.HexColor("#FF3131")
+
+    periodo_capa, ano_capa = _template_mes_ano(periodo)
+
+    for pagina in range(1, 15):
+        if pagina == 1:
+            # Substitui apenas os campos variáveis da capa.
+            c.setFillColor(azul)
+            c.rect(88, 373, 225, 39, stroke=0, fill=1)
+            c.setFillColor(branco)
+            c.setFont("Helvetica-Bold", 15)
+            c.drawString(132, 387, periodo_capa)
+
+            c.setFillColor(azul)
+            c.rect(91, 128, largura - 91, 235, stroke=0, fill=1)
+            c.setFillColor(branco)
+            c.setFont("Helvetica", 118)
+            c.drawString(125, 181, ano_capa)
+
+        elif pagina == 2:
+            # Ajusta os dois últimos itens do sumário para refletir as páginas 13 e 14.
+            c.setFillColor(branco)
+            c.rect(48, 170, 500, 80, stroke=0, fill=1)
+            c.setFillColor(colors.HexColor("#86C6F0"))
+            c.setFont("Helvetica", 23)
+            c.drawString(54, 220, "07")
+            c.drawString(291, 220, "08")
+            _tpl_paragrafo(c, "Escolas sob responsabilidade da Energisa-PB", 54, 206, 190, 38, 7.2, 8.5, preto)
+            _tpl_paragrafo(c, "Considerações finais", 291, 206, 190, 38, 7.2, 8.5, preto)
+
+        elif pagina == 7:
+            # Tabela da planilha geral.
+            c.setFillColor(azul)
+            c.rect(56, 347, 498, 107, stroke=0, fill=1)
+            linhas_geral = [
+                ["Climatizadas", _fmt_num_br(totais["climatizadas"]), _fmt_pct_br(totais["climatizadas"] / totais["total"] if totais["total"] else 0)],
+                ["Em andamento", _fmt_num_br(totais["andamento"]), _fmt_pct_br(totais["andamento"] / totais["total"] if totais["total"] else 0)],
+                ["Em rota", _fmt_num_br(totais["rota"]), _fmt_pct_br(totais["rota"] / totais["total"] if totais["total"] else 0)],
+                ["Total", _fmt_num_br(totais["total"]), "100,0%" if totais["total"] else "0,0%"],
+            ]
+            _tpl_tabela(c, 60, 350, 488, 101, ["Situação", "Quantidade", "Participação"], linhas_geral, [246, 105, 137], colors.HexColor("#8FC8F0"), colors.HexColor("#7444C7"), 7.5, preto)
+
+            # Tabela de síntese operacional.
+            c.setFillColor(azul)
+            c.rect(54, 57, 503, 111, stroke=0, fill=1)
+            outros = max(status["total"] - status["climatizadas"] - status["energisa"] - status["aptas"], 0)
+            linhas_acomp = [
+                ["Registros acompanhados", _fmt_num_br(status["total"]), "Total do recorte"],
+                ["Climatizadas", _fmt_num_br(status["climatizadas"]), "Instalação concluída"],
+                ["Aguardando Energisa", _fmt_num_br(status["energisa"]), "Pendência elétrica"],
+                ["Aptas a climatizar", _fmt_num_br(status["aptas"]), "Liberadas para instalação"],
+                ["Outros status", _fmt_num_br(outros), "Demais situações"],
+            ]
+            _tpl_tabela(c, 57, 62, 490, 102, ["Indicador", "Quantidade", "Interpretação"], linhas_acomp, [250, 100, 140], colors.HexColor("#8FC8F0"), colors.HexColor("#7444C7"), 6.8, preto)
+
+        elif pagina == 8:
+            # Substitui os textos provisórios e as tabelas por um resumo real.
+            c.setFillColor(branco)
+            c.rect(48, 532, 500, 108, stroke=0, fill=1)
+            texto_topo = (
+                f"O recorte analisado reúne {_fmt_num_br(totais['total'])} escolas. "
+                f"Dessas, {_fmt_num_br(totais['climatizadas'])} estão climatizadas, "
+                f"resultando em {_fmt_pct_br(totais['conclusao'])} de conclusão geral. "
+                f"Permanecem {_fmt_num_br(totais['pendencias'])} escolas em andamento ou em rota de climatização."
+            )
+            _tpl_paragrafo(c, texto_topo, 55, 614, 488, 70, 8.4, 11, preto, False, TA_JUSTIFY)
+
+            c.setFillColor(branco)
+            c.rect(50, 408, 500, 130, stroke=0, fill=1)
+            top_gres = ranking.copy()
+            if not top_gres.empty:
+                top_gres = top_gres.sort_values("_Pendencias", ascending=False).head(5)
+            linhas_top = []
+            for _, linha in top_gres.iterrows():
+                total_gre = float(linha.get("Total", 0) or 0)
+                clima_gre = float(linha.get("Climatizadas", 0) or 0)
+                linhas_top.append([
+                    _tpl_rotulo_gre(linha),
+                    _fmt_num_br(clima_gre),
+                    _fmt_num_br(linha.get("Em andamento", 0)),
+                    _fmt_num_br(linha.get("Em rota", 0)),
+                    _fmt_pct_br(clima_gre / total_gre if total_gre else 0),
+                ])
+            while len(linhas_top) < 5:
+                linhas_top.append(["-", "0", "0", "0", "0,0%"])
+            _tpl_tabela(c, 54, 421, 488, 102, ["GRE", "Climat.", "Andam.", "Rota", "Conclusão"], linhas_top, [210, 65, 65, 60, 88], colors.HexColor("#4A74C2"), colors.HexColor("#7444C7"), 6.8)
+
+            c.setFillColor(branco)
+            c.rect(48, 260, 500, 108, stroke=0, fill=1)
+            texto_acomp = (
+                "A planilha de acompanhamento detalha a movimentação operacional das unidades escolares. "
+                "A tabela abaixo reúne os status mais frequentes do período selecionado, permitindo identificar "
+                "as principais etapas e pendências do processo de climatização."
+            )
+            _tpl_paragrafo(c, texto_acomp, 55, 343, 488, 70, 8.4, 11, preto, False, TA_JUSTIFY)
+
+            c.setFillColor(branco)
+            c.rect(50, 139, 500, 130, stroke=0, fill=1)
+            if status["serie"].empty:
+                contagens = pd.Series(dtype=int)
+            else:
+                nomes_status = status["serie"].replace("", "(SEM STATUS)")
+                contagens = nomes_status.value_counts().head(5)
+            linhas_status = []
+            for nome, qtd in contagens.items():
+                participacao = qtd / status["total"] if status["total"] else 0
+                linhas_status.append([str(nome), _fmt_num_br(qtd), _fmt_pct_br(participacao)])
+            while len(linhas_status) < 5:
+                linhas_status.append(["-", "0", "0,0%"])
+            _tpl_tabela(c, 57, 154, 490, 102, ["Status operacional", "Registros", "Participação"], linhas_status, [275, 95, 120], colors.HexColor("#4A74C2"), colors.HexColor("#7444C7"), 6.8)
+
+        elif pagina == 9:
+            c.setFillColor(branco)
+            c.rect(48, 495, 500, 92, stroke=0, fill=1)
+            texto = (
+                "A distribuição por Gerência Regional de Educação permite comparar o estágio de climatização "
+                "das unidades escolares e reconhecer os territórios que concentram maior quantidade de escolas "
+                "em andamento ou em rota. Os cartões apresentam os valores consolidados para cada GRE."
+            )
+            _tpl_paragrafo(c, texto, 59, 570, 476, 74, 8.4, 11, preto, False, TA_JUSTIFY)
+            posicoes = [(59, 278), (303, 278), (59, 65), (303, 65)]
+            for i, (x, y) in enumerate(posicoes):
+                _tpl_desenhar_card_gre(c, x, y, 233, 168, i + 1, registros_gre[i])
+
+        elif pagina == 10:
+            posicoes = [
+                (81, 457), (309, 457),
+                (76, 260), (304, 260),
+                (76, 62), (304, 62),
+            ]
+            for i, (x, y) in enumerate(posicoes, start=4):
+                _tpl_desenhar_card_gre(c, x, y, 218, 157, i + 1, registros_gre[i])
+
+        elif pagina == 11:
+            posicoes = [
+                (81, 457), (309, 457),
+                (76, 260), (304, 260),
+                (76, 62), (304, 62),
+            ]
+            for i, (x, y) in enumerate(posicoes, start=10):
+                _tpl_desenhar_card_gre(c, x, y, 218, 157, i + 1, registros_gre[i])
+
+        elif pagina == 12:
+            sup_mask = status["superior"].str.contains("SUPLAN", na=False)
+            sup_serie = status["superior"][sup_mask]
+            sup_andamento = int(sup_serie.str.contains("ANDAMENTO|OBRA|EXECU", regex=True, na=False).sum())
+            sup_rota = int(sup_serie.str.contains("ROTA|APTA|LIBER", regex=True, na=False).sum())
+            if status["suplan"] and not (sup_andamento or sup_rota):
+                sup_andamento = status["suplan"]
+            _tpl_painel_responsabilidade(c, 328, 61, 219, 573, sup_andamento, "Em andamento", sup_rota, "Rota de climatização")
+
+        elif pagina == 13:
+            ene_mask = status["superior"].str.contains("ENERGISA", na=False)
+            ene_serie = status["superior"][ene_mask]
+            ene_andamento = int(ene_serie.str.contains("ANDAMENTO|AGUARD|PEND", regex=True, na=False).sum())
+            ene_rota = int(ene_serie.str.contains("ROTA|APTA|LIBER", regex=True, na=False).sum())
+            if status["energisa"] and not (ene_andamento or ene_rota):
+                ene_andamento = status["energisa"]
+            _tpl_painel_responsabilidade(c, 328, 61, 219, 573, ene_andamento, "Em acompanhamento", ene_rota, "Rota de climatização")
+
+        elif pagina == 14:
+            # Reescreve apenas o corpo, mantendo título, marca-d'água, faixas e rodapé.
+            c.setFillColor(azul)
+            c.rect(45, 195, 506, 450, stroke=0, fill=1)
+            conclusao_1 = (
+                f"O acompanhamento gerencial consolidou informações de {_fmt_num_br(totais['total'])} escolas no recorte selecionado. "
+                f"Foram registradas {_fmt_num_br(totais['climatizadas'])} unidades climatizadas, correspondendo a "
+                f"{_fmt_pct_br(totais['conclusao'])} de conclusão geral. As demais escolas permanecem distribuídas entre "
+                f"{_fmt_num_br(totais['andamento'])} unidades em andamento e {_fmt_num_br(totais['rota'])} em rota de climatização."
+            )
+            conclusao_2 = (
+                "A leitura por Gerência Regional de Educação permite direcionar as ações para os territórios com maior volume de pendências. "
+                "O acompanhamento contínuo das adequações elétricas, estruturais e da instalação dos equipamentos é indispensável para que "
+                "as unidades avancem de forma organizada entre as etapas do processo."
+            )
+            conclusao_3 = (
+                f"Na planilha operacional foram considerados {_fmt_num_br(status['total'])} registros. Entre eles, "
+                f"{_fmt_num_br(status['energisa'])} mencionam a Energisa e {_fmt_num_br(status['aptas'])} indicam unidades aptas para climatização. "
+                "A atualização periódica dessas informações fortalece o planejamento, a fiscalização e a tomada de decisão da GEOBS."
+            )
+            y = 623
+            for paragrafo in [conclusao_1, conclusao_2, conclusao_3]:
+                altura_usada = _tpl_paragrafo(c, paragrafo, 50, y, 490, 125, 9.1, 13.2, branco, False, TA_JUSTIFY)
+                y -= altura_usada + 22
+
+        c.showPage()
+
+    c.save()
+    buffer_overlay.seek(0)
+    overlay = PdfReader(buffer_overlay)
+    escritor = PdfWriter()
+    for indice, pagina_template in enumerate(template.pages[:14]):
+        pagina_template.merge_page(overlay.pages[indice])
+        escritor.add_page(pagina_template)
+
+    # Mantém metadados institucionais.
+    escritor.add_metadata({
+        "/Title": "Relatório Gerencial da Climatização Escolar",
+        "/Author": "Secretaria de Estado da Educação - Gerência de Obras - GEOBS",
+        "/Subject": f"Relatório de climatização - {periodo_capa}",
+    })
+    saida = BytesIO()
+    escritor.write(saida)
+    return saida.getvalue()
 
 def renderizar_gerador_relatorio(
     base: pd.DataFrame,
