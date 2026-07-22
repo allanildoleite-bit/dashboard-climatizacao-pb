@@ -23,11 +23,14 @@ import streamlit.components.v1 as components
 try:
     from reportlab.graphics.charts.piecharts import Pie
     from reportlab.graphics.shapes import Drawing, Rect, String
+    from reportlab.graphics import renderPDF
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as pdfcanvas
     from reportlab.platypus import (
         KeepTogether,
         LongTable,
@@ -1103,7 +1106,7 @@ def _cabecalho_rodape_pdf(canvas, documento):
     canvas.restoreState()
 
 
-def gerar_relatorio_pdf(
+def _gerar_relatorio_pdf_legado(
     base: pd.DataFrame,
     setor: pd.DataFrame,
     responsaveis: pd.DataFrame,
@@ -1384,6 +1387,940 @@ def gerar_relatorio_pdf(
     return buffer.getvalue()
 
 
+
+# ============================================================
+# NOVO TEMPLATE INSTITUCIONAL DO RELATÓRIO EM PDF
+# ============================================================
+# Esta implementação substitui a função anterior. O nome da função foi
+# mantido para que o botão de download já existente passe a usar o novo
+# template sem exigir alterações no restante do aplicativo.
+
+PDF_AZUL = colors.HexColor("#4774C4")
+PDF_AZUL_ESCURO = colors.HexColor("#1D3D70")
+PDF_VERMELHO = colors.HexColor("#FF343B")
+PDF_CINZA_FUNDO = colors.HexColor("#F2F3F5")
+PDF_CINZA_LINHA = colors.HexColor("#D9DDE5")
+PDF_CINZA_TEXTO = colors.HexColor("#3C4048")
+PDF_AZUL_CLARO = colors.HexColor("#8EC5F4")
+PDF_BRANCO = colors.white
+PDF_PRETO = colors.HexColor("#111111")
+
+
+def _pdf_imagem_reader(data_uri: str):
+    """Converte uma imagem em data URI para ImageReader do ReportLab."""
+    if not data_uri or "," not in data_uri:
+        return None
+    try:
+        conteudo = base64.b64decode(data_uri.split(",", 1)[1])
+        return ImageReader(BytesIO(conteudo))
+    except Exception:
+        return None
+
+
+def _pdf_desenhar_imagem(canvas_pdf, data_uri: str, x: float, y: float, largura: float, altura: float):
+    imagem = _pdf_imagem_reader(data_uri)
+    if imagem is None:
+        return
+    try:
+        largura_img, altura_img = imagem.getSize()
+        escala = min(largura / max(largura_img, 1), altura / max(altura_img, 1))
+        largura_final = largura_img * escala
+        altura_final = altura_img * escala
+        canvas_pdf.drawImage(
+            imagem,
+            x + (largura - largura_final) / 2,
+            y + (altura - altura_final) / 2,
+            width=largura_final,
+            height=altura_final,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+    except Exception:
+        return
+
+
+def _pdf_estilos_canvas():
+    base = getSampleStyleSheet()
+    return {
+        "titulo_branco": ParagraphStyle(
+            "NovoTituloBranco",
+            parent=base["Title"],
+            fontName="Helvetica",
+            fontSize=24,
+            leading=25,
+            textColor=PDF_BRANCO,
+            alignment=TA_LEFT,
+            spaceAfter=0,
+        ),
+        "titulo_azul": ParagraphStyle(
+            "NovoTituloAzul",
+            parent=base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=21,
+            leading=20,
+            textColor=PDF_AZUL,
+            alignment=TA_LEFT,
+            spaceAfter=0,
+        ),
+        "subtitulo_branco": ParagraphStyle(
+            "NovoSubtituloBranco",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
+            textColor=PDF_BRANCO,
+        ),
+        "subtitulo_preto": ParagraphStyle(
+            "NovoSubtituloPreto",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
+            textColor=PDF_PRETO,
+        ),
+        "corpo": ParagraphStyle(
+            "NovoCorpo",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=12.2,
+            textColor=PDF_CINZA_TEXTO,
+            alignment=TA_JUSTIFY,
+            spaceAfter=6,
+        ),
+        "corpo_branco": ParagraphStyle(
+            "NovoCorpoBranco",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=8.8,
+            leading=12.1,
+            textColor=PDF_BRANCO,
+            alignment=TA_JUSTIFY,
+            spaceAfter=6,
+        ),
+        "corpo_pequeno": ParagraphStyle(
+            "NovoCorpoPequeno",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=7.3,
+            leading=9.4,
+            textColor=PDF_CINZA_TEXTO,
+            alignment=TA_LEFT,
+        ),
+        "corpo_pequeno_branco": ParagraphStyle(
+            "NovoCorpoPequenoBranco",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=7.3,
+            leading=9.4,
+            textColor=PDF_BRANCO,
+            alignment=TA_LEFT,
+        ),
+        "card_titulo": ParagraphStyle(
+            "NovoCardTitulo",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=11,
+            textColor=PDF_PRETO,
+            alignment=TA_LEFT,
+        ),
+        "sumario_item": ParagraphStyle(
+            "NovoSumarioItem",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=PDF_CINZA_TEXTO,
+            alignment=TA_LEFT,
+        ),
+    }
+
+
+def _pdf_paragrafo(canvas_pdf, texto: str, estilo, x: float, y_superior: float, largura: float, altura_max: float = 1000 * cm):
+    paragrafo = Paragraph(_texto_pdf(texto), estilo)
+    _, altura = paragrafo.wrap(largura, altura_max)
+    paragrafo.drawOn(canvas_pdf, x, y_superior - altura)
+    return y_superior - altura
+
+
+def _pdf_paragrafo_markup(canvas_pdf, texto: str, estilo, x: float, y_superior: float, largura: float, altura_max: float = 1000 * cm):
+    paragrafo = Paragraph(texto, estilo)
+    _, altura = paragrafo.wrap(largura, altura_max)
+    paragrafo.drawOn(canvas_pdf, x, y_superior - altura)
+    return y_superior - altura
+
+
+def _pdf_faixa_lateral(canvas_pdf, lado: str = "esquerda"):
+    largura_pagina, altura_pagina = A4
+    largura_faixa = 0.95 * cm
+    x = 0 if lado == "esquerda" else largura_pagina - largura_faixa
+    canvas_pdf.setFillColor(PDF_VERMELHO)
+    canvas_pdf.rect(x, altura_pagina - 6.4 * cm, largura_faixa, 6.4 * cm, stroke=0, fill=1)
+    canvas_pdf.setFillColor(PDF_AZUL_ESCURO)
+    canvas_pdf.rect(x, 0, largura_faixa, altura_pagina - 6.4 * cm, stroke=0, fill=1)
+
+
+def _pdf_rodape(canvas_pdf, numero_pagina: int, fundo_azul: bool = False):
+    largura_pagina, _ = A4
+    cor = PDF_BRANCO if fundo_azul else colors.HexColor("#4A4A4A")
+    canvas_pdf.setFillColor(cor)
+    canvas_pdf.setFont("Helvetica-Bold", 5.8)
+    canvas_pdf.drawString(
+        1.9 * cm,
+        0.63 * cm,
+        "G E R Ê N C I A  D E  O B R A S  -  G E O B S  |  R E L A T Ó R I O  D E  C L I M A T I Z A Ç Ã O  E S C O L A R  2 0 2 6",
+    )
+    if numero_pagina > 1:
+        canvas_pdf.setFont("Helvetica", 6.5)
+        canvas_pdf.drawRightString(largura_pagina - 1.6 * cm, 0.63 * cm, f"{numero_pagina:02d}")
+
+
+def _pdf_marca_dagua(canvas_pdf, fundo_azul: bool = False):
+    largura_pagina, altura_pagina = A4
+    canvas_pdf.saveState()
+    try:
+        canvas_pdf.setFillAlpha(0.045 if not fundo_azul else 0.06)
+    except Exception:
+        pass
+    canvas_pdf.setFont("Helvetica-Bold", 60)
+    canvas_pdf.setFillColor(PDF_AZUL_ESCURO if not fundo_azul else PDF_BRANCO)
+    canvas_pdf.drawCentredString(largura_pagina / 2, altura_pagina / 2 - 18, "GEOBS")
+    canvas_pdf.restoreState()
+
+
+def _pdf_base_pagina_branca(canvas_pdf, numero_pagina: int, titulo: str, numero_secao: str, lado_faixa: str = "esquerda", etiqueta: str = "Relatório de Climatização Escolar"):
+    largura_pagina, altura_pagina = A4
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.rect(0, 0, largura_pagina, altura_pagina, stroke=0, fill=1)
+    _pdf_faixa_lateral(canvas_pdf, lado_faixa)
+    _pdf_marca_dagua(canvas_pdf, fundo_azul=False)
+
+    x = 1.9 * cm if lado_faixa == "esquerda" else 1.6 * cm
+    canvas_pdf.setFillColor(PDF_VERMELHO)
+    canvas_pdf.setFont("Helvetica-Bold", 7.5)
+    canvas_pdf.drawString(x, altura_pagina - 1.25 * cm, etiqueta)
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 7)
+    canvas_pdf.drawRightString(largura_pagina - 1.7 * cm, altura_pagina - 1.15 * cm, numero_secao)
+
+    estilos = _pdf_estilos_canvas()
+    y = altura_pagina - 1.95 * cm
+    y = _pdf_paragrafo_markup(canvas_pdf, _texto_pdf(titulo).replace("\n", "<br/>"), estilos["titulo_azul"], x, y, largura_pagina - x - 1.8 * cm)
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.rect(x, y - 0.22 * cm, 1.55 * cm, 0.12 * cm, stroke=0, fill=1)
+    _pdf_rodape(canvas_pdf, numero_pagina, fundo_azul=False)
+    return y - 0.72 * cm
+
+
+def _pdf_base_pagina_azul(canvas_pdf, numero_pagina: int, titulo: str, numero_secao: str, lado_faixa: str = "esquerda", etiqueta: str = "Relatório de Climatização Escolar"):
+    largura_pagina, altura_pagina = A4
+    canvas_pdf.setFillColor(PDF_AZUL)
+    canvas_pdf.rect(0, 0, largura_pagina, altura_pagina, stroke=0, fill=1)
+    _pdf_faixa_lateral(canvas_pdf, lado_faixa)
+    _pdf_marca_dagua(canvas_pdf, fundo_azul=True)
+
+    x = 1.9 * cm if lado_faixa == "esquerda" else 1.6 * cm
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setFont("Helvetica-Bold", 7.5)
+    canvas_pdf.drawString(x, altura_pagina - 1.25 * cm, etiqueta)
+    canvas_pdf.setFont("Helvetica-Bold", 7)
+    canvas_pdf.drawRightString(largura_pagina - 1.7 * cm, altura_pagina - 1.15 * cm, numero_secao)
+
+    estilos = _pdf_estilos_canvas()
+    y = altura_pagina - 1.95 * cm
+    y = _pdf_paragrafo_markup(canvas_pdf, _texto_pdf(titulo).replace("\n", "<br/>"), estilos["titulo_branco"], x, y, largura_pagina - x - 1.8 * cm)
+    _pdf_rodape(canvas_pdf, numero_pagina, fundo_azul=True)
+    return y - 0.6 * cm
+
+
+def _pdf_tabela_institucional(dados, larguras, fonte: float = 7.1, cabecalho=True):
+    estilo_cabecalho = ParagraphStyle(
+        "NovoCabecalhoTabela",
+        fontName="Helvetica-Bold",
+        fontSize=fonte,
+        leading=fonte + 1.5,
+        textColor=PDF_BRANCO,
+        alignment=TA_CENTER,
+    )
+    estilo_celula = ParagraphStyle(
+        "NovaCelulaTabela",
+        fontName="Helvetica",
+        fontSize=fonte,
+        leading=fonte + 1.8,
+        textColor=PDF_CINZA_TEXTO,
+        alignment=TA_LEFT,
+    )
+    dados_formatados = []
+    for indice, linha in enumerate(dados):
+        linha_formatada = []
+        for valor in linha:
+            if isinstance(valor, Paragraph):
+                linha_formatada.append(valor)
+            else:
+                estilo = estilo_cabecalho if indice == 0 and cabecalho else estilo_celula
+                linha_formatada.append(Paragraph(_texto_pdf(valor), estilo))
+        dados_formatados.append(linha_formatada)
+
+    tabela = LongTable(
+        dados_formatados,
+        colWidths=larguras,
+        repeatRows=1 if cabecalho else 0,
+        hAlign="LEFT",
+    )
+    comandos = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.35, PDF_CINZA_LINHA),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]
+    if cabecalho:
+        comandos.extend([
+            ("BACKGROUND", (0, 0), (-1, 0), PDF_AZUL),
+            ("TEXTCOLOR", (0, 0), (-1, 0), PDF_BRANCO),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [PDF_BRANCO, PDF_CINZA_FUNDO]),
+        ])
+    else:
+        comandos.append(("ROWBACKGROUNDS", (0, 0), (-1, -1), [PDF_BRANCO, PDF_CINZA_FUNDO]))
+    tabela.setStyle(TableStyle(comandos))
+    return tabela
+
+
+def _pdf_desenhar_tabela_paginada(
+    canvas_pdf,
+    estado: dict,
+    tabela,
+    titulo: str,
+    numero_secao: str,
+    y_inicial: float,
+    lado_faixa: str = "esquerda",
+):
+    largura_pagina, _ = A4
+    x = 1.9 * cm if lado_faixa == "esquerda" else 1.6 * cm
+    largura_disponivel = largura_pagina - x - 1.7 * cm
+    limite_inferior = 1.25 * cm
+    restante = tabela
+    primeira = True
+
+    while restante is not None:
+        altura_disponivel = y_inicial - limite_inferior
+        partes = restante.split(largura_disponivel, altura_disponivel)
+        if not partes:
+            raise RuntimeError("Uma linha da tabela é maior do que a área útil da página.")
+        parte = partes[0]
+        _, altura = parte.wrap(largura_disponivel, altura_disponivel)
+        parte.drawOn(canvas_pdf, x, y_inicial - altura)
+
+        if len(partes) == 1:
+            restante = None
+        else:
+            restante = partes[1]
+            canvas_pdf.showPage()
+            estado["pagina"] += 1
+            y_inicial = _pdf_base_pagina_branca(
+                canvas_pdf,
+                estado["pagina"],
+                f"{titulo}\n(continuação)",
+                numero_secao,
+                lado_faixa="direita" if lado_faixa == "esquerda" else "esquerda",
+            )
+            lado_faixa = "direita" if lado_faixa == "esquerda" else "esquerda"
+        primeira = False
+    return y_inicial
+
+
+def _pdf_desenho_pizza_status(totais: dict):
+    desenho = Drawing(470, 205)
+    valores = [float(totais["climatizadas"]), float(totais["andamento"]), float(totais["rota"])]
+    if sum(valores) <= 0:
+        desenho.add(String(10, 95, "Não há dados para os filtros selecionados.", fontName="Helvetica", fontSize=9, fillColor=PDF_CINZA_TEXTO))
+        return desenho
+
+    pizza = Pie()
+    pizza.x = 12
+    pizza.y = 20
+    pizza.width = 165
+    pizza.height = 165
+    pizza.data = valores
+    pizza.labels = ["", "", ""]
+    pizza.slices[0].fillColor = PDF_AZUL_ESCURO
+    pizza.slices[1].fillColor = PDF_AZUL_CLARO
+    pizza.slices[2].fillColor = PDF_VERMELHO
+    pizza.slices.strokeColor = PDF_BRANCO
+    pizza.slices.strokeWidth = 1.3
+    desenho.add(pizza)
+
+    legenda = [
+        ("Climatizadas", PDF_AZUL_ESCURO, totais["climatizadas"]),
+        ("Em andamento", PDF_AZUL_CLARO, totais["andamento"]),
+        ("Em rota", PDF_VERMELHO, totais["rota"]),
+    ]
+    y = 150
+    for rotulo, cor, valor in legenda:
+        desenho.add(Rect(225, y - 5, 12, 12, fillColor=cor, strokeColor=cor))
+        desenho.add(String(246, y - 2, rotulo, fontName="Helvetica", fontSize=9, fillColor=PDF_CINZA_TEXTO))
+        desenho.add(String(445, y - 2, _fmt_num_br(valor), fontName="Helvetica-Bold", fontSize=10, fillColor=PDF_PRETO, textAnchor="end"))
+        y -= 31
+    desenho.add(String(225, 38, "Conclusão geral", fontName="Helvetica", fontSize=9, fillColor=PDF_CINZA_TEXTO))
+    desenho.add(String(445, 31, _fmt_pct_br(totais["conclusao"]), fontName="Helvetica-Bold", fontSize=23, fillColor=PDF_AZUL, textAnchor="end"))
+    return desenho
+
+
+def _pdf_desenhar_ranking(canvas_pdf, base_filtrada: pd.DataFrame, x: float, y_superior: float, largura: float, max_linhas: int = 10):
+    estilos = _pdf_estilos_canvas()
+    y = _pdf_paragrafo_markup(canvas_pdf, "<b>Ranking de pendências por GRE</b>", estilos["subtitulo_preto"], x, y_superior, largura)
+    y -= 0.25 * cm
+    if base_filtrada.empty:
+        _pdf_paragrafo(canvas_pdf, "Não há dados para os filtros selecionados.", estilos["corpo"], x, y, largura)
+        return
+
+    trabalho = base_filtrada.copy()
+    trabalho["_PendenciasNovoPdf"] = pd.to_numeric(trabalho.get("Em andamento", 0), errors="coerce").fillna(0) + pd.to_numeric(trabalho.get("Em rota", 0), errors="coerce").fillna(0)
+    trabalho = trabalho.sort_values("_PendenciasNovoPdf", ascending=False).head(max_linhas)
+    maximo = max(float(trabalho["_PendenciasNovoPdf"].max()), 1.0)
+    largura_label = 5.2 * cm
+    largura_barra = largura - largura_label - 1.0 * cm
+
+    for _, linha in trabalho.iterrows():
+        rotulo = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        if len(rotulo) > 30:
+            rotulo = rotulo[:28] + "..."
+        valor_and = float(linha.get("Em andamento", 0) or 0)
+        valor_rota = float(linha.get("Em rota", 0) or 0)
+        total = valor_and + valor_rota
+        barra_total = largura_barra * total / maximo
+        barra_and = barra_total * valor_and / total if total else 0
+        barra_rota = barra_total - barra_and
+        canvas_pdf.setFillColor(PDF_CINZA_TEXTO)
+        canvas_pdf.setFont("Helvetica", 6.6)
+        canvas_pdf.drawString(x, y - 1, rotulo)
+        canvas_pdf.setFillColor(PDF_CINZA_FUNDO)
+        canvas_pdf.rect(x + largura_label, y - 3, largura_barra, 7, stroke=0, fill=1)
+        if barra_and:
+            canvas_pdf.setFillColor(PDF_AZUL_CLARO)
+            canvas_pdf.rect(x + largura_label, y - 3, barra_and, 7, stroke=0, fill=1)
+        if barra_rota:
+            canvas_pdf.setFillColor(PDF_VERMELHO)
+            canvas_pdf.rect(x + largura_label + barra_and, y - 3, barra_rota, 7, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_PRETO)
+        canvas_pdf.setFont("Helvetica-Bold", 6.8)
+        canvas_pdf.drawRightString(x + largura, y - 1, _fmt_num_br(total))
+        y -= 0.56 * cm
+
+
+def _pdf_desenhar_kpis(canvas_pdf, totais: dict, x: float, y_superior: float, largura_total: float):
+    kpis = [
+        ("TOTAL DE ESCOLAS", _fmt_num_br(totais["total"]), "base filtrada", PDF_AZUL),
+        ("CLIMATIZADAS", _fmt_num_br(totais["climatizadas"]), _fmt_pct_br(totais["conclusao"]), PDF_AZUL_ESCURO),
+        ("CONCLUSÃO", _fmt_pct_br(totais["conclusao"]), "progresso geral", PDF_VERMELHO),
+        ("EM ANDAMENTO", _fmt_num_br(totais["andamento"]), "execução em curso", PDF_AZUL_CLARO),
+        ("EM ROTA", _fmt_num_br(totais["rota"]), "rota de climatização", PDF_VERMELHO),
+        ("PENDÊNCIAS", _fmt_num_br(totais["pendencias"]), "andamento + rota", PDF_AZUL_ESCURO),
+    ]
+    espaco = 0.28 * cm
+    largura_card = (largura_total - 2 * espaco) / 3
+    altura_card = 2.45 * cm
+    for indice, (titulo, valor, complemento, cor) in enumerate(kpis):
+        linha = indice // 3
+        coluna = indice % 3
+        x_card = x + coluna * (largura_card + espaco)
+        y_card = y_superior - (linha + 1) * altura_card - linha * espaco
+        canvas_pdf.setFillColor(PDF_BRANCO)
+        canvas_pdf.setStrokeColor(PDF_CINZA_LINHA)
+        canvas_pdf.roundRect(x_card, y_card, largura_card, altura_card, 5, stroke=1, fill=1)
+        canvas_pdf.setFillColor(cor)
+        canvas_pdf.rect(x_card, y_card, 0.14 * cm, altura_card, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_CINZA_TEXTO)
+        canvas_pdf.setFont("Helvetica-Bold", 6.8)
+        canvas_pdf.drawString(x_card + 0.35 * cm, y_card + 1.77 * cm, titulo)
+        canvas_pdf.setFillColor(PDF_PRETO)
+        canvas_pdf.setFont("Helvetica-Bold", 19)
+        canvas_pdf.drawString(x_card + 0.35 * cm, y_card + 0.8 * cm, valor)
+        canvas_pdf.setFillColor(PDF_CINZA_TEXTO)
+        canvas_pdf.setFont("Helvetica", 6.5)
+        canvas_pdf.drawString(x_card + 0.35 * cm, y_card + 0.35 * cm, complemento)
+    return y_superior - 2 * altura_card - espaco
+
+
+def _pdf_desenhar_card_analise(canvas_pdf, x: float, y: float, largura: float, altura: float, numero: str, titulo: str, texto: str):
+    estilos = _pdf_estilos_canvas()
+    canvas_pdf.setFillColor(PDF_CINZA_FUNDO)
+    canvas_pdf.setStrokeColor(PDF_CINZA_FUNDO)
+    canvas_pdf.rect(x, y, largura, altura, stroke=0, fill=1)
+    canvas_pdf.setFillColor(PDF_AZUL)
+    canvas_pdf.setFont("Helvetica-Bold", 31)
+    canvas_pdf.drawString(x + 0.32 * cm, y + altura - 0.93 * cm, numero)
+    y_titulo = y + altura - 1.42 * cm
+    _pdf_paragrafo_markup(canvas_pdf, f"<b>{_texto_pdf(titulo)}</b>", estilos["card_titulo"], x + 0.42 * cm, y_titulo, largura - 0.84 * cm)
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.rect(x + 0.42 * cm, y + altura - 1.72 * cm, largura - 0.84 * cm, 0.04 * cm, stroke=0, fill=1)
+    _pdf_paragrafo(canvas_pdf, texto, estilos["corpo_pequeno"], x + 0.42 * cm, y + altura - 2.0 * cm, largura - 0.84 * cm, altura - 2.2 * cm)
+
+
+def gerar_relatorio_pdf(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+    periodo: str = "Todo o período",
+    gres_selecionadas: Optional[List[str]] = None,
+    area: str = "Todas",
+    responsavel: str = "Todos",
+    incluir_detalhes_operacionais: bool = False,
+) -> bytes:
+    """Gera o relatório no template institucional inspirado no PDF de referência."""
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError("A biblioteca ReportLab não está instalada.")
+
+    gres_selecionadas = gres_selecionadas or []
+    base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
+        base,
+        responsaveis,
+        acompanhamento,
+        periodo,
+        gres_selecionadas,
+        area,
+        responsavel,
+    )
+    totais = _totais_relatorio(base_filtrada)
+    estilos = _pdf_estilos_canvas()
+    largura_pagina, altura_pagina = A4
+    buffer = BytesIO()
+    canvas_pdf = pdfcanvas.Canvas(buffer, pagesize=A4)
+    canvas_pdf.setTitle("Relatório Gerencial da Climatização Escolar")
+    canvas_pdf.setAuthor("Secretaria de Estado da Educação - Gerência de Obras - GEOBS")
+    estado = {"pagina": 1}
+
+    # --------------------------------------------------------
+    # 1. CAPA
+    # --------------------------------------------------------
+    canvas_pdf.setFillColor(PDF_AZUL)
+    canvas_pdf.rect(0, 0, largura_pagina, altura_pagina, stroke=0, fill=1)
+    _pdf_faixa_lateral(canvas_pdf, "esquerda")
+    _pdf_desenhar_imagem(canvas_pdf, GEOBS_LOGO, 1.55 * cm, altura_pagina - 2.15 * cm, 3.1 * cm, 1.35 * cm)
+    _pdf_desenhar_imagem(canvas_pdf, GOV_LOGO, largura_pagina - 7.3 * cm, altura_pagina - 2.12 * cm, 5.9 * cm, 1.35 * cm)
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setFont("Helvetica", 8.2)
+    canvas_pdf.drawString(5.2 * cm, altura_pagina - 1.32 * cm, "Secretaria de Estado da Educação")
+    canvas_pdf.drawString(5.2 * cm, altura_pagina - 1.72 * cm, "Gerência de Obras - GEOBS")
+
+    periodo_capa = periodo if periodo and periodo != "Todo o período" else datetime.now().strftime("%m/%Y")
+    ano_capa = re.search(r"20\d{2}", str(periodo_capa))
+    ano_capa = ano_capa.group() if ano_capa else str(datetime.now().year)
+    titulo_capa = "Relatório<br/>Gerencial da<br/>Climatização<br/>Escolar"
+    estilo_capa = ParagraphStyle(
+        "TituloCapaInstitucional",
+        fontName="Helvetica",
+        fontSize=28,
+        leading=27,
+        textColor=PDF_BRANCO,
+        alignment=TA_LEFT,
+    )
+    _pdf_paragrafo_markup(canvas_pdf, titulo_capa, estilo_capa, 4.65 * cm, altura_pagina - 4.5 * cm, 12.3 * cm)
+    canvas_pdf.setFont("Helvetica-Bold", 10.5)
+    canvas_pdf.drawString(4.72 * cm, altura_pagina - 10.15 * cm, str(periodo_capa))
+    canvas_pdf.saveState()
+    try:
+        canvas_pdf.setFillAlpha(0.96)
+    except Exception:
+        pass
+    canvas_pdf.setFont("Helvetica", 118)
+    canvas_pdf.drawString(4.25 * cm, 4.0 * cm, ano_capa)
+    canvas_pdf.restoreState()
+    _pdf_rodape(canvas_pdf, estado["pagina"], fundo_azul=True)
+
+    # --------------------------------------------------------
+    # 2. SUMÁRIO
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.rect(0, 0, largura_pagina, altura_pagina, stroke=0, fill=1)
+    _pdf_faixa_lateral(canvas_pdf, "direita")
+    _pdf_marca_dagua(canvas_pdf, fundo_azul=False)
+    canvas_pdf.setFillColor(PDF_AZUL)
+    canvas_pdf.setFont("Helvetica", 24)
+    canvas_pdf.drawString(2.0 * cm, altura_pagina - 2.0 * cm, "SUMÁRIO")
+    itens_sumario = [
+        ("01", "Introdução e objetivos"),
+        ("02", "Metodologia e filtros aplicados"),
+        ("03", "Síntese executiva"),
+        ("04", "Panorama geral da climatização"),
+        ("05", "Resultados por GRE"),
+        ("06", "Análise gerencial e prioridades"),
+        ("07", "Responsáveis técnicos"),
+        ("08", "Setorização e acompanhamento"),
+        ("09", "Considerações finais"),
+    ]
+    for indice, (numero, item) in enumerate(itens_sumario):
+        coluna = indice % 2
+        linha = indice // 2
+        x = 3.2 * cm + coluna * 7.4 * cm
+        y = altura_pagina - 4.0 * cm - linha * 2.35 * cm
+        canvas_pdf.setFillColor(PDF_AZUL_CLARO)
+        canvas_pdf.setFont("Helvetica", 25)
+        canvas_pdf.drawString(x, y, numero)
+        _pdf_paragrafo(canvas_pdf, item, estilos["sumario_item"], x, y - 0.28 * cm, 6.1 * cm)
+    _pdf_rodape(canvas_pdf, estado["pagina"], fundo_azul=False)
+
+    # --------------------------------------------------------
+    # 3. INTRODUÇÃO E OBJETIVOS
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_azul(canvas_pdf, estado["pagina"], "INTRODUÇÃO E\nOBJETIVOS", "01", lado_faixa="esquerda")
+    introducao = (
+        "A climatização dos ambientes escolares constitui uma ação relevante para a melhoria das condições de ensino, "
+        "aprendizagem e trabalho na rede pública estadual. Em um estado de clima predominantemente quente, o conforto "
+        "térmico influencia diretamente o bem-estar de estudantes, professores e demais profissionais da educação."
+    )
+    introducao_2 = (
+        "O presente relatório gerencial apresenta uma visão consolidada do andamento das ações de climatização acompanhadas "
+        "pela Gerência de Obras - GEOBS. As informações são organizadas a partir das bases publicadas utilizadas pelo painel, "
+        "permitindo identificar o estágio das intervenções, as pendências existentes e as unidades que avançam nas etapas "
+        "necessárias para receber os equipamentos."
+    )
+    y = _pdf_paragrafo(canvas_pdf, introducao, estilos["corpo_branco"], 1.9 * cm, y, 16.7 * cm)
+    y -= 0.15 * cm
+    y = _pdf_paragrafo(canvas_pdf, introducao_2, estilos["corpo_branco"], 1.9 * cm, y, 16.7 * cm)
+    y -= 0.45 * cm
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setFont("Helvetica-Bold", 13)
+    canvas_pdf.drawString(1.9 * cm, y, "Objetivo geral")
+    y -= 0.42 * cm
+    y = _pdf_paragrafo(
+        canvas_pdf,
+        "Apresentar o acompanhamento gerencial das ações de climatização das escolas da rede estadual de ensino da Paraíba, "
+        "com base nas informações registradas e consolidadas pela GEOBS.",
+        estilos["corpo_branco"],
+        1.9 * cm,
+        y,
+        16.7 * cm,
+    )
+    y -= 0.25 * cm
+    canvas_pdf.setFont("Helvetica-Bold", 13)
+    canvas_pdf.drawString(1.9 * cm, y, "Objetivos específicos")
+    y -= 0.42 * cm
+    objetivos = [
+        "Organizar as informações referentes à climatização das unidades escolares.",
+        "Acompanhar a instalação, a manutenção e as adequações de infraestrutura necessárias.",
+        "Identificar o status atual das demandas e as principais pendências por GRE.",
+        "Subsidiar o planejamento técnico, administrativo e a priorização das intervenções.",
+    ]
+    for objetivo in objetivos:
+        y = _pdf_paragrafo(canvas_pdf, f"- {objetivo}", estilos["corpo_branco"], 2.15 * cm, y, 16.3 * cm)
+
+    # --------------------------------------------------------
+    # 4. METODOLOGIA E FILTROS
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "METODOLOGIA DE\nACOMPANHAMENTO", "02", lado_faixa="direita")
+    metodologia = (
+        "O relatório é produzido automaticamente a partir das bases utilizadas pelo dashboard. Os dados são filtrados de "
+        "acordo com o período, as GREs, a área técnica e o responsável selecionados. Em seguida, são calculados os indicadores "
+        "de escolas climatizadas, em andamento, em rota e pendências, além da consolidação dos registros operacionais."
+    )
+    y = _pdf_paragrafo(canvas_pdf, metodologia, estilos["corpo"], 1.6 * cm, y, 16.7 * cm)
+    y -= 0.25 * cm
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 12)
+    canvas_pdf.drawString(1.6 * cm, y, "Filtros aplicados")
+    y -= 0.45 * cm
+
+    mapa_labels = dict(zip(base["GRE"].astype(str), base.get("GRE_Label", base["GRE"]).astype(str))) if not base.empty else {}
+    gres_texto = "Todas as GREs" if not gres_selecionadas else ", ".join(mapa_labels.get(str(g), str(g)) for g in gres_selecionadas)
+    filtros = [
+        ["Data de emissão", datetime.now().strftime("%d/%m/%Y às %H:%M")],
+        ["Período", periodo or "Todo o período"],
+        ["GRE", gres_texto],
+        ["Área técnica", area or "Todas"],
+        ["Responsável técnico", responsavel or "Todos"],
+        ["Fonte", config.get("Fonte dos dados", "GEOBS / Governo da Paraíba")],
+    ]
+    tabela_filtros = _pdf_tabela_institucional([["INFORMAÇÃO", "SELEÇÃO"]] + filtros, [4.2 * cm, 12.0 * cm], fonte=8)
+    _, altura_tabela = tabela_filtros.wrap(16.2 * cm, y - 1.4 * cm)
+    tabela_filtros.drawOn(canvas_pdf, 1.6 * cm, y - altura_tabela)
+    y -= altura_tabela + 0.55 * cm
+    canvas_pdf.setFont("Helvetica-Bold", 11)
+    canvas_pdf.setFillColor(PDF_AZUL)
+    canvas_pdf.drawString(1.6 * cm, y, "Fluxo de acompanhamento")
+    y -= 0.55 * cm
+    etapas = [
+        ("01", "Atualização das bases", "Consolidação das planilhas e registros publicados."),
+        ("02", "Aplicação dos filtros", "Definição do recorte gerencial desejado."),
+        ("03", "Cálculo dos indicadores", "Apuração dos totais, percentuais e pendências."),
+        ("04", "Geração do relatório", "Organização dos resultados no padrão institucional."),
+    ]
+    largura_card = 3.95 * cm
+    for i, (numero, titulo_etapa, texto_etapa) in enumerate(etapas):
+        x = 1.6 * cm + i * 4.15 * cm
+        canvas_pdf.setFillColor(PDF_CINZA_FUNDO)
+        canvas_pdf.rect(x, y - 3.1 * cm, largura_card, 3.0 * cm, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_AZUL)
+        canvas_pdf.setFont("Helvetica-Bold", 24)
+        canvas_pdf.drawString(x + 0.25 * cm, y - 0.75 * cm, numero)
+        _pdf_paragrafo_markup(canvas_pdf, f"<b>{_texto_pdf(titulo_etapa)}</b>", estilos["card_titulo"], x + 0.25 * cm, y - 1.05 * cm, largura_card - 0.5 * cm)
+        _pdf_paragrafo(canvas_pdf, texto_etapa, estilos["corpo_pequeno"], x + 0.25 * cm, y - 1.62 * cm, largura_card - 0.5 * cm)
+
+    # --------------------------------------------------------
+    # 5. SÍNTESE EXECUTIVA
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "SÍNTESE\nEXECUTIVA", "03", lado_faixa="esquerda")
+    y = _pdf_desenhar_kpis(canvas_pdf, totais, 1.9 * cm, y, 16.4 * cm)
+    y -= 0.55 * cm
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 12)
+    canvas_pdf.drawString(1.9 * cm, y, "Leitura gerencial")
+    y -= 0.48 * cm
+    if base_filtrada.empty:
+        textos_resumo = ["Não foram encontrados registros para os filtros selecionados."]
+    elif len(base_filtrada) == 1:
+        linha = base_filtrada.iloc[0]
+        textos_resumo = [
+            f"A {_texto_pdf(linha.get('GRE_Label', linha.get('GRE', 'GRE selecionada')))} possui {_fmt_num_br(linha.get('Total', 0))} escolas no recorte analisado.",
+            f"Foram climatizadas {_fmt_num_br(linha.get('Climatizadas', 0))} escolas, equivalente a {_fmt_pct_br(totais['conclusao'])} de conclusão.",
+            f"As pendências totalizam {_fmt_num_br(totais['pendencias'])} escolas, sendo {_fmt_num_br(totais['andamento'])} em andamento e {_fmt_num_br(totais['rota'])} em rota.",
+        ]
+    else:
+        trabalho = base_filtrada.copy()
+        trabalho["_PendNovoPdf"] = pd.to_numeric(trabalho.get("Em andamento", 0), errors="coerce").fillna(0) + pd.to_numeric(trabalho.get("Em rota", 0), errors="coerce").fillna(0)
+        maior_pend = trabalho.sort_values("_PendNovoPdf", ascending=False).iloc[0]
+        maior_conc = trabalho.assign(_ConcNovoPdf=pd.to_numeric(trabalho.get("Climatizadas", 0), errors="coerce").fillna(0) / pd.to_numeric(trabalho.get("Total", 0), errors="coerce").replace(0, 1)).sort_values("_ConcNovoPdf", ascending=False).iloc[0]
+        textos_resumo = [
+            f"O recorte analisado reúne {_fmt_num_br(totais['total'])} escolas, das quais {_fmt_num_br(totais['climatizadas'])} já estão climatizadas.",
+            f"A conclusão geral é de {_fmt_pct_br(totais['conclusao'])}; permanecem {_fmt_num_br(totais['pendencias'])} unidades em etapas de execução ou programação.",
+            f"A maior pendência total está em {_texto_pdf(maior_pend.get('GRE_Label', maior_pend.get('GRE', '')))}, com {_fmt_num_br(maior_pend.get('_PendNovoPdf', 0))} escolas.",
+            f"O maior percentual de conclusão está em {_texto_pdf(maior_conc.get('GRE_Label', maior_conc.get('GRE', '')))}, com {_fmt_pct_br(maior_conc.get('_ConcNovoPdf', 0))}.",
+        ]
+    for texto in textos_resumo:
+        y = _pdf_paragrafo(canvas_pdf, f"- {texto}", estilos["corpo"], 2.15 * cm, y, 16.0 * cm)
+
+    # --------------------------------------------------------
+    # 6. PANORAMA GERAL
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_azul(canvas_pdf, estado["pagina"], "PANORAMA GERAL DA\nCLIMATIZAÇÃO", "04", lado_faixa="direita")
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.roundRect(1.6 * cm, 8.7 * cm, 17.0 * cm, 9.7 * cm, 7, stroke=0, fill=1)
+    desenho_status = _pdf_desenho_pizza_status(totais)
+    renderPDF.draw(desenho_status, canvas_pdf, 1.9 * cm, 10.3 * cm)
+    _pdf_desenhar_ranking(canvas_pdf, base_filtrada, 2.0 * cm, 9.8 * cm, 16.1 * cm, max_linhas=10)
+
+    # --------------------------------------------------------
+    # 7. RESULTADOS POR GRE
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "RESULTADOS POR GRE", "05", lado_faixa="esquerda")
+    dados_gre = [["GRE", "TOTAL", "CLIMATIZADAS", "EM ANDAMENTO", "EM ROTA", "PENDÊNCIAS", "CONCLUSÃO"]]
+    for _, linha in base_filtrada.iterrows():
+        total_linha = float(linha.get("Total", 0) or 0)
+        climatizadas_linha = float(linha.get("Climatizadas", 0) or 0)
+        andamento_linha = float(linha.get("Em andamento", 0) or 0)
+        rota_linha = float(linha.get("Em rota", 0) or 0)
+        conclusao_linha = climatizadas_linha / total_linha if total_linha else 0
+        dados_gre.append([
+            linha.get("GRE_Label", linha.get("GRE", "")),
+            _fmt_num_br(total_linha),
+            _fmt_num_br(climatizadas_linha),
+            _fmt_num_br(andamento_linha),
+            _fmt_num_br(rota_linha),
+            _fmt_num_br(andamento_linha + rota_linha),
+            _fmt_pct_br(conclusao_linha),
+        ])
+    if len(dados_gre) == 1:
+        dados_gre.append(["Nenhum registro encontrado.", "", "", "", "", "", ""])
+    tabela_gre = _pdf_tabela_institucional(dados_gre, [4.0 * cm, 1.45 * cm, 2.0 * cm, 2.0 * cm, 1.45 * cm, 1.7 * cm, 1.7 * cm], fonte=6.7)
+    _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_gre, "RESULTADOS POR GRE", "05", y, lado_faixa="esquerda")
+
+    # --------------------------------------------------------
+    # 8. ANÁLISE GERENCIAL E PRIORIDADES
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "ANÁLISE GERENCIAL E\nPRIORIDADES", "06", lado_faixa="direita")
+    if base_filtrada.empty:
+        cards = [
+            ("1", "Sem dados", "Não foram encontrados registros para os filtros selecionados."),
+            ("2", "Sem dados", "Não foram encontrados registros para os filtros selecionados."),
+            ("3", "Sem dados", "Não foram encontrados registros para os filtros selecionados."),
+            ("4", "Sem dados", "Não foram encontrados registros para os filtros selecionados."),
+        ]
+    else:
+        trabalho = base_filtrada.copy()
+        trabalho["_PendCard"] = pd.to_numeric(trabalho.get("Em andamento", 0), errors="coerce").fillna(0) + pd.to_numeric(trabalho.get("Em rota", 0), errors="coerce").fillna(0)
+        trabalho["_ConcCard"] = pd.to_numeric(trabalho.get("Climatizadas", 0), errors="coerce").fillna(0) / pd.to_numeric(trabalho.get("Total", 0), errors="coerce").replace(0, 1)
+        maior_pend = trabalho.sort_values("_PendCard", ascending=False).iloc[0]
+        maior_and = trabalho.sort_values("Em andamento", ascending=False).iloc[0]
+        maior_rota = trabalho.sort_values("Em rota", ascending=False).iloc[0]
+        maior_conc = trabalho.sort_values("_ConcCard", ascending=False).iloc[0]
+        cards = [
+            ("1", "Maior pendência total", f"{maior_pend.get('GRE_Label', maior_pend.get('GRE', ''))}: {_fmt_num_br(maior_pend.get('_PendCard', 0))} escolas pendentes."),
+            ("2", "Maior volume em andamento", f"{maior_and.get('GRE_Label', maior_and.get('GRE', ''))}: {_fmt_num_br(maior_and.get('Em andamento', 0))} escolas em execução."),
+            ("3", "Maior volume em rota", f"{maior_rota.get('GRE_Label', maior_rota.get('GRE', ''))}: {_fmt_num_br(maior_rota.get('Em rota', 0))} escolas na rota de climatização."),
+            ("4", "Maior conclusão", f"{maior_conc.get('GRE_Label', maior_conc.get('GRE', ''))}: {_fmt_pct_br(maior_conc.get('_ConcCard', 0))} de conclusão."),
+        ]
+    largura_card = 7.85 * cm
+    altura_card = 4.0 * cm
+    for i, card in enumerate(cards):
+        coluna = i % 2
+        linha = i // 2
+        x = 1.7 * cm + coluna * 8.25 * cm
+        y_card = y - (linha + 1) * altura_card - linha * 0.45 * cm
+        _pdf_desenhar_card_analise(canvas_pdf, x, y_card, largura_card, altura_card, *card)
+    y_tabela = y - 2 * altura_card - 0.9 * cm
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 11)
+    canvas_pdf.drawString(1.7 * cm, y_tabela, "Prioridades e observações registradas")
+    y_tabela -= 0.45 * cm
+    dados_prioridade = [["GRE", "PRIORIDADE", "OBSERVAÇÃO"]]
+    ordenada = base_filtrada.copy()
+    if not ordenada.empty:
+        ordenada["_PendPrio"] = pd.to_numeric(ordenada.get("Em andamento", 0), errors="coerce").fillna(0) + pd.to_numeric(ordenada.get("Em rota", 0), errors="coerce").fillna(0)
+        ordenada = ordenada.sort_values("_PendPrio", ascending=False)
+    for _, linha in ordenada.iterrows():
+        dados_prioridade.append([
+            linha.get("GRE_Label", linha.get("GRE", "")),
+            linha.get("Prioridade", "") or "Não informada",
+            linha.get("Observação", "") or "Sem observação",
+        ])
+    if len(dados_prioridade) == 1:
+        dados_prioridade.append(["Nenhum registro encontrado.", "", ""])
+    tabela_prioridade = _pdf_tabela_institucional(dados_prioridade, [4.2 * cm, 3.2 * cm, 8.6 * cm], fonte=6.5)
+    _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_prioridade, "ANÁLISE GERENCIAL E PRIORIDADES", "06", y_tabela, lado_faixa="direita")
+
+    # --------------------------------------------------------
+    # 9. RESPONSÁVEIS TÉCNICOS
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "RESPONSÁVEIS\nTÉCNICOS", "07", lado_faixa="esquerda")
+    dados_resp = [["RESPONSÁVEL", "ÁREA", "GRES VINCULADAS", "TOTAL", "PENDÊNCIAS", "CONCLUSÃO"]]
+    if not resp_filtrados.empty:
+        for (nome, area_resp), grupo in resp_filtrados.groupby(["Responsável Técnico", "_Área Relatório"], dropna=False):
+            gres_grupo = sorted(set(grupo["GRE"].dropna().astype(str)))
+            base_grupo = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_grupo)]
+            totais_grupo = _totais_relatorio(base_grupo)
+            dados_resp.append([
+                nome,
+                area_resp,
+                ", ".join(gres_grupo),
+                _fmt_num_br(totais_grupo["total"]),
+                _fmt_num_br(totais_grupo["pendencias"]),
+                _fmt_pct_br(totais_grupo["conclusao"]),
+            ])
+    else:
+        dados_resp.append(["Nenhum responsável encontrado.", "", "", "", "", ""])
+    tabela_resp = _pdf_tabela_institucional(dados_resp, [3.5 * cm, 2.2 * cm, 5.2 * cm, 1.6 * cm, 1.9 * cm, 1.8 * cm], fonte=6.7)
+    _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_resp, "RESPONSÁVEIS TÉCNICOS", "07", y, lado_faixa="esquerda")
+
+    # --------------------------------------------------------
+    # 10. SETORIZAÇÃO E ACOMPANHAMENTO
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "SETORIZAÇÃO E\nACOMPANHAMENTO", "08", lado_faixa="direita")
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 11)
+    canvas_pdf.drawString(1.6 * cm, y, "Quadro de status por setorização")
+    y -= 0.45 * cm
+    dados_setor = [["SETOR", "EM ANDAMENTO", "EM ROTA", "TOTAL", "OBSERVAÇÃO"]]
+    for _, linha in setor.iterrows():
+        dados_setor.append([
+            linha.get("Setor", ""),
+            _fmt_num_br(linha.get("Em andamento", 0)),
+            _fmt_num_br(linha.get("Rota de climatização", 0)),
+            _fmt_num_br(linha.get("Total", 0)),
+            linha.get("Observação", "") or "",
+        ])
+    if len(dados_setor) == 1:
+        dados_setor.append(["Nenhum registro encontrado.", "", "", "", ""])
+    tabela_setor = _pdf_tabela_institucional(dados_setor, [3.4 * cm, 2.2 * cm, 1.8 * cm, 1.5 * cm, 7.3 * cm], fonte=6.7)
+    _, altura_setor = tabela_setor.wrap(16.2 * cm, 8.2 * cm)
+    if altura_setor <= 8.2 * cm:
+        tabela_setor.drawOn(canvas_pdf, 1.6 * cm, y - altura_setor)
+        y -= altura_setor + 0.6 * cm
+    else:
+        _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_setor, "SETORIZAÇÃO E ACOMPANHAMENTO", "08", y, lado_faixa="direita")
+        y = 9.0 * cm
+
+    canvas_pdf.setFillColor(PDF_PRETO)
+    canvas_pdf.setFont("Helvetica-Bold", 11)
+    canvas_pdf.drawString(1.6 * cm, y, "Acompanhamento operacional por status")
+    y -= 0.45 * cm
+    status_contagem = acomp_filtrado["Status"].fillna("(SEM STATUS)").astype(str).value_counts() if not acomp_filtrado.empty else pd.Series(dtype=int)
+    dados_status = [["STATUS", "QUANTIDADE"]]
+    for status, quantidade in status_contagem.items():
+        dados_status.append([status, _fmt_num_br(quantidade)])
+    if len(dados_status) == 1:
+        dados_status.append(["Nenhum registro operacional encontrado.", "0"])
+    tabela_status = _pdf_tabela_institucional(dados_status, [12.8 * cm, 3.4 * cm], fonte=7.2)
+    _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_status, "SETORIZAÇÃO E ACOMPANHAMENTO", "08", y, lado_faixa="direita")
+
+    # --------------------------------------------------------
+    # 11. ANEXO OPERACIONAL OPCIONAL
+    # --------------------------------------------------------
+    if incluir_detalhes_operacionais and not acomp_filtrado.empty:
+        canvas_pdf.showPage()
+        estado["pagina"] += 1
+        y = _pdf_base_pagina_branca(canvas_pdf, estado["pagina"], "DETALHAMENTO\nOPERACIONAL", "08A", lado_faixa="esquerda")
+        dados_op = [["GRE", "MUNICÍPIO", "UNIDADE ESCOLAR", "STATUS", "ÚLTIMA MOV.", "OBSERVAÇÕES"]]
+        limite = 250
+        for _, linha in acomp_filtrado.head(limite).iterrows():
+            dados_op.append([
+                linha.get("GRE_Label", linha.get("GRE", "")),
+                linha.get("Município", ""),
+                linha.get("Unidade Escolar", ""),
+                linha.get("Status", ""),
+                linha.get("Data Última Mov.", ""),
+                linha.get("Observações", ""),
+            ])
+        tabela_op = _pdf_tabela_institucional(dados_op, [1.6 * cm, 2.3 * cm, 4.0 * cm, 2.6 * cm, 2.1 * cm, 3.6 * cm], fonte=5.8)
+        _pdf_desenhar_tabela_paginada(canvas_pdf, estado, tabela_op, "DETALHAMENTO OPERACIONAL", "08A", y, lado_faixa="esquerda")
+
+    # --------------------------------------------------------
+    # 12. CONSIDERAÇÕES FINAIS
+    # --------------------------------------------------------
+    canvas_pdf.showPage()
+    estado["pagina"] += 1
+    y = _pdf_base_pagina_azul(canvas_pdf, estado["pagina"], "CONSIDERAÇÕES\nFINAIS", "09", lado_faixa="esquerda")
+    atualizacao_oficial = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
+    consideracao_1 = (
+        f"O acompanhamento consolidado indica que {_fmt_num_br(totais['climatizadas'])} das {_fmt_num_br(totais['total'])} escolas do recorte analisado "
+        f"estão climatizadas, correspondendo a {_fmt_pct_br(totais['conclusao'])} de conclusão. Permanecem {_fmt_num_br(totais['pendencias'])} unidades "
+        "em etapas de execução ou programação."
+    )
+    consideracao_2 = (
+        "O monitoramento contínuo das adequações estruturais e elétricas é essencial para identificar as escolas aptas a receber "
+        "os equipamentos, direcionar as equipes responsáveis e reduzir o tempo entre a conclusão das obras e a instalação dos sistemas de climatização."
+    )
+    consideracao_3 = (
+        "A utilização de bases padronizadas e de relatórios gerenciais fortalece o controle das intervenções, a transparência das informações "
+        "e o planejamento das próximas etapas."
+    )
+    y = _pdf_paragrafo(canvas_pdf, consideracao_1, estilos["corpo_branco"], 1.9 * cm, y, 16.7 * cm)
+    y -= 0.2 * cm
+    y = _pdf_paragrafo(canvas_pdf, consideracao_2, estilos["corpo_branco"], 1.9 * cm, y, 16.7 * cm)
+    y -= 0.2 * cm
+    y = _pdf_paragrafo(canvas_pdf, consideracao_3, estilos["corpo_branco"], 1.9 * cm, y, 16.7 * cm)
+    if atualizacao_oficial:
+        y -= 0.35 * cm
+        _pdf_paragrafo(canvas_pdf, f"Última atualização oficial informada: {atualizacao_oficial}.", estilos["corpo_pequeno_branco"], 1.9 * cm, y, 16.7 * cm)
+
+    canvas_pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+
+
 def renderizar_gerador_relatorio(
     base: pd.DataFrame,
     setor: pd.DataFrame,
@@ -1413,7 +2350,7 @@ def renderizar_gerador_relatorio(
     st.markdown("## 📄 Relatório de climatização em PDF")
     st.caption(
         "Defina os filtros abaixo. O arquivo será montado com os indicadores, "
-        "gráficos, resultados por GRE, responsáveis, setorização e acompanhamento operacional."
+        "gráficos, resultados por GRE, responsáveis, setorização e acompanhamento operacional, no template institucional da GEOBS."
     )
 
     if not REPORTLAB_DISPONIVEL:
