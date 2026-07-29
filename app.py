@@ -1718,111 +1718,174 @@ body {
     word-break: break-word;
 }
 
-.map-panel .panel-body {
-    padding-bottom: 14px;
+.performance-panel .panel-body {
+    padding-bottom: 16px;
 }
 
-.gre-map-wrap {
+.performance-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px;
+    margin: 4px 0 14px;
+}
+
+.performance-summary-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 11px;
+    border: 1px solid var(--borda);
+    border-radius: 11px;
+    background: #F8FBFF;
+    color: #40516A;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.performance-summary-item i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.performance-summary-item strong {
+    color: var(--azul-noite);
+    font-size: 15px;
+    font-weight: 950;
+}
+
+.gre-performance-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(125px, 1fr));
+    gap: 11px;
+    align-content: start;
+}
+
+.gre-performance-card {
+    --status-color: var(--azul-medio);
     position: relative;
-    width: 100%;
-    min-height: 690px;
-    padding: 4px;
+    min-height: 158px;
+    padding: 15px 13px 12px;
+    border: 1px solid #D9E4F2;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFE 100%);
+    box-shadow: 0 5px 14px rgba(0,31,73,.08);
+    overflow: hidden;
+    transition: transform .18s ease, box-shadow .18s ease;
 }
 
-.gre-map-wrap svg {
-    width: 100%;
-    min-height: 650px;
-    display: block;
-    filter: drop-shadow(0 10px 14px rgba(0,31,73,.15));
+.gre-performance-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 6px;
+    background: var(--status-color);
 }
 
-.gre-region {
-    stroke: #FFFFFF;
-    stroke-width: 5;
-    stroke-linejoin: round;
-    cursor: default;
-    transition: filter .18s ease, opacity .18s ease;
+.gre-performance-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0,31,73,.13);
 }
 
-.gre-region:hover {
-    filter: brightness(1.08);
+.gre-performance-card.high { --status-color: var(--azul-noite); }
+.gre-performance-card.medium { --status-color: var(--azul-medio); }
+.gre-performance-card.low { --status-color: var(--azul-claro); }
+.gre-performance-card.critical { --status-color: var(--vermelho); }
+.gre-performance-card.no-data { --status-color: #AFC1D5; }
+
+.gre-performance-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 2px;
 }
 
-.gre-region.muted {
-    fill: #DCE6F1 !important;
-    opacity: .62;
+.gre-performance-name {
+    color: var(--azul-noite);
+    font-size: 14px;
+    font-weight: 950;
 }
 
-.gre-map-text {
-    fill: #FFFFFF;
-    text-anchor: middle;
-    font-family: "Segoe UI", Arial, sans-serif;
-    font-size: 16px;
-    font-weight: 900;
-    paint-order: stroke;
-    stroke: rgba(0,31,73,.30);
-    stroke-width: 2px;
-    pointer-events: none;
+.gre-performance-pct {
+    color: var(--status-color);
+    font-size: 17px;
+    font-weight: 950;
 }
 
-.gre-map-text.light-label {
-    fill: var(--azul-noite);
-    stroke: rgba(255,255,255,.72);
+.gre-performance-location {
+    min-height: 30px;
+    margin-top: 5px;
+    color: #516174;
+    font-size: 11px;
+    line-height: 1.25;
+    font-weight: 750;
+}
+
+.gre-performance-values {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin-top: 10px;
+    color: #40516A;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.gre-performance-values strong {
+    color: var(--azul-noite);
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 950;
+}
+
+.gre-performance-track {
+    height: 8px;
+    margin-top: 10px;
+    border-radius: 999px;
+    background: #E5EDF6;
+    overflow: hidden;
+}
+
+.gre-performance-fill {
+    height: 100%;
+    min-width: 0;
+    border-radius: 999px;
+    background: var(--status-color);
+}
+
+.gre-performance-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    color: #68788D;
+    font-size: 10px;
+    font-weight: 800;
 }
 
 .map-legend {
-    margin-top: 2px;
-    padding: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding: 11px;
     border: 1px solid var(--borda);
-    border-radius: 14px;
+    border-radius: 13px;
     background: #F8FBFF;
+    color: #40516A;
+    font-size: 11px;
+    font-weight: 850;
 }
 
 .map-legend span {
     white-space: nowrap;
-}
-
-.status-panel {
-    margin-top: 16px;
-}
-
-.status-chart-grid {
-    display: grid;
-    grid-template-columns: minmax(170px, 250px) 1fr 64px;
-    gap: 12px;
-    align-items: center;
-    margin: 12px 0;
-}
-
-.status-chart-label {
-    color: #17365D;
-    font-size: 12px;
-    font-weight: 900;
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.status-chart-track {
-    height: 24px;
-    border-radius: 7px;
-    background: #E8EEF6;
-    overflow: hidden;
-}
-
-.status-chart-fill {
-    height: 100%;
-    min-width: 3px;
-    border-radius: 7px;
-    background: linear-gradient(90deg, var(--azul-noite), var(--azul-medio));
-}
-
-.status-chart-value {
-    color: var(--azul-noite);
-    font-size: 13px;
-    font-weight: 950;
-    text-align: right;
 }
 
 .chart-empty {
@@ -1840,12 +1903,8 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .gre-map-wrap {
-        min-height: 600px;
-    }
-
-    .gre-map-wrap svg {
-        min-height: 560px;
+    .gre-performance-grid {
+        grid-template-columns: repeat(4, minmax(135px, 1fr));
     }
 }
 
@@ -1859,23 +1918,18 @@ body {
         min-width: 630px;
     }
 
-    .gre-map-wrap {
-        min-height: 470px;
-        overflow-x: auto;
+    .performance-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .gre-map-wrap svg {
-        min-width: 690px;
-        min-height: 460px;
+    .gre-performance-grid {
+        grid-template-columns: repeat(2, minmax(135px, 1fr));
     }
+}
 
-    .status-chart-grid {
-        grid-template-columns: 92px 1fr 42px;
-        gap: 7px;
-    }
-
-    .status-chart-label {
-        font-size: 10px;
+@media (max-width: 430px) {
+    .gre-performance-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -2195,12 +2249,13 @@ body {
                     </div>
                 </div>
 
-                <div class="panel map-panel">
-                    <div class="panel-head">Mapa por GRE</div>
+                <div class="panel performance-panel">
+                    <div class="panel-head">Desempenho por GRE</div>
                     <div class="panel-body">
-                        <div class="chart-title">Desempenho e resultados da climatização</div>
-                        <div class="analytics-subtitle">Climatizadas / total de escolas</div>
-                        <div class="gre-map-wrap" id="greMap"></div>
+                        <div class="chart-title">Resultados da climatização por gerência</div>
+                        <div class="analytics-subtitle">Climatizadas / total de escolas e percentual de conclusão</div>
+                        <div class="performance-summary" id="grePerformanceSummary"></div>
+                        <div class="gre-performance-grid" id="grePerformanceGrid"></div>
                         <div class="map-legend">
                             <span><i class="legend-square" style="background:var(--azul-noite)"></i>Alto (≥ 70%)</span>
                             <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
@@ -2209,12 +2264,6 @@ body {
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="panel panel-pad status-panel">
-                <div class="chart-title">Status dos registros operacionais</div>
-                <div class="analytics-subtitle">Distribuição dos principais status da base de acompanhamento</div>
-                <div id="statusOperationalChart"></div>
             </div>
         </section>
     </section>
@@ -2959,105 +3008,64 @@ function renderVerticalBarChart(rows) {
     }).join("");
 }
 
-const GRE_MAP_SHAPES = {
-    8:  {points:"70,52 205,22 272,74 250,164 130,173 65,118", tx:160, ty:90},
-    9:  {points:"54,122 130,173 250,164 274,259 165,292 52,242", tx:160, ty:218},
-    10: {points:"52,242 165,292 284,284 270,385 145,418 40,354", tx:155, ty:337},
-    11: {points:"145,418 270,385 343,431 310,500 162,510 84,464", tx:214, ty:457},
-    7:  {points:"250,164 344,102 430,150 420,258 274,259", tx:345, ty:210},
-    13: {points:"274,259 420,258 438,356 343,431 270,385 284,284", tx:354, ty:326},
-    6:  {points:"343,431 438,356 548,371 554,473 462,524 310,500", tx:442, ty:444},
-    4:  {points:"344,102 430,55 544,82 550,178 430,150", tx:465, ty:115},
-    2:  {points:"544,82 655,72 722,139 690,220 550,178", tx:625, ty:139},
-    3:  {points:"420,258 550,178 690,220 693,335 548,371 438,356", tx:565, ty:286},
-    5:  {points:"462,524 554,473 675,464 720,539 646,586 510,579", tx:594, ty:525},
-    12: {points:"548,371 693,335 770,388 758,487 675,464 554,473", tx:665, ty:414},
-    14: {points:"655,72 777,92 838,166 805,255 690,220 722,139", tx:750, ty:155},
-    15: {points:"690,220 805,255 838,350 770,388 693,335", tx:770, ty:311},
-    1:  {points:"805,255 900,219 951,282 930,389 838,350", tx:870, ty:307},
-    16: {points:"838,350 930,389 924,482 835,493 758,487 770,388", tx:852, ty:430},
-};
-
-function greNumber(value) {
-    const match = String(value || "").match(/\d+/);
-    return match ? Number(match[0]) : null;
-}
-
 function performanceClass(row) {
-    if (!row || Number(row.Total || 0) <= 0) return {fill:"#DCE6F1", labelClass:"light-label", name:"Sem dados"};
-    const pct = Number(row.Climatizadas || 0) / Number(row.Total || 1);
-    if (pct >= .70) return {fill:"#001F49", labelClass:"", name:"Alto"};
-    if (pct >= .50) return {fill:"#1F77D0", labelClass:"", name:"Médio"};
-    if (pct >= .30) return {fill:"#5DA7F2", labelClass:"", name:"Baixo"};
-    return {fill:"#EF4444", labelClass:"", name:"Crítico"};
+    const total = Number(row?.Total || 0);
+    const clim = Number(row?.Climatizadas || 0);
+    if (total <= 0) {
+        return {key:"no-data", color:"#AFC1D5", name:"Sem dados", pct:0};
+    }
+
+    const pct = Math.max(0, Math.min(1, clim / total));
+    if (pct >= .70) return {key:"high", color:"#001F49", name:"Alto", pct};
+    if (pct >= .50) return {key:"medium", color:"#1F77D0", name:"Médio", pct};
+    if (pct >= .30) return {key:"low", color:"#5DA7F2", name:"Baixo", pct};
+    return {key:"critical", color:"#EF4444", name:"Crítico", pct};
 }
 
-function renderGreMap(rows) {
-    const target = document.getElementById("greMap");
-    if (!target) return;
-    const byNumber = new Map(rows.map(row => [greNumber(row.GRE), row]));
-    const selected = normalizeGreSelection(getSelectedFilters().gre).map(greNumber);
-    const selectedSet = new Set(selected);
+function renderGrePerformance(rows) {
+    const target = document.getElementById("grePerformanceGrid");
+    const summary = document.getElementById("grePerformanceSummary");
+    if (!target || !summary) return;
 
-    let shapes = "";
-    Object.entries(GRE_MAP_SHAPES).forEach(([numTxt, shape]) => {
-        const num = Number(numTxt);
-        const row = byNumber.get(num);
-        const perf = performanceClass(row);
-        const isMuted = selectedSet.size > 0 && !selectedSet.has(num);
-        const local = row ? locationOnly(row) : "";
-        const clim = row ? Number(row.Climatizadas || 0) : 0;
-        const total = row ? Number(row.Total || 0) : 0;
-        const title = row
-            ? `${compactGreLabel(row)} — ${local || "Sem localização"}: ${fmtNum(clim)}/${fmtNum(total)} (${perf.name})`
-            : `${num}ª GRE — sem dados no filtro`;
-        const textClass = perf.labelClass + (isMuted ? " light-label" : "");
-        const shortLocal = local.length > 18 ? local.slice(0,17) + "…" : local;
-
-        shapes += `
-            <g>
-                <polygon class="gre-region ${isMuted ? "muted" : ""}" points="${shape.points}" fill="${perf.fill}"><title>${escapeHtml(title)}</title></polygon>
-                <text class="gre-map-text ${textClass}" x="${shape.tx}" y="${shape.ty-15}">
-                    <tspan x="${shape.tx}" dy="0">${num}ª GRE</tspan>
-                    ${shortLocal ? `<tspan x="${shape.tx}" dy="21" font-size="13">${escapeHtml(shortLocal)}</tspan>` : ""}
-                    <tspan x="${shape.tx}" dy="21" font-size="14">${row ? `${fmtNum(clim)}/${fmtNum(total)}` : "—"}</tspan>
-                </text>
-            </g>`;
-    });
-
-    target.innerHTML = `
-        <svg viewBox="0 0 990 620" role="img" aria-label="Mapa esquemático de desempenho por GRE">
-            <defs>
-                <filter id="regionShadow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#001F49" flood-opacity=".16"/>
-                </filter>
-            </defs>
-            <g filter="url(#regionShadow)">${shapes}</g>
-        </svg>`;
-}
-
-function renderStatusOperationalChart(rows) {
-    const target = document.getElementById("statusOperationalChart");
-    if (!target) return;
     if (!rows.length) {
-        target.innerHTML = '<div class="chart-empty">Sem registros operacionais para os filtros selecionados.</div>';
+        summary.innerHTML = "";
+        target.innerHTML = '<div class="chart-empty" style="grid-column:1/-1;">Sem dados para os filtros selecionados.</div>';
         return;
     }
 
-    const counts = {};
-    rows.forEach(row => {
-        const status = String(row.Status || "(SEM STATUS)").trim() || "(SEM STATUS)";
-        counts[status] = (counts[status] || 0) + 1;
+    const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
+    const counts = {high:0, medium:0, low:0, critical:0};
+
+    data.forEach(row => {
+        const perf = performanceClass(row);
+        if (Object.prototype.hasOwnProperty.call(counts, perf.key)) counts[perf.key] += 1;
     });
-    const data = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 10);
-    const maxValue = Math.max(...data.map(item => item[1]), 1);
-    target.innerHTML = data.map(([status, value]) => {
-        const width = Math.max(1.5, value / maxValue * 100);
+
+    summary.innerHTML = `
+        <div class="performance-summary-item"><span><i style="background:var(--azul-noite)"></i>Alto</span><strong>${fmtNum(counts.high)}</strong></div>
+        <div class="performance-summary-item"><span><i style="background:var(--azul-medio)"></i>Médio</span><strong>${fmtNum(counts.medium)}</strong></div>
+        <div class="performance-summary-item"><span><i style="background:var(--azul-claro)"></i>Baixo</span><strong>${fmtNum(counts.low)}</strong></div>
+        <div class="performance-summary-item"><span><i style="background:var(--vermelho)"></i>Crítico</span><strong>${fmtNum(counts.critical)}</strong></div>`;
+
+    target.innerHTML = data.map(row => {
+        const perf = performanceClass(row);
+        const clim = Number(row.Climatizadas || 0);
+        const total = Number(row.Total || 0);
+        const pend = Math.max(0, total - clim);
+        const local = locationOnly(row) || "Localização não informada";
+        const width = Math.max(0, Math.min(100, perf.pct * 100));
+        const title = `${compactGreLabel(row)} — ${local}: ${fmtNum(clim)} de ${fmtNum(total)} escolas climatizadas (${fmtPct(perf.pct)})`;
+
         return `
-            <div class="status-chart-grid" title="${escapeHtml(status)}: ${fmtNum(value)} registros">
-                <div class="status-chart-label">${escapeHtml(status)}</div>
-                <div class="status-chart-track"><div class="status-chart-fill" style="width:${width}%"></div></div>
-                <div class="status-chart-value">${fmtNum(value)}</div>
+            <div class="gre-performance-card ${perf.key}" title="${escapeHtml(title)}">
+                <div class="gre-performance-top">
+                    <div class="gre-performance-name">${escapeHtml(compactGreLabel(row))}</div>
+                    <div class="gre-performance-pct">${total > 0 ? fmtPct(perf.pct) : "—"}</div>
+                </div>
+                <div class="gre-performance-location">${escapeHtml(local)}</div>
+                <div class="gre-performance-values"><strong>${fmtNum(clim)}</strong><span>de ${fmtNum(total)} escolas</span></div>
+                <div class="gre-performance-track"><div class="gre-performance-fill" style="width:${width}%"></div></div>
+                <div class="gre-performance-foot"><span>${perf.name}</span><span>${fmtNum(pend)} pendente${pend === 1 ? "" : "s"}</span></div>
             </div>`;
     }).join("");
 }
@@ -3460,8 +3468,7 @@ function renderDashboard() {
     renderResponsaveis(rows);
     renderAreaChart(rows);
     renderVerticalBarChart(rows);
-    renderGreMap(rows);
-    renderStatusOperationalChart(filterAcompanhamento());
+    renderGrePerformance(rows);
 
     if (f.visao === "Em andamento") {
         renderRanking("rankingTotalFull", rows, "Em andamento", "andamento", 16);
