@@ -2504,27 +2504,65 @@ def _relatorio_barras_verticais_svg(base_filtrada: pd.DataFrame) -> str:
 
 
 _GRE_MAP_LAYOUT_PRINT = [
-    (8,"132,92 176,82 224,72 246,78 264,95 284,108 278,148 272,180 234,188 194,192 164,188 132,172 104,150 106,114",195,132,156,178),
-    (9,"108,150 132,172 164,188 194,192 234,188 264,184 278,226 284,260 246,272 210,282 172,278 138,262 104,246 106,208",195,224,248,270),
-    (10,"104,246 138,262 172,278 210,282 246,280 280,280 274,336 266,372 228,380 188,382 152,382 122,362 96,344 98,304",190,317,341,363),
-    (11,"152,382 228,380 266,372 288,430 296,470 246,478 194,484 154,486 126,466 96,442 114,412",197,440,464,486),
-    (7,"264,184 316,148 366,116 424,150 424,198 420,236 374,248 326,248 284,260 278,226",354,215,239,261),
-    (13,"284,260 326,248 374,248 392,312 396,360 356,394 326,420 292,398 270,366 274,336 280,280",337,317,341,363),
-    (6,"292,398 326,420 356,394 396,360 448,370 490,376 490,444 488,488 444,514 384,506 326,498 294,470 306,438",400,432,456,478),
-    (4,"424,100 456,112 498,122 504,162 510,202 474,196 438,188 424,150",462,144,168,190),
-    (2,"510,102 556,102 604,100 626,124 650,148 642,186 632,220 586,214 544,206 510,202 504,162 504,122",574,145,169,191),
-    (14,"618,104 664,108 720,112 744,150 766,190 750,230 734,268 694,266 660,258 632,220 642,186 650,148",692,158,182,204),
-    (3,"424,198 474,196 510,202 544,206 586,214 592,262 594,322 556,338 516,354 474,350 438,344 396,336 392,312 374,248 420,236",500,300,324,346),
-    (15,"592,262 632,220 660,258 694,266 702,312 708,360 672,368 636,372 594,322",648,292,316,338),
-    (1,"694,266 726,248 760,232 786,260 812,290 808,334 804,378 768,376 734,370 708,360 702,312",760,304,328,350),
-    (12,"490,376 556,338 594,322 636,372 630,430 624,486 576,492 528,490 488,488 490,444",562,428,452,474),
-    (16,"630,430 636,372 672,368 708,360 734,370 768,376 768,436 766,490 722,500 678,496 624,486",704,428,452,474),
-    (5,"488,488 528,490 576,492 624,486 650,538 670,586 626,618 576,618 528,616 510,580 498,540",576,548,572,594),
+    (9,"95,220 130,205 175,210 205,250 202,300 175,345 120,370 85,340 70,290 72,245",135,280,305,328),
+    (10,"205,230 255,212 320,220 340,280 325,340 250,355 202,300",265,280,305,328),
+    (8,"310,170 360,130 435,120 490,150 505,215 455,250 395,260 340,280 320,220",405,182,207,230),
+    (7,"120,370 175,345 250,355 285,405 280,470 220,510 140,525 90,505 70,450 85,400",185,438,463,486),
+    (11,"220,510 280,470 340,485 370,530 330,575 255,598 205,575 195,535",285,540,565,588),
+    (13,"395,260 455,250 520,275 545,335 500,365 430,370 380,345 340,280",448,302,327,350),
+    (6,"520,275 590,270 650,300 675,360 650,420 600,448 540,440 500,365 545,335",590,345,370,393),
+    (5,"540,440 600,448 650,420 700,465 730,530 710,600 630,635 565,615 500,575 470,505",615,528,553,576),
+    (4,"650,155 710,130 780,138 820,175 825,235 780,260 725,285 650,300 590,270 600,215",715,192,217,240),
+    (3,"650,300 725,285 780,320 805,380 770,440 700,465 650,420 675,360",728,357,382,405),
+    (15,"770,440 820,425 880,445 905,500 875,560 805,590 735,565 700,465",812,500,525,548),
+    (2,"820,175 885,170 950,195 980,245 965,305 910,330 850,320 780,260 825,235",895,242,267,290),
+    (14,"980,245 1035,235 1085,260 1110,315 1095,370 1045,395 990,380 965,305",1040,305,330,353),
+    (16,"1045,395 1095,370 1115,390 1110,430 1090,430 1093,463 1065,485 1028,480 1000,430",1060,425,450,473),
+    (1,"1090,430 1120,420 1140,442 1138,470 1115,482 1093,463",1118,443,466,486),
+    (12,"880,445 935,430 985,450 1015,495 1000,555 955,590 905,500",948,500,525,548),
 ]
 
 
+_GRE_STATE_OUTLINE_PRINT = "70,290 72,245 95,220 130,205 175,210 255,212 310,170 360,130 435,120 490,150 650,155 710,130 780,138 885,170 950,195 1035,235 1085,260 1110,315 1115,390 1140,442 1138,470 1115,482 1093,463 1065,485 1000,555 955,590 875,560 805,590 730,530 710,600 630,635 565,615 500,575 330,575 255,598 205,575 140,525 90,505 70,450 85,400 70,340"
+
+
+def _smooth_svg_path_from_points(points_str: str) -> str:
+    pontos = []
+    for item in str(points_str).strip().split():
+        if "," not in item:
+            continue
+        x_txt, y_txt = item.split(",", 1)
+        try:
+            pontos.append((float(x_txt), float(y_txt)))
+        except ValueError:
+            continue
+
+    if len(pontos) < 3:
+        if not pontos:
+            return ""
+        comandos = [f"M {pontos[0][0]:.1f} {pontos[0][1]:.1f}"]
+        for x, y in pontos[1:]:
+            comandos.append(f"L {x:.1f} {y:.1f}")
+        return " ".join(comandos) + " Z"
+
+    n = len(pontos)
+
+    def meio(a, b):
+        return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+
+    inicio = meio(pontos[-1], pontos[0])
+    partes = [f"M {inicio[0]:.1f} {inicio[1]:.1f}"]
+    for i in range(n):
+        atual = pontos[i]
+        prox = pontos[(i + 1) % n]
+        mp = meio(atual, prox)
+        partes.append(f"Q {atual[0]:.1f} {atual[1]:.1f} {mp[0]:.1f} {mp[1]:.1f}")
+    partes.append("Z")
+    return " ".join(partes)
+
+
 def _relatorio_mapa_gre_svg(base_filtrada: pd.DataFrame) -> str:
-    # Mapa esquemático de desempenho por GRE para impressão.
+    # Mapa esquemático de desempenho por GRE para impressão, com acabamento mais cartográfico.
     dados = _dados_gre_resumo(base_filtrada)
     por_numero = {}
     for _, linha in dados.iterrows():
@@ -2555,18 +2593,43 @@ def _relatorio_mapa_gre_svg(base_filtrada: pd.DataFrame) -> str:
             partes = label.split("—", 1)
             cidade = partes[1].strip() if len(partes) > 1 else "—"
         valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
+        caminho = _smooth_svg_path_from_points(pontos)
         regioes.append(
-            f'<polygon points="{pontos}" fill="{cor}" stroke="#FFFFFF" stroke-width="4"/>'
+            f'<path d="{caminho}" fill="{cor}" stroke="#FFFFFF" stroke-width="4.2" stroke-linejoin="round" filter="url(#printMapShadow)"/>'
             f'<text x="{cx}" y="{cy}" text-anchor="middle" font-size="12" font-weight="900" fill="{cor_texto}">{numero}ª GRE</text>'
             f'<text x="{cx}" y="{city_y}" text-anchor="middle" font-size="9.5" font-weight="800" fill="{cor_texto}">{escape(cidade)}</text>'
             f'<text x="{cx}" y="{value_y}" text-anchor="middle" font-size="10.5" font-weight="900" fill="{cor_texto}">{valor}</text>'
         )
 
+    outline_path = _smooth_svg_path_from_points(_GRE_STATE_OUTLINE_PRINT)
+    topo = [
+        'M90 230 C180 180, 310 165, 420 145 S620 120, 760 132',
+        'M82 270 C178 230, 310 225, 420 205 S650 185, 838 198',
+        'M78 318 C188 290, 330 292, 460 280 S680 268, 900 282',
+        'M82 370 C198 352, 342 352, 486 346 S730 344, 972 356',
+        'M92 430 C214 420, 364 420, 516 422 S778 432, 1010 446',
+        'M126 492 C250 492, 388 502, 550 514 S780 534, 960 548',
+        'M220 556 C330 566, 452 582, 620 594 S832 596, 968 578',
+    ]
+
     return (
-        '<svg class="print-map-svg" viewBox="60 46 790 610" role="img" aria-label="Mapa de desempenho por GRE">'
+        '<svg class="print-map-svg" viewBox="40 100 1130 560" role="img" aria-label="Mapa de desempenho por GRE">'
+        '<defs>'
+        '  <filter id="printMapShadow" x="-20%" y="-20%" width="140%" height="140%">'
+        '    <feDropShadow dx="0" dy="5" stdDeviation="4.5" flood-color="#163B67" flood-opacity="0.16"/>'
+        '  </filter>'
+        '  <clipPath id="printStateClip">'
+        f'    <path d="{outline_path}" />'
+        '  </clipPath>'
+        '</defs>'
+        f'<path d="{outline_path}" fill="#EEF4FB" stroke="#D4E2F0" stroke-width="5"/>'
+        '<g clip-path="url(#printStateClip)" opacity="0.14" stroke="#D7E3F1" fill="none" stroke-width="1.2">'
+        + ''.join(f'<path d="{linha}"/>' for linha in topo)
+        + '</g>'
         + ''.join(regioes)
         + '</svg>'
     )
+
 
 def _montar_html_relatorio_impressao(
     base_filtrada: pd.DataFrame,
@@ -5214,23 +5277,51 @@ function renderVerticalBarChart(rows) {
 }
 
 const GRE_MAP_LAYOUT = [
-    {num:8,  points:"132,92 176,82 224,72 246,78 264,95 284,108 278,148 272,180 234,188 194,192 164,188 132,172 104,150 106,114", cx:195, cy:132, cityY:156, valueY:178},
-    {num:9,  points:"108,150 132,172 164,188 194,192 234,188 264,184 278,226 284,260 246,272 210,282 172,278 138,262 104,246 106,208", cx:195, cy:224, cityY:248, valueY:270},
-    {num:10, points:"104,246 138,262 172,278 210,282 246,280 280,280 274,336 266,372 228,380 188,382 152,382 122,362 96,344 98,304", cx:190, cy:317, cityY:341, valueY:363},
-    {num:11, points:"152,382 228,380 266,372 288,430 296,470 246,478 194,484 154,486 126,466 96,442 114,412", cx:197, cy:440, cityY:464, valueY:486},
-    {num:7,  points:"264,184 316,148 366,116 424,150 424,198 420,236 374,248 326,248 284,260 278,226", cx:354, cy:215, cityY:239, valueY:261},
-    {num:13, points:"284,260 326,248 374,248 392,312 396,360 356,394 326,420 292,398 270,366 274,336 280,280", cx:337, cy:317, cityY:341, valueY:363},
-    {num:6,  points:"292,398 326,420 356,394 396,360 448,370 490,376 490,444 488,488 444,514 384,506 326,498 294,470 306,438", cx:400, cy:432, cityY:456, valueY:478},
-    {num:4,  points:"424,100 456,112 498,122 504,162 510,202 474,196 438,188 424,150", cx:462, cy:144, cityY:168, valueY:190},
-    {num:2,  points:"510,102 556,102 604,100 626,124 650,148 642,186 632,220 586,214 544,206 510,202 504,162 504,122", cx:574, cy:145, cityY:169, valueY:191},
-    {num:14, points:"618,104 664,108 720,112 744,150 766,190 750,230 734,268 694,266 660,258 632,220 642,186 650,148", cx:692, cy:158, cityY:182, valueY:204},
-    {num:3,  points:"424,198 474,196 510,202 544,206 586,214 592,262 594,322 556,338 516,354 474,350 438,344 396,336 392,312 374,248 420,236", cx:500, cy:300, cityY:324, valueY:346},
-    {num:15, points:"592,262 632,220 660,258 694,266 702,312 708,360 672,368 636,372 594,322", cx:648, cy:292, cityY:316, valueY:338},
-    {num:1,  points:"694,266 726,248 760,232 786,260 812,290 808,334 804,378 768,376 734,370 708,360 702,312", cx:760, cy:304, cityY:328, valueY:350},
-    {num:12, points:"490,376 556,338 594,322 636,372 630,430 624,486 576,492 528,490 488,488 490,444", cx:562, cy:428, cityY:452, valueY:474},
-    {num:16, points:"630,430 636,372 672,368 708,360 734,370 768,376 768,436 766,490 722,500 678,496 624,486", cx:704, cy:428, cityY:452, valueY:474},
-    {num:5,  points:"488,488 528,490 576,492 624,486 650,538 670,586 626,618 576,618 528,616 510,580 498,540", cx:576, cy:548, cityY:572, valueY:594}
+    {num:9,  points:"95,220 130,205 175,210 205,250 202,300 175,345 120,370 85,340 70,290 72,245", cx:135, cy:280, cityY:305, valueY:328},
+    {num:10, points:"205,230 255,212 320,220 340,280 325,340 250,355 202,300", cx:265, cy:280, cityY:305, valueY:328},
+    {num:8,  points:"310,170 360,130 435,120 490,150 505,215 455,250 395,260 340,280 320,220", cx:405, cy:182, cityY:207, valueY:230},
+    {num:7,  points:"120,370 175,345 250,355 285,405 280,470 220,510 140,525 90,505 70,450 85,400", cx:185, cy:438, cityY:463, valueY:486},
+    {num:11, points:"220,510 280,470 340,485 370,530 330,575 255,598 205,575 195,535", cx:285, cy:540, cityY:565, valueY:588},
+    {num:13, points:"395,260 455,250 520,275 545,335 500,365 430,370 380,345 340,280", cx:448, cy:302, cityY:327, valueY:350},
+    {num:6,  points:"520,275 590,270 650,300 675,360 650,420 600,448 540,440 500,365 545,335", cx:590, cy:345, cityY:370, valueY:393},
+    {num:5,  points:"540,440 600,448 650,420 700,465 730,530 710,600 630,635 565,615 500,575 470,505", cx:615, cy:528, cityY:553, valueY:576},
+    {num:4,  points:"650,155 710,130 780,138 820,175 825,235 780,260 725,285 650,300 590,270 600,215", cx:715, cy:192, cityY:217, valueY:240},
+    {num:3,  points:"650,300 725,285 780,320 805,380 770,440 700,465 650,420 675,360", cx:728, cy:357, cityY:382, valueY:405},
+    {num:15, points:"770,440 820,425 880,445 905,500 875,560 805,590 735,565 700,465", cx:812, cy:500, cityY:525, valueY:548},
+    {num:2,  points:"820,175 885,170 950,195 980,245 965,305 910,330 850,320 780,260 825,235", cx:895, cy:242, cityY:267, valueY:290},
+    {num:14, points:"980,245 1035,235 1085,260 1110,315 1095,370 1045,395 990,380 965,305", cx:1040, cy:305, cityY:330, valueY:353},
+    {num:16, points:"1045,395 1095,370 1115,390 1110,430 1090,430 1093,463 1065,485 1028,480 1000,430", cx:1060, cy:425, cityY:450, valueY:473},
+    {num:1,  points:"1090,430 1120,420 1140,442 1138,470 1115,482 1093,463", cx:1118, cy:443, cityY:466, valueY:486},
+    {num:12, points:"880,445 935,430 985,450 1015,495 1000,555 955,590 905,500", cx:948, cy:500, cityY:525, valueY:548}
 ];
+
+const GRE_STATE_OUTLINE = "70,290 72,245 95,220 130,205 175,210 255,212 310,170 360,130 435,120 490,150 650,155 710,130 780,138 885,170 950,195 1035,235 1085,260 1110,315 1115,390 1140,442 1138,470 1115,482 1093,463 1065,485 1000,555 955,590 875,560 805,590 730,530 710,600 630,635 565,615 500,575 330,575 255,598 205,575 140,525 90,505 70,450 85,400 70,340";
+
+function parseGrePoints(pointsStr) {
+    return String(pointsStr || "").trim().split(/\s+/).map(item => {
+        const [x, y] = item.split(',').map(Number);
+        return {x, y};
+    }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+
+function smoothClosedPath(pointsStr) {
+    const pts = Array.isArray(pointsStr) ? pointsStr : parseGrePoints(pointsStr);
+    if (!pts.length) return "";
+    if (pts.length < 3) {
+        return 'M ' + pts.map((p, i) => `${i ? 'L' : ''} ${p.x} ${p.y}`).join(' ') + ' Z';
+    }
+    const n = pts.length;
+    const mid = (a, b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+    const start = mid(pts[n-1], pts[0]);
+    let d = `M ${start.x.toFixed(1)} ${start.y.toFixed(1)}`;
+    for (let i = 0; i < n; i++) {
+        const curr = pts[i];
+        const next = pts[(i + 1) % n];
+        const m = mid(curr, next);
+        d += ` Q ${curr.x.toFixed(1)} ${curr.y.toFixed(1)} ${m.x.toFixed(1)} ${m.y.toFixed(1)}`;
+    }
+    return d + ' Z';
+}
 
 function performanceClass(row) {
     const total = Number(row?.Total || 0);
@@ -5288,28 +5379,34 @@ function renderGrePerformance(rows) {
         return `
             <g>
                 <title>${escapeHtml(title)}</title>
-                <polygon class="gre-map-region" points="${shape.points}" fill="${fill}" />
+                <path class="gre-map-region" d="${smoothClosedPath(shape.points)}" fill="${fill}" />
                 <text class="gre-map-label-main ${darkText ? 'gre-map-label-dark' : ''}" x="${shape.cx}" y="${shape.cy}">${labelMain}</text>
                 <text class="gre-map-label-city ${darkText ? 'gre-map-label-dark' : ''}" x="${shape.cx}" y="${shape.cityY}">${escapeHtml(city)}</text>
                 <text class="gre-map-label-value ${darkText ? 'gre-map-label-dark' : ''}" x="${shape.cx}" y="${shape.valueY}">${valueText}</text>
             </g>`;
     }).join("");
 
+    const outlinePath = smoothClosedPath(GRE_STATE_OUTLINE);
+
     target.innerHTML = `
-        <svg class="gre-map-svg" viewBox="60 46 790 610" role="img" aria-label="Mapa por GRE">
+        <svg class="gre-map-svg" viewBox="40 100 1130 560" role="img" aria-label="Mapa por GRE">
             <defs>
                 <filter id="greMapShadow" x="-20%" y="-20%" width="140%" height="140%">
                     <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#163B67" flood-opacity="0.16"/>
                 </filter>
+                <clipPath id="greStateClip">
+                    <path d="${outlinePath}"/>
+                </clipPath>
             </defs>
-            <g opacity="0.14" stroke="#D7E3F1" fill="none" stroke-width="1.2">
-                <path d="M78 220 C150 182, 215 190, 260 150 S340 104, 408 116" />
-                <path d="M68 262 C152 228, 236 236, 302 210 S410 182, 476 194" />
-                <path d="M72 306 C170 278, 244 282, 326 260 S450 240, 534 252" />
-                <path d="M78 352 C172 330, 266 330, 352 312 S500 300, 600 314" />
-                <path d="M88 402 C188 384, 272 388, 370 380 S520 378, 640 388" />
-                <path d="M104 454 C198 438, 300 446, 400 444 S566 444, 694 454" />
-                <path d="M126 510 C232 496, 324 506, 426 508 S582 514, 694 522" />
+            <path d="${outlinePath}" fill="#EEF4FB" stroke="#D4E2F0" stroke-width="5"></path>
+            <g clip-path="url(#greStateClip)" opacity="0.14" stroke="#D7E3F1" fill="none" stroke-width="1.2">
+                <path d="M90 230 C180 180, 310 165, 420 145 S620 120, 760 132" />
+                <path d="M82 270 C178 230, 310 225, 420 205 S650 185, 838 198" />
+                <path d="M78 318 C188 290, 330 292, 460 280 S680 268, 900 282" />
+                <path d="M82 370 C198 352, 342 352, 486 346 S730 344, 972 356" />
+                <path d="M92 430 C214 420, 364 420, 516 422 S778 432, 1010 446" />
+                <path d="M126 492 C250 492, 388 502, 550 514 S780 534, 960 548" />
+                <path d="M220 556 C330 566, 452 582, 620 594 S832 596, 968 578" />
             </g>
             ${shapes}
         </svg>`;
