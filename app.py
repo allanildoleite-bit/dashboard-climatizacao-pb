@@ -3989,12 +3989,12 @@ body {
 }
 
 .vertical-bars {
-    min-height: 245px;
+    min-height: 270px;
     width: 100%;
     display: flex;
     align-items: flex-end;
-    gap: 6px;
-    padding: 18px 18px 7px 28px;
+    gap: 7px;
+    padding: 18px 18px 8px 30px;
     position: relative;
     overflow-x: auto;
     overflow-y: hidden;
@@ -4006,19 +4006,26 @@ body {
         to top,
         transparent 0,
         transparent 44px,
-        rgba(149,174,202,.25) 45px
+        rgba(149,174,202,.24) 45px
     );
 }
 
 .vertical-bar-item {
     flex: 1 1 0;
-    min-width: 29px;
+    min-width: 30px;
     height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     align-items: center;
     position: relative;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    transition: transform .18s ease, opacity .18s ease;
+}
+
+.vertical-bar-item:hover {
+    transform: translateY(-2px);
 }
 
 .vertical-bar-value {
@@ -4026,29 +4033,42 @@ body {
     font-size: 13px;
     font-weight: 950;
     margin-bottom: 5px;
+    transition: color .18s ease, opacity .18s ease;
 }
 
 .vertical-bar-column {
-    width: min(29px, 76%);
+    width: min(30px, 76%);
     min-height: 3px;
     border-radius: 7px 7px 2px 2px;
     background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
     box-shadow: 0 5px 12px rgba(0,59,115,.18);
+    border: 1px solid rgba(0,31,73,.08);
+    transition: background .18s ease, opacity .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
+/*
+   Ao aplicar o filtro de GRE, as barras não selecionadas continuam no gráfico.
+   Elas ficam realmente transparentes, preservando altura, posição e contexto.
+*/
 .vertical-bar-item.is-muted .vertical-bar-column {
-    background: linear-gradient(180deg, #C8D2DE, #9EACBC);
+    background: linear-gradient(
+        180deg,
+        rgba(0,59,115,.16),
+        rgba(0,31,73,.10)
+    );
+    border-color: rgba(0,59,115,.12);
     box-shadow: none;
-    opacity: .72;
+    opacity: 1;
 }
 
 .vertical-bar-item.is-muted .vertical-bar-value,
 .vertical-bar-item.is-muted .vertical-bar-label {
-    color: #8A98A8;
+    color: rgba(23,54,93,.34);
 }
 
 .vertical-bar-item.is-selected .vertical-bar-column {
-    background: linear-gradient(180deg, #0B6BCB, var(--azul-noite));
+    background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
+    border-color: rgba(0,31,73,.22);
     box-shadow: 0 7px 16px rgba(0,59,115,.30);
     outline: 2px solid rgba(31,119,208,.18);
     outline-offset: 2px;
@@ -4069,6 +4089,7 @@ body {
     line-height: 1.15;
     text-align: center;
     word-break: break-word;
+    transition: color .18s ease, opacity .18s ease;
 }
 
 .performance-panel .panel-body {
@@ -5315,25 +5336,71 @@ function renderVerticalBarChart(rows, selectedGres = []) {
         return;
     }
 
-    const selectedSet = new Set(Array.isArray(selectedGres) ? selectedGres : []);
+    // Normaliza os códigos para evitar falha de destaque por espaços ou tipos diferentes.
+    const selectedSet = new Set(
+        (Array.isArray(selectedGres) ? selectedGres : [])
+            .map(value => String(value || "").trim())
+            .filter(Boolean)
+    );
     const hasSelection = selectedSet.size > 0;
-    const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
+
+    // IMPORTANTE: rows recebe a base de contexto sem o filtro de GRE.
+    // Assim, todas as barras permanecem visíveis e apenas o estilo muda.
+    const data = rows
+        .slice()
+        .sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
     const maxValue = Math.max(...data.map(d => Number(d.Climatizadas || 0)), 1);
 
     target.innerHTML = data.map(d => {
+        const greValue = String(d.GRE || "").trim();
         const value = Number(d.Climatizadas || 0);
-        const height = Math.max(3, value / maxValue * 172);
-        const selected = selectedSet.has(d.GRE);
+        const height = Math.max(3, value / maxValue * 185);
+        const selected = selectedSet.has(greValue);
         const stateClass = hasSelection ? (selected ? "is-selected" : "is-muted") : "";
         const stateText = hasSelection ? (selected ? " — selecionada" : " — não selecionada") : "";
 
         return `
-            <div class="vertical-bar-item ${stateClass}" title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas${stateText}">
+            <div
+                class="vertical-bar-item ${stateClass}"
+                data-gre="${escapeHtml(greValue)}"
+                role="button"
+                tabindex="0"
+                aria-pressed="${selected ? "true" : "false"}"
+                aria-label="${escapeHtml(greLabel(d))}: ${fmtNum(value)} escolas climatizadas${stateText}"
+                title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas${stateText}"
+            >
                 <div class="vertical-bar-value">${fmtNum(value)}</div>
                 <div class="vertical-bar-column" style="height:${height}px"></div>
                 <div class="vertical-bar-label">${escapeHtml(compactGreLabel(d))}</div>
             </div>`;
     }).join("");
+
+    // Permite selecionar ou desmarcar uma GRE diretamente pela barra.
+    const toggleGreFromBar = item => {
+        const greValue = String(item?.dataset?.gre || "").trim();
+        if (!greValue) return;
+
+        const greFilter = document.getElementById("greFilter");
+        if (!greFilter) return;
+
+        const option = [...greFilter.options].find(opt => String(opt.value).trim() === greValue);
+        if (!option) return;
+
+        option.selected = !option.selected;
+        syncGreMenu();
+        updateGreButtonText();
+        greFilter.dispatchEvent(new Event("change"));
+    };
+
+    target.querySelectorAll(".vertical-bar-item").forEach(item => {
+        item.addEventListener("click", () => toggleGreFromBar(item));
+        item.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggleGreFromBar(item);
+            }
+        });
+    });
 }
 
 const GRE_MAP_POSITIONS = {
@@ -5786,8 +5853,12 @@ function renderDashboard() {
     renderSummary(rows, totals);
     renderResponsaveis(rows);
     renderAreaChart(rows);
+
+    // O gráfico de barras mantém o universo de GREs disponível no contexto atual.
+    // O filtro de GRE serve somente para destacar/atenuar as barras.
     const barContextRows = filterBaseWithoutGre();
     renderVerticalBarChart(barContextRows, f.gre);
+
     renderGrePerformance(rows);
 
     if (f.visao === "Em andamento") {
