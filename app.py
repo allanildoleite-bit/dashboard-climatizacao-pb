@@ -2391,6 +2391,183 @@ def _relatorio_status_html(acompanhamento: pd.DataFrame, limite: int = 6) -> str
     return "".join(linhas)
 
 
+
+def _relatorio_area_svg(base_filtrada: pd.DataFrame) -> str:
+    # Versão SVG compacta do gráfico de área para o relatório.
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<div class="print-empty">Sem dados para os filtros selecionados.</div>'
+    dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados
+
+    largura, altura = 760, 235
+    margem = {"esq": 48, "dir": 18, "top": 18, "base": 46}
+    w = largura - margem["esq"] - margem["dir"]
+    h = altura - margem["top"] - margem["base"]
+    n = max(len(dados), 1)
+    maximo = max(float(pd.to_numeric(dados["Total"], errors="coerce").fillna(0).max()), 1.0)
+
+    def ponto(indice: int, valor: float) -> tuple[float, float]:
+        x = margem["esq"] + (w * indice / max(n - 1, 1))
+        y = margem["top"] + h - (max(0.0, valor) / maximo) * h
+        return x, y
+
+    series = {
+        "total": [float(v or 0) for v in dados["Total"]],
+        "clim": [float(v or 0) for v in dados["Climatizadas"]],
+        "pend": [max(0.0, float(t or 0) - float(c or 0)) for t, c in zip(dados["Total"], dados["Climatizadas"])],
+    }
+    cores = {"total": "#EF4444", "clim": "#003B73", "pend": "#1F77D0"}
+    fills = {"total": "#FDE1E1", "clim": "#D7E7F8", "pend": "#DCEEFF"}
+
+    linhas_grade = []
+    for i in range(5):
+        valor = maximo * i / 4
+        y = margem["top"] + h - h * i / 4
+        linhas_grade.append(
+            f'<line x1="{margem["esq"]}" y1="{y:.1f}" x2="{largura-margem["dir"]}" y2="{y:.1f}" stroke="#DDE6F0" stroke-width="1"/>'
+            f'<text x="{margem["esq"]-7}" y="{y+3:.1f}" text-anchor="end" font-size="8" fill="#637083">{_fmt_num_br(valor)}</text>'
+        )
+
+    elementos = []
+    for chave in ("total", "pend", "clim"):
+        pontos = [ponto(i, v) for i, v in enumerate(series[chave])]
+        linha_pontos = " ".join(f"{x:.1f},{y:.1f}" for x, y in pontos)
+        base_y = margem["top"] + h
+        area = f'{margem["esq"]:.1f},{base_y:.1f} {linha_pontos} {largura-margem["dir"]:.1f},{base_y:.1f}'
+        elementos.append(f'<polygon points="{area}" fill="{fills[chave]}" fill-opacity="0.58"/>')
+        elementos.append(f'<polyline points="{linha_pontos}" fill="none" stroke="{cores[chave]}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>')
+        elementos.extend(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.8" fill="#FFFFFF" stroke="{cores[chave]}" stroke-width="1.8"/>'
+            for x, y in pontos
+        )
+
+    rotulos = []
+    for i, (_, linha) in enumerate(dados.iterrows()):
+        x, _ = ponto(i, 0)
+        gre = str(linha.get("GRE", linha.get("GRE_Label", "")))
+        numero = re.search(r"\d+", gre)
+        rotulo = f'{numero.group()}ª' if numero else gre[:5]
+        rotulos.append(f'<text x="{x:.1f}" y="{altura-21}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#17365D">{escape(rotulo)}</text>')
+
+    return (
+        f'<svg class="print-svg-chart" viewBox="0 0 {largura} {altura}" role="img" aria-label="Gráfico de área por GRE">'
+        + ''.join(linhas_grade)
+        + f'<line x1="{margem["esq"]}" y1="{margem["top"]+h}" x2="{largura-margem["dir"]}" y2="{margem["top"]+h}" stroke="#AFC1D5"/>'
+        + ''.join(elementos)
+        + ''.join(rotulos)
+        + '</svg>'
+    )
+
+
+def _relatorio_barras_verticais_svg(base_filtrada: pd.DataFrame) -> str:
+    # Gráfico vertical de climatizadas por GRE para impressão.
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<div class="print-empty">Sem dados para os filtros selecionados.</div>'
+    dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados
+
+    largura, altura = 760, 220
+    margem = {"esq": 40, "dir": 16, "top": 18, "base": 43}
+    w = largura - margem["esq"] - margem["dir"]
+    h = altura - margem["top"] - margem["base"]
+    n = max(len(dados), 1)
+    maximo = max(float(pd.to_numeric(dados["Climatizadas"], errors="coerce").fillna(0).max()), 1.0)
+    passo = w / n
+    barra = min(25.0, passo * 0.58)
+
+    grade = []
+    for i in range(4):
+        y = margem["top"] + h - h * i / 3
+        grade.append(f'<line x1="{margem["esq"]}" y1="{y:.1f}" x2="{largura-margem["dir"]}" y2="{y:.1f}" stroke="#E1E8F0" stroke-width="1"/>')
+
+    barras = []
+    for i, (_, linha) in enumerate(dados.iterrows()):
+        valor = float(linha.get("Climatizadas", 0) or 0)
+        bh = max(1.5, valor / maximo * h)
+        x = margem["esq"] + passo * i + (passo - barra) / 2
+        y = margem["top"] + h - bh
+        numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
+        rotulo = f'{numero.group()}ª' if numero else str(linha.get("GRE", ""))[:5]
+        barras.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{barra:.1f}" height="{bh:.1f}" rx="3" fill="#003B73"/>'
+            f'<text x="{x+barra/2:.1f}" y="{max(10,y-4):.1f}" text-anchor="middle" font-size="7.5" font-weight="900" fill="#001F49">{_fmt_num_br(valor)}</text>'
+            f'<text x="{x+barra/2:.1f}" y="{altura-19}" text-anchor="middle" font-size="7.2" font-weight="800" fill="#17365D">{escape(rotulo)}</text>'
+        )
+
+    return (
+        f'<svg class="print-svg-chart" viewBox="0 0 {largura} {altura}" role="img" aria-label="Gráfico de barras verticais por GRE">'
+        + ''.join(grade)
+        + f'<line x1="{margem["esq"]}" y1="{margem["top"]+h}" x2="{largura-margem["dir"]}" y2="{margem["top"]+h}" stroke="#AFC1D5"/>'
+        + ''.join(barras)
+        + '</svg>'
+    )
+
+
+_GRE_MAP_LAYOUT_PRINT = [
+    (8,"120,74 205,56 258,95 245,170 150,177 114,150",180,112,135,156),
+    (4,"392,76 462,98 468,179 390,158 330,122",404,122,145,166),
+    (2,"462,98 556,92 610,145 585,214 476,180 468,179",540,150,173,194),
+    (14,"556,92 650,104 700,172 672,247 585,214 610,145",644,165,188,209),
+    (9,"106,149 151,178 244,170 266,242 177,263 104,227",170,208,231,252),
+    (7,"244,170 330,122 390,158 384,238 272,238 266,242",330,202,225,246),
+    (3,"384,238 476,180 585,214 588,294 470,325 392,310",486,259,282,303),
+    (15,"588,294 585,214 672,247 700,336 650,372 588,324",647,282,305,326),
+    (1,"672,247 745,217 784,260 772,366 700,336",741,279,302,323),
+    (10,"104,227 177,263 272,260 260,336 165,354 98,312",170,286,309,330),
+    (13,"272,238 384,238 400,327 332,384 260,336 272,260",336,277,300,321),
+    (6,"332,384 400,327 474,341 476,434 418,463 304,443",394,393,416,437),
+    (12,"474,341 588,294 650,336 640,434 574,428 476,434",560,366,389,410),
+    (16,"650,336 700,336 772,366 768,428 694,438 640,434",705,382,405,426),
+    (11,"165,354 260,336 304,443 252,445 174,452 130,410",214,403,426,447),
+    (5,"476,434 574,428 612,511 552,553 440,548 418,463",508,475,498,519),
+]
+
+
+def _relatorio_mapa_gre_svg(base_filtrada: pd.DataFrame) -> str:
+    # Mapa esquemático de desempenho por GRE para impressão.
+    dados = _dados_gre_resumo(base_filtrada)
+    por_numero = {}
+    for _, linha in dados.iterrows():
+        numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
+        if numero:
+            por_numero[int(numero.group())] = linha
+
+    regioes = []
+    for numero, pontos, cx, cy, city_y, value_y in _GRE_MAP_LAYOUT_PRINT:
+        linha = por_numero.get(numero)
+        total = float(linha.get("Total", 0) or 0) if linha is not None else 0.0
+        clim = float(linha.get("Climatizadas", 0) or 0) if linha is not None else 0.0
+        pct = clim / total if total > 0 else 0.0
+        if total <= 0:
+            cor, cor_texto = "#D8E4F1", "#001F49"
+        elif pct >= 0.70:
+            cor, cor_texto = "#001F49", "#FFFFFF"
+        elif pct >= 0.50:
+            cor, cor_texto = "#1F77D0", "#FFFFFF"
+        elif pct >= 0.30:
+            cor, cor_texto = "#F6C431", "#001F49"
+        else:
+            cor, cor_texto = "#EF4444", "#FFFFFF"
+
+        cidade = "—"
+        if linha is not None:
+            label = str(linha.get("GRE_Label", ""))
+            partes = label.split("—", 1)
+            cidade = partes[1].strip() if len(partes) > 1 else "—"
+        valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
+        regioes.append(
+            f'<polygon points="{pontos}" fill="{cor}" stroke="#FFFFFF" stroke-width="4"/>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" font-size="12" font-weight="900" fill="{cor_texto}">{numero}ª GRE</text>'
+            f'<text x="{cx}" y="{city_y}" text-anchor="middle" font-size="9.5" font-weight="800" fill="{cor_texto}">{escape(cidade)}</text>'
+            f'<text x="{cx}" y="{value_y}" text-anchor="middle" font-size="10.5" font-weight="900" fill="{cor_texto}">{valor}</text>'
+        )
+
+    return (
+        '<svg class="print-map-svg" viewBox="60 34 760 540" role="img" aria-label="Mapa de desempenho por GRE">'
+        + ''.join(regioes)
+        + '</svg>'
+    )
+
 def _montar_html_relatorio_impressao(
     base_filtrada: pd.DataFrame,
     setor: pd.DataFrame,
@@ -2503,6 +2680,15 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-filter-note {{ margin-top:3mm; color:var(--suave); font-size:7.7px; line-height:1.35; }}
 .print-chart-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:4mm 4.5mm; }}
 .print-chart-legend {{ text-align:center; color:var(--suave); font-size:7.5px; font-weight:800; margin-bottom:3mm; }}
+.print-new-chart-grid {{ display:grid; grid-template-columns:1fr; gap:3mm; }}
+.print-new-chart-card {{ background:#fff; border:1px solid var(--borda); border-radius:3mm; padding:2.5mm 3mm; }}
+.print-new-chart-card h3 {{ margin:0 0 1mm; color:var(--escuro); font-size:10px; }}
+.print-new-chart-card p {{ margin:0 0 1mm; color:var(--suave); font-size:7.5px; }}
+.print-svg-chart {{ width:100%; height:61mm; display:block; }}
+.print-map-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:3mm; }}
+.print-map-svg {{ width:100%; height:148mm; display:block; }}
+.print-map-legend {{ display:flex; justify-content:center; flex-wrap:wrap; gap:4mm; margin-top:1mm; color:var(--suave); font-size:7.2px; font-weight:800; }}
+.print-map-legend i {{ display:inline-block; width:2.6mm; height:2.6mm; border-radius:.6mm; margin-right:1mm; vertical-align:-.3mm; }}
 .print-gre-row {{ display:grid; grid-template-columns:37mm 1fr 10mm; align-items:center; gap:2mm; margin:2.15mm 0; }}
 .print-gre-name {{ color:#18365C; font-size:7.2px; font-weight:900; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .print-bar-track, .print-rank-track, .print-mini-track {{ height:5.4mm; background:#ECF1F7; border-radius:1.4mm; overflow:hidden; display:flex; }}
@@ -2585,31 +2771,55 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div><b>Uso gerencial</b>O relatório apoia a priorização das adequações, liberações e instalações nas unidades escolares.</div>
   </div>
   <div class="print-filter-note"><b>Recorte:</b> {filtros_seguro} · <b>Fonte:</b> {fonte}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 1 de 3</span></div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 1 de 4</span></div>
 </section>
 
 <section class="print-sheet">
   <div class="print-header">
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-    <div class="print-header-center"><div class="eyebrow">Panorama territorial</div><h1>Resultados por Gerência Regional</h1><p>Distribuição das escolas por estágio de climatização</p></div>
+    <div class="print-header-center"><div class="eyebrow">Panorama territorial</div><h1>Visualizações por Gerência Regional</h1><p>Total, climatizadas e pendências por GRE</p></div>
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
   </div>
-  <h2 class="print-section-title">2. Panorama por GRE</h2>
-  <p class="print-subtitle">O gráfico apresenta, para cada Gerência Regional de Educação, a quantidade de escolas climatizadas, em andamento e em rota. O comprimento total das barras permite comparar o porte do atendimento, enquanto as cores evidenciam a composição de cada situação.</p>
-  <div class="print-chart-card">
-    <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
-    {_relatorio_gre_barras_html(base_filtrada)}
+  <h2 class="print-section-title">2. Panorama gráfico por GRE</h2>
+  <div class="print-new-chart-grid">
+    <div class="print-new-chart-card">
+      <h3>Gráfico de área — panorama por GRE</h3>
+      <p>Total, escolas climatizadas e pendências.</p>
+      {_relatorio_area_svg(base_filtrada)}
+      <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
+    </div>
+    <div class="print-new-chart-card">
+      <h3>Climatização por GRE</h3>
+      <p>Quantidade de escolas climatizadas.</p>
+      {_relatorio_barras_verticais_svg(base_filtrada)}
+    </div>
+  </div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 2 de 4</span></div>
+</section>
+
+<section class="print-sheet">
+  <div class="print-header">
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+    <div class="print-header-center"><div class="eyebrow">Desempenho territorial</div><h1>Mapa por Gerência Regional</h1><p>Climatizadas em relação ao total de escolas</p></div>
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+  </div>
+  <h2 class="print-section-title">3. Desempenho e resultados da climatização</h2>
+  <p class="print-subtitle">O mapa esquemático apresenta a classificação das GREs conforme o percentual de escolas climatizadas em relação ao total. Os valores internos mostram a razão climatizadas/total.</p>
+  <div class="print-map-card">
+    {_relatorio_mapa_gre_svg(base_filtrada)}
+    <div class="print-map-legend">
+      <span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span>
+      <span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span>
+      <span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span>
+      <span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
+    </div>
   </div>
   <div class="print-highlight-grid">
-    <div class="print-highlight" style="--accent:var(--escuro)">
-      <small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p>
-    </div>
-    <div class="print-highlight" style="--accent:var(--vermelho)">
-      <small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p>
-    </div>
+    <div class="print-highlight" style="--accent:var(--escuro)"><small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p></div>
+    <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
   </div>
   <div class="print-text-box"><b>Interpretação.</b> {escape(leitura_gre)}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 2 de 3</span></div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 3 de 4</span></div>
 </section>
 
 <section class="print-sheet">
@@ -2618,7 +2828,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Setorização</h1><p>Prioridades territoriais e distribuição das pendências</p></div>
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
   </div>
-  <h2 class="print-section-title">3. Prioridades de acompanhamento</h2>
+  <h2 class="print-section-title">4. Prioridades de acompanhamento</h2>
   <p class="print-subtitle">A leitura das pendências permite direcionar o acompanhamento para as GREs e setores com maior volume de unidades ainda não concluídas. As barras combinam escolas em andamento e em rota de climatização.</p>
   <div class="print-chart-card">
     <h3 style="margin:0 0 2mm;color:var(--escuro);font-size:11px">Ranking de pendências por GRE</h3>
@@ -2630,7 +2840,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
   <div class="print-filter-note"><b>Última atualização oficial:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 3 de 3</span></div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 4 de 4</span></div>
 </section>
 
 </div>
@@ -2731,7 +2941,7 @@ def renderizar_gerador_relatorio(
             config=config,
             filtros_label=filtros_label,
         )
-        components.html(html_relatorio, height=3650, scrolling=True)
+        components.html(html_relatorio, height=4850, scrolling=True)
     except Exception as erro:
         st.error("Não foi possível montar a página de relatório com os filtros selecionados.")
         st.exception(erro)
@@ -3642,8 +3852,9 @@ body {
 
 .analytics-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
     gap: 16px;
+    align-items: start;
 }
 
 /* Os gráficos passam a ocupar toda a largura útil do dashboard. */
@@ -3670,14 +3881,14 @@ body {
 
 .svg-chart-wrap {
     width: 100%;
-    min-height: 330px;
+    min-height: 245px;
     overflow-x: auto;
 }
 
 .svg-chart-wrap svg {
     width: 100%;
-    min-width: 760px;
-    height: 350px;
+    min-width: 610px;
+    height: 270px;
     display: block;
 }
 
@@ -3704,29 +3915,30 @@ body {
 }
 
 .vertical-bars {
-    min-height: 315px;
+    min-height: 245px;
     width: 100%;
     display: flex;
     align-items: flex-end;
-    gap: 11px;
-    padding: 22px 30px 8px 42px;
+    gap: 6px;
+    padding: 18px 18px 7px 28px;
     position: relative;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-gutter: stable;
+    justify-content: space-between;
     border-left: 1px solid #B8C9DC;
     border-bottom: 1px solid #B8C9DC;
     background: repeating-linear-gradient(
         to top,
         transparent 0,
-        transparent 59px,
-        rgba(149,174,202,.25) 60px
+        transparent 44px,
+        rgba(149,174,202,.25) 45px
     );
 }
 
 .vertical-bar-item {
     flex: 1 1 0;
-    min-width: 46px;
+    min-width: 29px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -3743,7 +3955,7 @@ body {
 }
 
 .vertical-bar-column {
-    width: min(42px, 72%);
+    width: min(29px, 76%);
     min-height: 3px;
     border-radius: 7px 7px 2px 2px;
     background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
@@ -3802,7 +4014,7 @@ body {
 
 .gre-map-wrap {
     width: 100%;
-    min-height: 560px;
+    min-height: 430px;
     background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFE 100%);
     border: 1px solid #D9E4F2;
     border-radius: 16px;
@@ -3813,6 +4025,7 @@ body {
 .gre-map-svg {
     width: 100%;
     height: auto;
+    max-height: 440px;
     display: block;
 }
 
@@ -4925,9 +5138,9 @@ function renderAreaChart(rows) {
     }
 
     const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
-    const width = Math.max(760, data.length * 84);
-    const height = 350;
-    const margin = {top: 22, right: 28, bottom: 62, left: 58};
+    const width = Math.max(610, data.length * 58);
+    const height = 270;
+    const margin = {top: 18, right: 22, bottom: 50, left: 48};
     const chartW = width - margin.left - margin.right;
     const chartH = height - margin.top - margin.bottom;
     const maxValue = Math.max(...data.map(d => Number(d.Total || 0)), 1);
@@ -4989,7 +5202,7 @@ function renderVerticalBarChart(rows) {
     const maxValue = Math.max(...data.map(d => Number(d.Climatizadas || 0)), 1);
     target.innerHTML = data.map(d => {
         const value = Number(d.Climatizadas || 0);
-        const height = Math.max(3, value / maxValue * 235);
+        const height = Math.max(3, value / maxValue * 172);
         return `
             <div class="vertical-bar-item" title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas">
                 <div class="vertical-bar-value">${fmtNum(value)}</div>
@@ -5575,8 +5788,8 @@ def renderizar():
         ])
 
         with aba_dashboard:
-            # Altura ampliada para acomodar o gráfico de área, as barras e os cards.
-            components.html(html, height=9000, scrolling=True)
+            # Altura suficiente para acomodar o dashboard e as visualizações analíticas.
+            components.html(html, height=7600, scrolling=True)
 
         with aba_relatorio:
             renderizar_gerador_relatorio(
