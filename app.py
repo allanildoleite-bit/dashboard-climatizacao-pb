@@ -3917,18 +3917,7 @@ body {
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.70), 0 8px 22px rgba(0,31,73,.08);
 }
 .real-map-stage-v2::after {
-    content: "Mapa cartográfico das GREs da Paraíba";
-    position: absolute;
-    left: 16px;
-    bottom: 12px;
-    padding: 5px 9px;
-    border-radius: 999px;
-    background: rgba(255,255,255,.88);
-    color: #17365D;
-    font-size: 10px;
-    font-weight: 850;
-    box-shadow: 0 3px 10px rgba(0,31,73,.10);
-    pointer-events: none;
+    display: none;
 }
 .real-map-image {
     width: 100%;
@@ -3937,7 +3926,7 @@ body {
     object-position: center;
     display: block;
 }
-.real-map-overlays { position:absolute; inset:0; pointer-events:none; }
+.real-map-overlays { display:none !important; }
 .real-map-badge {
     position:absolute;
     transform:translate(-50%,-50%);
@@ -3989,107 +3978,42 @@ body {
 }
 
 .vertical-bars {
-    min-height: 270px;
+    min-height: 285px;
     width: 100%;
-    display: flex;
-    align-items: flex-end;
-    gap: 7px;
-    padding: 18px 18px 8px 30px;
     position: relative;
     overflow-x: auto;
     overflow-y: hidden;
+    padding: 4px 0 0;
     scrollbar-gutter: stable;
-    justify-content: space-between;
-    border-left: 1px solid #B8C9DC;
-    border-bottom: 1px solid #B8C9DC;
-    background: repeating-linear-gradient(
-        to top,
-        transparent 0,
-        transparent 44px,
-        rgba(149,174,202,.24) 45px
-    );
 }
 
-.vertical-bar-item {
-    flex: 1 1 0;
-    min-width: 30px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: center;
-    position: relative;
+.vertical-bars svg {
+    width: 100%;
+    min-width: 700px;
+    height: 285px;
+    display: block;
+    overflow: visible;
+}
+
+.vertical-bars .bar-group {
     cursor: pointer;
-    border-radius: 8px 8px 0 0;
-    transition: transform .18s ease, opacity .18s ease;
+    outline: none;
 }
 
-.vertical-bar-item:hover {
-    transform: translateY(-2px);
+.vertical-bars .bar-rect {
+    transition: opacity .18s ease, filter .18s ease, stroke-width .18s ease;
 }
 
-.vertical-bar-value {
-    color: var(--azul-noite);
-    font-size: 13px;
-    font-weight: 950;
-    margin-bottom: 5px;
-    transition: color .18s ease, opacity .18s ease;
+.vertical-bars .bar-group:hover .bar-rect,
+.vertical-bars .bar-group:focus .bar-rect {
+    filter: brightness(1.05);
+    stroke-width: 2.5;
 }
 
-.vertical-bar-column {
-    width: min(30px, 76%);
-    min-height: 3px;
-    border-radius: 7px 7px 2px 2px;
-    background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
-    box-shadow: 0 5px 12px rgba(0,59,115,.18);
-    border: 1px solid rgba(0,31,73,.08);
-    transition: background .18s ease, opacity .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-
-/*
-   Ao aplicar o filtro de GRE, as barras não selecionadas continuam no gráfico.
-   Elas ficam realmente transparentes, preservando altura, posição e contexto.
-*/
-.vertical-bar-item.is-muted .vertical-bar-column {
-    background: linear-gradient(
-        180deg,
-        rgba(0,59,115,.16),
-        rgba(0,31,73,.10)
-    );
-    border-color: rgba(0,59,115,.12);
-    box-shadow: none;
-    opacity: 1;
-}
-
-.vertical-bar-item.is-muted .vertical-bar-value,
-.vertical-bar-item.is-muted .vertical-bar-label {
-    color: rgba(23,54,93,.34);
-}
-
-.vertical-bar-item.is-selected .vertical-bar-column {
-    background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
-    border-color: rgba(0,31,73,.22);
-    box-shadow: 0 7px 16px rgba(0,59,115,.30);
-    outline: 2px solid rgba(31,119,208,.18);
-    outline-offset: 2px;
-}
-
-.vertical-bar-item.is-selected .vertical-bar-value,
-.vertical-bar-item.is-selected .vertical-bar-label {
-    color: var(--azul-noite);
-    font-weight: 950;
-}
-
-.vertical-bar-label {
-    margin-top: 8px;
-    min-height: 34px;
-    color: #17365D;
-    font-size: 10px;
-    font-weight: 850;
-    line-height: 1.15;
-    text-align: center;
-    word-break: break-word;
-    transition: color .18s ease, opacity .18s ease;
+.vertical-bars .bar-value,
+.vertical-bars .bar-label {
+    transition: opacity .18s ease, fill .18s ease;
+    pointer-events: none;
 }
 
 .performance-panel .panel-body {
@@ -4572,21 +4496,12 @@ body {
                 </div>
 
                 <div class="panel performance-panel">
-                    <div class="panel-head">Mapa por GRE</div>
+                    <div class="panel-head">Mapa cartográfico por GRE</div>
                     <div class="panel-body">
-                        <div class="chart-title">Desempenho e resultados da climatização</div>
-                        <div class="analytics-subtitle">Climatizadas / total de escolas</div>
-                        <div class="performance-summary" id="grePerformanceSummary"></div>
+                        <div class="chart-title">Gerências Regionais de Educação da Paraíba</div>
+                        <div class="analytics-subtitle">Distribuição territorial das 16 GREs</div>
                         <div class="real-map-stage real-map-stage-v2" id="grePerformanceGrid">
-                            <img class="real-map-image" src="__GRE_MAP_IMAGE__" alt="Mapa cartográfico real das GREs da Paraíba">
-                            <div class="real-map-overlays" id="realMapOverlays"></div>
-                        </div>
-                        <div class="map-legend">
-                            <span><i class="legend-square" style="background:var(--azul-noite)"></i>Alto (≥ 70%)</span>
-                            <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
-                            <span><i class="legend-square" style="background:var(--amarelo)"></i>Baixo (30% a 49%)</span>
-                            <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                            <span>Climatizadas / Total</span>
+                            <img class="real-map-image" src="__GRE_MAP_IMAGE__" alt="Mapa cartográfico das GREs da Paraíba">
                         </div>
                     </div>
                 </div>
@@ -5331,12 +5246,7 @@ function renderAreaChart(rows) {
 function renderVerticalBarChart(rows, selectedGres = []) {
     const target = document.getElementById("verticalBarChart");
     if (!target) return;
-    if (!rows.length) {
-        target.innerHTML = '<div class="chart-empty">Sem dados para os filtros selecionados.</div>';
-        return;
-    }
 
-    // Normaliza os códigos para evitar falha de destaque por espaços ou tipos diferentes.
     const selectedSet = new Set(
         (Array.isArray(selectedGres) ? selectedGres : [])
             .map(value => String(value || "").trim())
@@ -5344,46 +5254,114 @@ function renderVerticalBarChart(rows, selectedGres = []) {
     );
     const hasSelection = selectedSet.size > 0;
 
-    // IMPORTANTE: rows recebe a base de contexto sem o filtro de GRE.
-    // Assim, todas as barras permanecem visíveis e apenas o estilo muda.
-    const data = rows
-        .slice()
-        .sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
-    const maxValue = Math.max(...data.map(d => Number(d.Climatizadas || 0)), 1);
+    // Uma única barra por GRE, mesmo que existam linhas repetidas na base.
+    const grouped = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+        const gre = String(row?.GRE || "").trim();
+        if (!gre) return;
 
-    target.innerHTML = data.map(d => {
-        const greValue = String(d.GRE || "").trim();
-        const value = Number(d.Climatizadas || 0);
-        const height = Math.max(3, value / maxValue * 185);
-        const selected = selectedSet.has(greValue);
-        const stateClass = hasSelection ? (selected ? "is-selected" : "is-muted") : "";
-        const stateText = hasSelection ? (selected ? " — selecionada" : " — não selecionada") : "";
+        const current = {
+            ...row,
+            GRE: gre,
+            Ordem: Number(row?.Ordem || 999),
+            Climatizadas: Number(row?.Climatizadas || 0)
+        };
+
+        if (!grouped.has(gre)) {
+            grouped.set(gre, current);
+            return;
+        }
+
+        const previous = grouped.get(gre);
+        if (current.Climatizadas > Number(previous.Climatizadas || 0)) {
+            grouped.set(gre, current);
+        }
+    });
+
+    const data = [...grouped.values()]
+        .sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
+
+    if (!data.length) {
+        target.innerHTML = '<div class="chart-empty">Sem dados para os filtros selecionados.</div>';
+        return;
+    }
+
+    const width = Math.max(700, data.length * 44);
+    const height = 285;
+    const margin = {top: 28, right: 16, bottom: 52, left: 42};
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+    const slot = chartWidth / data.length;
+    const barWidth = Math.min(31, slot * 0.62);
+    const maxValue = Math.max(...data.map(row => Number(row.Climatizadas || 0)), 1);
+    const niceMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+    const baseline = margin.top + chartHeight;
+    const y = value => margin.top + chartHeight - (Number(value || 0) / niceMax) * chartHeight;
+
+    let grid = "";
+    for (let tick = 0; tick <= 4; tick++) {
+        const value = niceMax * tick / 4;
+        const yy = y(value);
+        grid += `<line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#E3EBF4" stroke-width="1"/>`;
+    }
+
+    const bars = data.map((row, index) => {
+        const gre = String(row.GRE || "").trim();
+        const value = Number(row.Climatizadas || 0);
+        const selected = selectedSet.has(gre);
+        const muted = hasSelection && !selected;
+        const x = margin.left + index * slot + (slot - barWidth) / 2;
+        const top = y(value);
+        const barHeight = Math.max(3, baseline - top);
+        const fillOpacity = muted ? 0.13 : 1;
+        const textOpacity = muted ? 0.32 : 1;
+        const strokeOpacity = muted ? 0.18 : 0.28;
+        const strokeWidth = selected ? 2.2 : 1;
+        const stateText = hasSelection
+            ? (selected ? " — selecionada" : " — não selecionada")
+            : "";
 
         return `
-            <div
-                class="vertical-bar-item ${stateClass}"
-                data-gre="${escapeHtml(greValue)}"
-                role="button"
-                tabindex="0"
-                aria-pressed="${selected ? "true" : "false"}"
-                aria-label="${escapeHtml(greLabel(d))}: ${fmtNum(value)} escolas climatizadas${stateText}"
-                title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas${stateText}"
-            >
-                <div class="vertical-bar-value">${fmtNum(value)}</div>
-                <div class="vertical-bar-column" style="height:${height}px"></div>
-                <div class="vertical-bar-label">${escapeHtml(compactGreLabel(d))}</div>
-            </div>`;
+            <g class="bar-group ${selected ? "is-selected" : ""} ${muted ? "is-muted" : ""}"
+               data-gre="${escapeHtml(gre)}" role="button" tabindex="0"
+               aria-pressed="${selected ? "true" : "false"}"
+               aria-label="${escapeHtml(greLabel(row))}: ${fmtNum(value)} escolas climatizadas${stateText}">
+                <title>${escapeHtml(greLabel(row))}: ${fmtNum(value)} climatizadas${stateText}</title>
+                <text class="bar-value" x="${x + barWidth / 2}" y="${Math.max(15, top - 7)}"
+                      text-anchor="middle" fill="#001F49" fill-opacity="${textOpacity}"
+                      font-size="12" font-weight="900">${fmtNum(value)}</text>
+                <rect class="bar-rect" x="${x}" y="${top}" width="${barWidth}" height="${barHeight}"
+                      rx="7" ry="7" fill="url(#verticalBarGradient)" fill-opacity="${fillOpacity}"
+                      stroke="#003B73" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}"/>
+                <text class="bar-label" x="${x + barWidth / 2}" y="${height - 25}"
+                      text-anchor="middle" fill="#17365D" fill-opacity="${textOpacity}"
+                      font-size="10" font-weight="800">${escapeHtml(compactGreLabel(row))}</text>
+            </g>`;
     }).join("");
 
-    // Permite selecionar ou desmarcar uma GRE diretamente pela barra.
-    const toggleGreFromBar = item => {
-        const greValue = String(item?.dataset?.gre || "").trim();
+    target.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Climatização por GRE">
+            <defs>
+                <linearGradient id="verticalBarGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#064B87"/>
+                    <stop offset="100%" stop-color="#001F49"/>
+                </linearGradient>
+            </defs>
+            ${grid}
+            <line x1="${margin.left}" y1="${baseline}" x2="${width - margin.right}" y2="${baseline}" stroke="#B8C9DC"/>
+            <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${baseline}" stroke="#B8C9DC"/>
+            ${bars}
+        </svg>`;
+
+    const toggleGre = group => {
+        const greValue = String(group?.dataset?.gre || "").trim();
         if (!greValue) return;
 
         const greFilter = document.getElementById("greFilter");
         if (!greFilter) return;
 
-        const option = [...greFilter.options].find(opt => String(opt.value).trim() === greValue);
+        const option = [...greFilter.options]
+            .find(item => String(item.value || "").trim() === greValue);
         if (!option) return;
 
         option.selected = !option.selected;
@@ -5392,12 +5370,12 @@ function renderVerticalBarChart(rows, selectedGres = []) {
         greFilter.dispatchEvent(new Event("change"));
     };
 
-    target.querySelectorAll(".vertical-bar-item").forEach(item => {
-        item.addEventListener("click", () => toggleGreFromBar(item));
-        item.addEventListener("keydown", event => {
+    target.querySelectorAll(".bar-group").forEach(group => {
+        group.addEventListener("click", () => toggleGre(group));
+        group.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                toggleGreFromBar(item);
+                toggleGre(group);
             }
         });
     });
@@ -5853,13 +5831,11 @@ function renderDashboard() {
     renderSummary(rows, totals);
     renderResponsaveis(rows);
     renderAreaChart(rows);
-
-    // O gráfico de barras mantém o universo de GREs disponível no contexto atual.
-    // O filtro de GRE serve somente para destacar/atenuar as barras.
+    // O filtro de GRE nunca remove barras deste gráfico.
+    // Ele apenas altera a opacidade e o destaque visual.
     const barContextRows = filterBaseWithoutGre();
     renderVerticalBarChart(barContextRows, f.gre);
-
-    renderGrePerformance(rows);
+    // Mapa cartográfico limpo: sem cartões flutuantes sobre a imagem.
 
     if (f.visao === "Em andamento") {
         renderRanking("rankingTotalFull", rows, "Em andamento", "andamento", 16);
@@ -5903,7 +5879,7 @@ function renderDashboard() {
     const atualizacaoOficial = configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "";
     const fonte = configData["Fonte dos dados"] || "GEOBS / Governo da Paraíba";
     document.getElementById("footerText").textContent =
-        `Sincronizado: __SYNC_TIME__ · mapa cartográfico v2 · verificação a cada __REFRESH_SECONDS__s` +
+        `Sincronizado: __SYNC_TIME__ · mapa cartográfico limpo · barras persistentes v3 · verificação a cada __REFRESH_SECONDS__s` +
         (atualizacaoOficial ? ` · atualização oficial: ${atualizacaoOficial}` : "") +
         ` · fonte: ${fonte}`;
 }
