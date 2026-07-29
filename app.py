@@ -4036,6 +4036,30 @@ body {
     box-shadow: 0 5px 12px rgba(0,59,115,.18);
 }
 
+.vertical-bar-item.is-muted .vertical-bar-column {
+    background: linear-gradient(180deg, #C8D2DE, #9EACBC);
+    box-shadow: none;
+    opacity: .72;
+}
+
+.vertical-bar-item.is-muted .vertical-bar-value,
+.vertical-bar-item.is-muted .vertical-bar-label {
+    color: #8A98A8;
+}
+
+.vertical-bar-item.is-selected .vertical-bar-column {
+    background: linear-gradient(180deg, #0B6BCB, var(--azul-noite));
+    box-shadow: 0 7px 16px rgba(0,59,115,.30);
+    outline: 2px solid rgba(31,119,208,.18);
+    outline-offset: 2px;
+}
+
+.vertical-bar-item.is-selected .vertical-bar-value,
+.vertical-bar-item.is-selected .vertical-bar-label {
+    color: var(--azul-noite);
+    font-weight: 950;
+}
+
 .vertical-bar-label {
     margin-top: 8px;
     min-height: 34px;
@@ -5015,6 +5039,22 @@ function updateGreOptions(preferredValue = null) {
     syncGreMenu();
 }
 
+function filterBaseWithoutGre() {
+    const f = getSelectedFilters();
+    let rows = baseData.slice();
+
+    if (!isTodoPeriodo(f.periodo)) {
+        rows = rows.filter(d => matchesPeriodo(d, f.periodo));
+    }
+
+    const linked = linkedGresFromResponsaveis();
+    if (linked) {
+        rows = rows.filter(d => linked.has(d.GRE));
+    }
+
+    return rows.sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
+}
+
 function filterBase() {
     const f = getSelectedFilters();
     let rows = baseData.slice();
@@ -5267,7 +5307,7 @@ function renderAreaChart(rows) {
         </svg>`;
 }
 
-function renderVerticalBarChart(rows) {
+function renderVerticalBarChart(rows, selectedGres = []) {
     const target = document.getElementById("verticalBarChart");
     if (!target) return;
     if (!rows.length) {
@@ -5275,13 +5315,20 @@ function renderVerticalBarChart(rows) {
         return;
     }
 
+    const selectedSet = new Set(Array.isArray(selectedGres) ? selectedGres : []);
+    const hasSelection = selectedSet.size > 0;
     const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
     const maxValue = Math.max(...data.map(d => Number(d.Climatizadas || 0)), 1);
+
     target.innerHTML = data.map(d => {
         const value = Number(d.Climatizadas || 0);
         const height = Math.max(3, value / maxValue * 172);
+        const selected = selectedSet.has(d.GRE);
+        const stateClass = hasSelection ? (selected ? "is-selected" : "is-muted") : "";
+        const stateText = hasSelection ? (selected ? " — selecionada" : " — não selecionada") : "";
+
         return `
-            <div class="vertical-bar-item" title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas">
+            <div class="vertical-bar-item ${stateClass}" title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas${stateText}">
                 <div class="vertical-bar-value">${fmtNum(value)}</div>
                 <div class="vertical-bar-column" style="height:${height}px"></div>
                 <div class="vertical-bar-label">${escapeHtml(compactGreLabel(d))}</div>
@@ -5739,7 +5786,8 @@ function renderDashboard() {
     renderSummary(rows, totals);
     renderResponsaveis(rows);
     renderAreaChart(rows);
-    renderVerticalBarChart(rows);
+    const barContextRows = filterBaseWithoutGre();
+    renderVerticalBarChart(barContextRows, f.gre);
     renderGrePerformance(rows);
 
     if (f.visao === "Em andamento") {
