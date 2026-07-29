@@ -4036,30 +4036,21 @@ body {
     box-shadow: 0 5px 12px rgba(0,59,115,.18);
 }
 
-.vertical-bar-item.is-muted {
-    opacity: .18;
-    filter: grayscale(.15);
-    transition: opacity .2s ease, filter .2s ease;
-}
-
 .vertical-bar-item.is-muted .vertical-bar-column {
-    background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
+    background: linear-gradient(180deg, #C8D2DE, #9EACBC);
     box-shadow: none;
+    opacity: .72;
 }
 
 .vertical-bar-item.is-muted .vertical-bar-value,
 .vertical-bar-item.is-muted .vertical-bar-label {
-    color: var(--azul-noite);
-}
-
-.vertical-bar-item.is-muted:hover {
-    opacity: .42;
+    color: #8A98A8;
 }
 
 .vertical-bar-item.is-selected .vertical-bar-column {
     background: linear-gradient(180deg, #0B6BCB, var(--azul-noite));
-    box-shadow: 0 8px 18px rgba(0,59,115,.36);
-    outline: 2px solid rgba(31,119,208,.28);
+    box-shadow: 0 7px 16px rgba(0,59,115,.30);
+    outline: 2px solid rgba(31,119,208,.18);
     outline-offset: 2px;
 }
 
@@ -5052,10 +5043,13 @@ function filterBaseWithoutGre() {
     const f = getSelectedFilters();
     let rows = baseData.slice();
 
-    // O gráfico de barras mantém todas as GREs como contexto visual.
-    // Apenas o período é aplicado aos valores; o filtro de GRE define destaque/opacidade.
     if (!isTodoPeriodo(f.periodo)) {
         rows = rows.filter(d => matchesPeriodo(d, f.periodo));
+    }
+
+    const linked = linkedGresFromResponsaveis();
+    if (linked) {
+        rows = rows.filter(d => linked.has(d.GRE));
     }
 
     return rows.sort((a, b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
