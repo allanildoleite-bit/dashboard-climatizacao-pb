@@ -1,18 +1,54 @@
-
 from __future__ import annotations
 
+import base64
+import os
 import json
 import re
 import time
 from datetime import datetime
+from html import escape
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+
+# ============================================================
+# DEPENDÊNCIAS OPCIONAIS PARA O RELATÓRIO EM PDF
+# ============================================================
+
+try:
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing, Rect, String
+    from reportlab.graphics import renderPDF
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as pdfcanvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        KeepTogether,
+        LongTable,
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+        Image as RLImage,
+    )
+
+    REPORTLAB_DISPONIVEL = True
+except ImportError:
+    REPORTLAB_DISPONIVEL = False
 
 
 # ============================================================
@@ -703,8 +739,2005 @@ def carregar_dados():
 
 
 # ============================================================
-# DASHBOARD HTML / CSS / JAVASCRIPT
+# RELATÓRIO EM PDF
 # ============================================================
+
+AZUL_NOITE = colors.HexColor("#001F49") if REPORTLAB_DISPONIVEL else None
+AZUL_ESCURO = colors.HexColor("#003B73") if REPORTLAB_DISPONIVEL else None
+AZUL_MEDIO = colors.HexColor("#1F77D0") if REPORTLAB_DISPONIVEL else None
+AZUL_CLARO = colors.HexColor("#8ED4FF") if REPORTLAB_DISPONIVEL else None
+AZUL_GELO = colors.HexColor("#EAF4FF") if REPORTLAB_DISPONIVEL else None
+VERMELHO = colors.HexColor("#EF4444") if REPORTLAB_DISPONIVEL else None
+VERMELHO_ESCURO = colors.HexColor("#B91C1C") if REPORTLAB_DISPONIVEL else None
+CINZA_TEXTO = colors.HexColor("#435268") if REPORTLAB_DISPONIVEL else None
+CINZA_BORDA = colors.HexColor("#D9E4F2") if REPORTLAB_DISPONIVEL else None
+
+
+def _fmt_num_br(valor) -> str:
+    try:
+        numero = int(round(float(valor or 0)))
+    except (TypeError, ValueError):
+        numero = 0
+    return f"{numero:,}".replace(",", ".")
+
+
+def _fmt_pct_br(valor) -> str:
+    try:
+        numero = float(valor or 0) * 100
+    except (TypeError, ValueError):
+        numero = 0.0
+    return f"{numero:,.1f}%".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _texto_pdf(valor) -> str:
+    texto = "" if valor is None else str(valor)
+    substituicoes = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "—": "-",
+        "–": "-",
+        "•": "-",
+        "“": '"',
+        "”": '"',
+        "’": "'",
+    }
+    for antigo, novo in substituicoes.items():
+        texto = texto.replace(antigo, novo)
+    return texto
+
+
+def _area_tecnica_linha(linha) -> str:
+    area = inferir_area_tecnica(
+        linha.get("Área", ""),
+        linha.get("Tipo Profissional", ""),
+        linha.get("Equipe", ""),
+        linha.get("Responsável Técnico", ""),
+    )
+    if area:
+        return area
+    valor = str(linha.get("Área", "")).strip()
+    return valor if valor else "Não informado"
+
+
+def _data_uri_para_imagem(data_uri: str, largura_max: float, altura_max: float):
+    if not REPORTLAB_DISPONIVEL or not data_uri or "," not in data_uri:
+        return Spacer(largura_max, altura_max)
+
+    try:
+        conteudo = base64.b64decode(data_uri.split(",", 1)[1])
+        imagem = RLImage(BytesIO(conteudo))
+        escala = min(
+            largura_max / max(float(imagem.imageWidth), 1),
+            altura_max / max(float(imagem.imageHeight), 1),
+        )
+        imagem.drawWidth = imagem.imageWidth * escala
+        imagem.drawHeight = imagem.imageHeight * escala
+        return imagem
+    except Exception:
+        return Spacer(largura_max, altura_max)
+
+
+def _filtrar_relatorio(
+    base: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    periodo: str,
+    gres_selecionadas: List[str],
+    area: str,
+    responsavel: str,
+):
+    base_filtrada = base.copy()
+    resp_filtrados = responsaveis.copy()
+    acomp_filtrado = acompanhamento.copy()
+
+    if "_Área Relatório" not in resp_filtrados.columns:
+        resp_filtrados["_Área Relatório"] = resp_filtrados.apply(_area_tecnica_linha, axis=1)
+
+    if periodo and periodo != "Todo o período":
+        if "Periodo" in base_filtrada.columns:
+            base_filtrada = base_filtrada[base_filtrada["Periodo"].astype(str) == str(periodo)]
+        if "Periodo" in acomp_filtrado.columns:
+            acomp_filtrado = acomp_filtrado[acomp_filtrado["Periodo"].astype(str) == str(periodo)]
+
+    if area and area != "Todas":
+        resp_filtrados = resp_filtrados[resp_filtrados["_Área Relatório"] == area]
+
+    if responsavel and responsavel != "Todos":
+        resp_filtrados = resp_filtrados[
+            resp_filtrados["Responsável Técnico"].astype(str) == str(responsavel)
+        ]
+
+    aplicar_vinculo_tecnico = (area and area != "Todas") or (responsavel and responsavel != "Todos")
+    if aplicar_vinculo_tecnico:
+        gres_vinculadas = set(resp_filtrados["GRE"].dropna().astype(str))
+        base_filtrada = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_vinculadas)]
+        acomp_filtrado = acomp_filtrado[acomp_filtrado["GRE"].astype(str).isin(gres_vinculadas)]
+
+    if gres_selecionadas:
+        gres_set = set(str(gre) for gre in gres_selecionadas)
+        base_filtrada = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_set)]
+        resp_filtrados = resp_filtrados[resp_filtrados["GRE"].astype(str).isin(gres_set)]
+        acomp_filtrado = acomp_filtrado[acomp_filtrado["GRE"].astype(str).isin(gres_set)]
+
+    if "Ordem" in base_filtrada.columns:
+        base_filtrada = base_filtrada.sort_values("Ordem")
+    if "Ordem" in resp_filtrados.columns:
+        resp_filtrados = resp_filtrados.sort_values(["_Área Relatório", "Responsável Técnico", "Ordem"])
+    if "Ordem" in acomp_filtrado.columns:
+        acomp_filtrado = acomp_filtrado.sort_values(["Ordem", "Município", "Unidade Escolar"])
+
+    return base_filtrada, resp_filtrados, acomp_filtrado
+
+
+def _totais_relatorio(base_filtrada: pd.DataFrame) -> dict:
+    if base_filtrada.empty:
+        return {
+            "total": 0,
+            "climatizadas": 0,
+            "andamento": 0,
+            "rota": 0,
+            "pendencias": 0,
+            "conclusao": 0.0,
+        }
+
+    climatizadas = float(base_filtrada["Climatizadas"].sum())
+    andamento = float(base_filtrada["Em andamento"].sum())
+    rota = float(base_filtrada["Em rota"].sum())
+    total = float(base_filtrada["Total"].sum())
+    pendencias = andamento + rota
+    conclusao = climatizadas / total if total else 0.0
+
+    return {
+        "total": total,
+        "climatizadas": climatizadas,
+        "andamento": andamento,
+        "rota": rota,
+        "pendencias": pendencias,
+        "conclusao": conclusao,
+    }
+
+
+def _estilos_relatorio():
+    estilos_base = getSampleStyleSheet()
+    return {
+        "titulo": ParagraphStyle(
+            "TituloRelatorio",
+            parent=estilos_base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=20,
+            leading=24,
+            textColor=AZUL_NOITE,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        ),
+        "subtitulo": ParagraphStyle(
+            "SubtituloRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=CINZA_TEXTO,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        ),
+        "secao": ParagraphStyle(
+            "SecaoRelatorio",
+            parent=estilos_base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            leading=16,
+            textColor=AZUL_ESCURO,
+            spaceBefore=10,
+            spaceAfter=7,
+            keepWithNext=True,
+        ),
+        "corpo": ParagraphStyle(
+            "CorpoRelatorio",
+            parent=estilos_base["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#25364B"),
+            alignment=TA_JUSTIFY,
+            spaceAfter=5,
+        ),
+        "corpo_esquerda": ParagraphStyle(
+            "CorpoEsquerdaRelatorio",
+            parent=estilos_base["BodyText"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#25364B"),
+            alignment=TA_LEFT,
+        ),
+        "pequeno": ParagraphStyle(
+            "PequenoRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            leading=10,
+            textColor=CINZA_TEXTO,
+        ),
+        "kpi": ParagraphStyle(
+            "KpiRelatorio",
+            parent=estilos_base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            alignment=TA_CENTER,
+            textColor=AZUL_ESCURO,
+        ),
+    }
+
+
+def _grafico_status(totais: dict) -> Drawing:
+    desenho = Drawing(480, 215)
+    desenho.add(String(0, 196, "Distribuição do status geral", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+
+    valores = [totais["climatizadas"], totais["andamento"], totais["rota"]]
+    if sum(valores) <= 0:
+        desenho.add(String(0, 160, "Não há dados para os filtros selecionados.", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        return desenho
+
+    pizza = Pie()
+    pizza.x = 15
+    pizza.y = 30
+    pizza.width = 155
+    pizza.height = 155
+    pizza.data = valores
+    # Os valores já aparecem na legenda; rótulos sobre a pizza poderiam
+    # colidir com o título em telas ou páginas menores.
+    pizza.labels = ["", "", ""]
+    pizza.slices[0].fillColor = AZUL_ESCURO
+    pizza.slices[1].fillColor = AZUL_CLARO
+    pizza.slices[2].fillColor = VERMELHO
+    pizza.slices.strokeColor = colors.white
+    pizza.slices.strokeWidth = 1
+    desenho.add(pizza)
+
+    legenda = [
+        ("Climatizadas", AZUL_ESCURO, totais["climatizadas"]),
+        ("Em andamento", AZUL_CLARO, totais["andamento"]),
+        ("Em rota", VERMELHO, totais["rota"]),
+    ]
+    y = 154
+    for rotulo, cor, valor in legenda:
+        desenho.add(Rect(220, y - 7, 12, 12, fillColor=cor, strokeColor=cor))
+        desenho.add(String(242, y - 4, rotulo, fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        desenho.add(String(425, y - 4, _fmt_num_br(valor), fontName="Helvetica-Bold", fontSize=9, fillColor=AZUL_NOITE, textAnchor="end"))
+        y -= 30
+
+    desenho.add(String(220, 42, "Conclusão geral", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+    desenho.add(String(425, 40, _fmt_pct_br(totais["conclusao"]), fontName="Helvetica-Bold", fontSize=18, fillColor=AZUL_ESCURO, textAnchor="end"))
+    return desenho
+
+
+def _grafico_ranking(base_filtrada: pd.DataFrame, max_linhas: int = 10) -> Drawing:
+    linhas = base_filtrada.copy()
+    if linhas.empty:
+        desenho = Drawing(480, 80)
+        desenho.add(String(0, 58, "Ranking de pendências", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+        desenho.add(String(0, 30, "Não há dados para os filtros selecionados.", fontName="Helvetica", fontSize=9, fillColor=CINZA_TEXTO))
+        return desenho
+
+    linhas["_Pendências Relatório"] = linhas["Em andamento"].astype(float) + linhas["Em rota"].astype(float)
+    linhas = linhas.sort_values("_Pendências Relatório", ascending=False).head(max_linhas)
+    altura = 42 + len(linhas) * 24
+    desenho = Drawing(480, altura)
+    desenho.add(String(0, altura - 16, "Ranking de pendências por GRE", fontName="Helvetica-Bold", fontSize=11, fillColor=AZUL_ESCURO))
+
+    maximo = max(float(linhas["_Pendências Relatório"].max()), 1.0)
+    y = altura - 44
+    for _, linha in linhas.iterrows():
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        if len(label) > 29:
+            label = label[:27] + "..."
+        andamento = float(linha.get("Em andamento", 0) or 0)
+        rota = float(linha.get("Em rota", 0) or 0)
+        total = andamento + rota
+        largura_total = 245 * total / maximo
+        largura_andamento = largura_total * andamento / total if total else 0
+        largura_rota = largura_total - largura_andamento
+
+        desenho.add(String(0, y + 3, label, fontName="Helvetica", fontSize=7.5, fillColor=CINZA_TEXTO))
+        desenho.add(Rect(165, y, 245, 10, fillColor=colors.HexColor("#EEF3F8"), strokeColor=colors.HexColor("#EEF3F8")))
+        if largura_andamento:
+            desenho.add(Rect(165, y, largura_andamento, 10, fillColor=AZUL_MEDIO, strokeColor=AZUL_MEDIO))
+        if largura_rota:
+            desenho.add(Rect(165 + largura_andamento, y, largura_rota, 10, fillColor=VERMELHO, strokeColor=VERMELHO))
+        desenho.add(String(468, y + 2, _fmt_num_br(total), fontName="Helvetica-Bold", fontSize=8, fillColor=AZUL_NOITE, textAnchor="end"))
+        y -= 24
+
+    return desenho
+
+
+def _tabela_padrao(dados, larguras, repetir_cabecalho=True, fonte=7.5):
+    dados = list(dados)
+    if dados:
+        estilo_cabecalho = ParagraphStyle(
+            "CabecalhoTabelaRelatorio",
+            fontName="Helvetica-Bold",
+            fontSize=fonte,
+            leading=fonte + 2,
+            textColor=colors.white,
+            alignment=TA_CENTER,
+        )
+        cabecalho = []
+        for valor in dados[0]:
+            texto = valor.getPlainText() if isinstance(valor, Paragraph) else str(valor)
+            cabecalho.append(Paragraph(_texto_pdf(texto), estilo_cabecalho))
+        dados = [cabecalho] + dados[1:]
+
+    tabela = LongTable(
+        dados,
+        colWidths=larguras,
+        repeatRows=1 if repetir_cabecalho else 0,
+        hAlign="LEFT",
+    )
+    tabela.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), AZUL_ESCURO),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), fonte),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), fonte),
+            ("GRID", (0, 0), (-1, -1), 0.35, CINZA_BORDA),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F9FC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ])
+    )
+    return tabela
+
+
+def _cabecalho_rodape_pdf(canvas, documento):
+    canvas.saveState()
+    largura, _ = A4
+    canvas.setStrokeColor(CINZA_BORDA)
+    canvas.setLineWidth(0.5)
+    canvas.line(1.6 * cm, 1.35 * cm, largura - 1.6 * cm, 1.35 * cm)
+    canvas.setFont("Helvetica", 7.5)
+    canvas.setFillColor(CINZA_TEXTO)
+    canvas.drawString(1.6 * cm, 0.85 * cm, "Painel de Monitoramento da Climatização Escolar na Paraíba")
+    canvas.drawRightString(largura - 1.6 * cm, 0.85 * cm, f"Página {documento.page}")
+    canvas.restoreState()
+
+
+def _gerar_relatorio_pdf_legado(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+    periodo: str = "Todo o período",
+    gres_selecionadas: Optional[List[str]] = None,
+    area: str = "Todas",
+    responsavel: str = "Todos",
+    incluir_detalhes_operacionais: bool = False,
+) -> bytes:
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError("A biblioteca ReportLab não está instalada.")
+
+    gres_selecionadas = gres_selecionadas or []
+    base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
+        base,
+        responsaveis,
+        acompanhamento,
+        periodo,
+        gres_selecionadas,
+        area,
+        responsavel,
+    )
+    totais = _totais_relatorio(base_filtrada)
+    estilos = _estilos_relatorio()
+
+    buffer = BytesIO()
+    documento = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.6 * cm,
+        leftMargin=1.6 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.7 * cm,
+        title="Relatório de Climatização Escolar",
+        author="Secretaria de Estado da Educação - Gerência de Obras",
+    )
+
+    elementos = []
+    logo_gov = _data_uri_para_imagem(GOV_LOGO, 5.2 * cm, 1.8 * cm)
+    logo_geobs = _data_uri_para_imagem(GEOBS_LOGO, 2.1 * cm, 1.8 * cm)
+    cabecalho_logos = Table(
+        [[logo_gov, Spacer(1, 1), logo_geobs]],
+        colWidths=[6.0 * cm, 7.7 * cm, 2.7 * cm],
+        hAlign="CENTER",
+    )
+    cabecalho_logos.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    elementos.extend([cabecalho_logos, Spacer(1, 0.35 * cm)])
+
+    titulo = config.get("Título", "Painel de Monitoramento da Climatização Escolar na Paraíba")
+    elementos.append(Paragraph("RELATÓRIO GERENCIAL DE CLIMATIZAÇÃO ESCOLAR", estilos["titulo"]))
+    elementos.append(Paragraph(_texto_pdf(titulo), estilos["subtitulo"]))
+    elementos.append(Spacer(1, 0.18 * cm))
+
+    gres_texto = "Todas"
+    if gres_selecionadas:
+        mapa_labels = dict(zip(base["GRE"].astype(str), base.get("GRE_Label", base["GRE"]).astype(str)))
+        gres_texto = ", ".join(mapa_labels.get(str(g), str(g)) for g in gres_selecionadas)
+
+    filtros = [
+        ["Data de emissão", datetime.now().strftime("%d/%m/%Y às %H:%M")],
+        ["Período", periodo or "Todo o período"],
+        ["GRE", gres_texto],
+        ["Área técnica", area or "Todas"],
+        ["Responsável", responsavel or "Todos"],
+        ["Fonte", config.get("Fonte dos dados", "GEOBS / Governo da Paraíba")],
+    ]
+    filtros_formatados = [
+        [Paragraph(f"<b>{_texto_pdf(chave)}</b>", estilos["pequeno"]), Paragraph(_texto_pdf(valor), estilos["pequeno"])]
+        for chave, valor in filtros
+    ]
+    tabela_filtros = Table(filtros_formatados, colWidths=[3.4 * cm, 13.0 * cm], hAlign="LEFT")
+    tabela_filtros.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), AZUL_GELO),
+            ("GRID", (0, 0), (-1, -1), 0.35, CINZA_BORDA),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ])
+    )
+    elementos.extend([tabela_filtros, Spacer(1, 0.45 * cm)])
+
+    elementos.append(Paragraph("1. Indicadores principais", estilos["secao"]))
+    kpis = [
+        ("Total de escolas", _fmt_num_br(totais["total"]), "base filtrada"),
+        ("Climatizadas", _fmt_num_br(totais["climatizadas"]), _fmt_pct_br(totais["conclusao"])),
+        ("Conclusão", _fmt_pct_br(totais["conclusao"]), "progresso geral"),
+        ("Em andamento", _fmt_num_br(totais["andamento"]), "execução em curso"),
+        ("Em rota", _fmt_num_br(totais["rota"]), "rota de climatização"),
+        ("Pendências", _fmt_num_br(totais["pendencias"]), "andamento + rota"),
+    ]
+    celulas_kpi = []
+    for nome, valor, complemento in kpis:
+        celulas_kpi.append(
+            Paragraph(
+                f"<b>{_texto_pdf(nome)}</b><br/><font size='16'><b>{_texto_pdf(valor)}</b></font><br/><font size='7'>{_texto_pdf(complemento)}</font>",
+                estilos["kpi"],
+            )
+        )
+    tabela_kpis = Table([celulas_kpi[:3], celulas_kpi[3:]], colWidths=[5.45 * cm] * 3, rowHeights=[1.75 * cm, 1.75 * cm])
+    tabela_kpis.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.7, CINZA_BORDA),
+            ("INNERGRID", (0, 0), (-1, -1), 0.45, CINZA_BORDA),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ])
+    )
+    elementos.extend([tabela_kpis, Spacer(1, 0.35 * cm)])
+
+    elementos.append(_grafico_status(totais))
+    elementos.append(Spacer(1, 0.1 * cm))
+    elementos.append(_grafico_ranking(base_filtrada))
+
+    elementos.append(Paragraph("2. Resumo executivo", estilos["secao"]))
+    if base_filtrada.empty:
+        resumos = ["Não foram encontrados registros para os filtros selecionados."]
+    elif len(base_filtrada) == 1:
+        linha = base_filtrada.iloc[0]
+        resumos = [
+            f"A {_texto_pdf(linha.get('GRE_Label', linha.get('GRE', 'GRE selecionada')))} possui {_fmt_num_br(linha.get('Total', 0))} escolas na base filtrada.",
+            f"Foram climatizadas {_fmt_num_br(linha.get('Climatizadas', 0))} escolas, correspondendo a {_fmt_pct_br(linha.get('Conclusão', 0))} de conclusão.",
+            f"As pendências totalizam {_fmt_num_br(linha.get('Pendências', 0))} escolas: {_fmt_num_br(linha.get('Em andamento', 0))} em andamento e {_fmt_num_br(linha.get('Em rota', 0))} em rota.",
+            f"Prioridade registrada: {_texto_pdf(linha.get('Prioridade', 'não informada') or 'não informada')}.",
+        ]
+    else:
+        trabalho = base_filtrada.copy()
+        trabalho["_Pend"] = trabalho["Em andamento"].astype(float) + trabalho["Em rota"].astype(float)
+        maior_pend = trabalho.sort_values("_Pend", ascending=False).iloc[0]
+        maior_and = trabalho.sort_values("Em andamento", ascending=False).iloc[0]
+        maior_rota = trabalho.sort_values("Em rota", ascending=False).iloc[0]
+        resumos = [
+            f"A conclusão geral do recorte analisado é de {_fmt_pct_br(totais['conclusao'])}, com {_fmt_num_br(totais['climatizadas'])} escolas climatizadas em um universo de {_fmt_num_br(totais['total'])} escolas.",
+            f"A maior pendência total está em {_texto_pdf(maior_pend.get('GRE_Label', maior_pend.get('GRE', '')))}, com {_fmt_num_br(maior_pend.get('_Pend', 0))} escolas.",
+            f"O maior volume em andamento está em {_texto_pdf(maior_and.get('GRE_Label', maior_and.get('GRE', '')))}, com {_fmt_num_br(maior_and.get('Em andamento', 0))} escolas.",
+            f"O maior volume em rota está em {_texto_pdf(maior_rota.get('GRE_Label', maior_rota.get('GRE', '')))}, com {_fmt_num_br(maior_rota.get('Em rota', 0))} escolas.",
+        ]
+
+    for texto_resumo in resumos:
+        elementos.append(Paragraph(f"- {texto_resumo}", estilos["corpo"]))
+
+    elementos.append(Spacer(1, 0.2 * cm))
+    elementos.append(Paragraph("3. Resultados por GRE", estilos["secao"]))
+    cabecalho_gre = ["GRE", "Total", "Climatizadas", "Em andamento", "Em rota", "Pendências", "Conclusão"]
+    dados_gre = [[Paragraph(_texto_pdf(c), estilos["pequeno"]) for c in cabecalho_gre]]
+    for _, linha in base_filtrada.iterrows():
+        conclusao = float(linha.get("Climatizadas", 0) or 0) / float(linha.get("Total", 0) or 1)
+        dados_gre.append([
+            Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+            _fmt_num_br(linha.get("Total", 0)),
+            _fmt_num_br(linha.get("Climatizadas", 0)),
+            _fmt_num_br(linha.get("Em andamento", 0)),
+            _fmt_num_br(linha.get("Em rota", 0)),
+            _fmt_num_br(float(linha.get("Em andamento", 0) or 0) + float(linha.get("Em rota", 0) or 0)),
+            _fmt_pct_br(conclusao),
+        ])
+    if len(dados_gre) == 1:
+        dados_gre.append([Paragraph("Nenhum registro encontrado.", estilos["pequeno"]), "", "", "", "", "", ""])
+    elementos.append(_tabela_padrao(dados_gre, [4.15 * cm, 1.45 * cm, 1.8 * cm, 1.8 * cm, 1.45 * cm, 1.55 * cm, 1.55 * cm]))
+
+    elementos.append(Paragraph("4. Prioridades e observações", estilos["secao"]))
+    dados_prioridade = [[
+        Paragraph("GRE", estilos["pequeno"]),
+        Paragraph("Prioridade", estilos["pequeno"]),
+        Paragraph("Observação", estilos["pequeno"]),
+    ]]
+    for _, linha in base_filtrada.sort_values("Pendências", ascending=False).iterrows():
+        dados_prioridade.append([
+            Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+            Paragraph(_texto_pdf(linha.get("Prioridade", "") or "Não informada"), estilos["pequeno"]),
+            Paragraph(_texto_pdf(linha.get("Observação", "") or "Sem observação"), estilos["pequeno"]),
+        ])
+    if len(dados_prioridade) == 1:
+        dados_prioridade.append([Paragraph("Nenhum registro encontrado.", estilos["pequeno"]), "", ""])
+    elementos.append(_tabela_padrao(dados_prioridade, [4.2 * cm, 3.2 * cm, 9.0 * cm], fonte=7.2))
+
+    elementos.append(Paragraph("5. Responsáveis técnicos", estilos["secao"]))
+    dados_resp = [[
+        Paragraph("Responsável", estilos["pequeno"]),
+        Paragraph("Área", estilos["pequeno"]),
+        Paragraph("GREs vinculadas", estilos["pequeno"]),
+        Paragraph("Total", estilos["pequeno"]),
+        Paragraph("Pendências", estilos["pequeno"]),
+        Paragraph("Conclusão", estilos["pequeno"]),
+    ]]
+    if not resp_filtrados.empty:
+        for (nome, area_resp), grupo in resp_filtrados.groupby(["Responsável Técnico", "_Área Relatório"], dropna=False):
+            gres_grupo = sorted(set(grupo["GRE"].dropna().astype(str)), key=lambda x: int(re.search(r"\d+", x).group()) if re.search(r"\d+", x) else 999)
+            base_grupo = base_filtrada[base_filtrada["GRE"].astype(str).isin(gres_grupo)]
+            totais_grupo = _totais_relatorio(base_grupo)
+            dados_resp.append([
+                Paragraph(_texto_pdf(nome), estilos["pequeno"]),
+                Paragraph(_texto_pdf(area_resp), estilos["pequeno"]),
+                Paragraph(_texto_pdf(", ".join(gres_grupo)), estilos["pequeno"]),
+                _fmt_num_br(totais_grupo["total"]),
+                _fmt_num_br(totais_grupo["pendencias"]),
+                _fmt_pct_br(totais_grupo["conclusao"]),
+            ])
+    else:
+        dados_resp.append([Paragraph("Nenhum responsável encontrado.", estilos["pequeno"]), "", "", "", "", ""])
+    elementos.append(_tabela_padrao(dados_resp, [3.4 * cm, 2.1 * cm, 5.0 * cm, 1.6 * cm, 1.9 * cm, 2.0 * cm], fonte=7.0))
+
+    elementos.append(Paragraph("6. Quadro de status por setorização", estilos["secao"]))
+    elementos.append(Paragraph(
+        "A setorização é apresentada conforme a aba específica da planilha e possui caráter consolidado, sem rateio automático por GRE.",
+        estilos["pequeno"],
+    ))
+    dados_setor = [[
+        Paragraph("Setor", estilos["pequeno"]),
+        Paragraph("Em andamento", estilos["pequeno"]),
+        Paragraph("Em rota", estilos["pequeno"]),
+        Paragraph("Total", estilos["pequeno"]),
+        Paragraph("Observação", estilos["pequeno"]),
+    ]]
+    for _, linha in setor.iterrows():
+        dados_setor.append([
+            Paragraph(_texto_pdf(linha.get("Setor", "")), estilos["pequeno"]),
+            _fmt_num_br(linha.get("Em andamento", 0)),
+            _fmt_num_br(linha.get("Rota de climatização", 0)),
+            _fmt_num_br(linha.get("Total", 0)),
+            Paragraph(_texto_pdf(linha.get("Observação", "") or ""), estilos["pequeno"]),
+        ])
+    elementos.append(_tabela_padrao(dados_setor, [3.6 * cm, 2.2 * cm, 2.0 * cm, 1.5 * cm, 7.1 * cm], fonte=7.2))
+
+    elementos.append(Paragraph("7. Acompanhamento operacional", estilos["secao"]))
+    status_contagem = acomp_filtrado["Status"].fillna("(SEM STATUS)").astype(str).value_counts() if not acomp_filtrado.empty else pd.Series(dtype=int)
+    dados_status = [[Paragraph("Status", estilos["pequeno"]), Paragraph("Quantidade", estilos["pequeno"])]]
+    for status, quantidade in status_contagem.items():
+        dados_status.append([Paragraph(_texto_pdf(status), estilos["pequeno"]), _fmt_num_br(quantidade)])
+    if len(dados_status) == 1:
+        dados_status.append([Paragraph("Nenhum registro operacional encontrado.", estilos["pequeno"]), "0"])
+    elementos.append(_tabela_padrao(dados_status, [13.5 * cm, 2.9 * cm], fonte=7.5))
+
+    if incluir_detalhes_operacionais and not acomp_filtrado.empty:
+        elementos.append(Spacer(1, 0.25 * cm))
+        elementos.append(Paragraph("Detalhamento dos registros operacionais", estilos["secao"]))
+        dados_op = [[
+            Paragraph("GRE", estilos["pequeno"]),
+            Paragraph("Município", estilos["pequeno"]),
+            Paragraph("Unidade escolar", estilos["pequeno"]),
+            Paragraph("Status", estilos["pequeno"]),
+            Paragraph("Última movimentação", estilos["pequeno"]),
+            Paragraph("Observações", estilos["pequeno"]),
+        ]]
+        limite = 250
+        for _, linha in acomp_filtrado.head(limite).iterrows():
+            dados_op.append([
+                Paragraph(_texto_pdf(linha.get("GRE_Label", linha.get("GRE", ""))), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Município", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Unidade Escolar", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Status", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Data Última Mov.", "")), estilos["pequeno"]),
+                Paragraph(_texto_pdf(linha.get("Observações", "")), estilos["pequeno"]),
+            ])
+        elementos.append(_tabela_padrao(dados_op, [2.2 * cm, 2.4 * cm, 3.7 * cm, 2.8 * cm, 2.2 * cm, 3.1 * cm], fonte=6.3))
+        if len(acomp_filtrado) > limite:
+            elementos.append(Paragraph(
+                f"O detalhamento foi limitado aos primeiros {limite} registros de um total de {_fmt_num_br(len(acomp_filtrado))} registros filtrados.",
+                estilos["pequeno"],
+            ))
+
+    elementos.append(Spacer(1, 0.3 * cm))
+    atualizacao_oficial = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
+    nota_final = "Relatório gerado automaticamente a partir das bases publicadas utilizadas pelo dashboard."
+    if atualizacao_oficial:
+        nota_final += f" Última atualização oficial informada: {_texto_pdf(atualizacao_oficial)}."
+    elementos.append(Paragraph(nota_final, estilos["pequeno"]))
+
+    documento.build(
+        elementos,
+        onFirstPage=_cabecalho_rodape_pdf,
+        onLaterPages=_cabecalho_rodape_pdf,
+    )
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+
+# ============================================================
+# RELATÓRIO EXECUTIVO RESUMIDO - MÁXIMO DE 3 PÁGINAS
+# ============================================================
+# O PDF é construído do zero com a mesma identidade visual do dashboard:
+# paleta azul/vermelho, cartões, gráficos horizontais e tipografia sem serifa.
+
+PDF_NOITE = colors.HexColor("#001F49")
+PDF_ESCURO = colors.HexColor("#003B73")
+PDF_MEDIO = colors.HexColor("#1F77D0")
+PDF_CLARO = colors.HexColor("#5DA7F2")
+PDF_GELO = colors.HexColor("#EAF4FF")
+PDF_VERMELHO = colors.HexColor("#EF4444")
+PDF_VERMELHO_ESCURO = colors.HexColor("#B91C1C")
+PDF_FUNDO = colors.HexColor("#F3F7FB")
+PDF_BRANCO = colors.white
+PDF_BORDA = colors.HexColor("#D9E4F2")
+PDF_TEXTO = colors.HexColor("#1E2F47")
+PDF_TEXTO_SUAVE = colors.HexColor("#637083")
+PDF_VERDE = colors.HexColor("#059669")
+PDF_CINZA_BARRA = colors.HexColor("#E8EEF6")
+
+PDF_FONTE = "Helvetica"
+PDF_FONTE_BOLD = "Helvetica-Bold"
+
+
+def _registrar_fontes_dashboard_pdf():
+    """Usa Liberation Sans como equivalente seguro à Segoe UI do dashboard."""
+    global PDF_FONTE, PDF_FONTE_BOLD
+    try:
+        caminhos = [
+            (
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ),
+        ]
+        for regular, negrito in caminhos:
+            if os.path.exists(regular) and os.path.exists(negrito):
+                if "DashSans" not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont("DashSans", regular))
+                if "DashSans-Bold" not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont("DashSans-Bold", negrito))
+                PDF_FONTE = "DashSans"
+                PDF_FONTE_BOLD = "DashSans-Bold"
+                return
+    except Exception:
+        PDF_FONTE = "Helvetica"
+        PDF_FONTE_BOLD = "Helvetica-Bold"
+
+
+def _pdf_imagem_reader_resumo(data_uri: str):
+    if not data_uri or "," not in data_uri:
+        return None
+    try:
+        return ImageReader(BytesIO(base64.b64decode(data_uri.split(",", 1)[1])))
+    except Exception:
+        return None
+
+
+def _pdf_imagem_resumo(canvas_pdf, data_uri: str, x: float, y: float, largura: float, altura: float):
+    imagem = _pdf_imagem_reader_resumo(data_uri)
+    if imagem is None:
+        return
+    try:
+        largura_img, altura_img = imagem.getSize()
+        escala = min(largura / max(largura_img, 1), altura / max(altura_img, 1))
+        w = largura_img * escala
+        h = altura_img * escala
+        canvas_pdf.drawImage(
+            imagem,
+            x + (largura - w) / 2,
+            y + (altura - h) / 2,
+            width=w,
+            height=h,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+    except Exception:
+        return
+
+
+def _pdf_paragrafo_resumo(
+    canvas_pdf,
+    texto: str,
+    x: float,
+    y_superior: float,
+    largura: float,
+    fonte: float = 8.5,
+    leading: Optional[float] = None,
+    cor=PDF_TEXTO,
+    negrito: bool = False,
+    alinhamento=TA_LEFT,
+    altura_max: float = 1000 * cm,
+):
+    estilo = ParagraphStyle(
+        f"Resumo_{id(texto)}_{fonte}_{negrito}",
+        fontName=PDF_FONTE_BOLD if negrito else PDF_FONTE,
+        fontSize=fonte,
+        leading=leading or fonte * 1.28,
+        textColor=cor,
+        alignment=alinhamento,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    paragrafo = Paragraph(_texto_pdf(texto), estilo)
+    _, altura = paragrafo.wrap(largura, altura_max)
+    paragrafo.drawOn(canvas_pdf, x, y_superior - altura)
+    return y_superior - altura
+
+
+def _pdf_paragrafo_markup_resumo(
+    canvas_pdf,
+    texto: str,
+    x: float,
+    y_superior: float,
+    largura: float,
+    fonte: float = 8.5,
+    leading: Optional[float] = None,
+    cor=PDF_TEXTO,
+    negrito: bool = False,
+    alinhamento=TA_LEFT,
+    altura_max: float = 1000 * cm,
+):
+    estilo = ParagraphStyle(
+        f"ResumoMarkup_{id(texto)}_{fonte}_{negrito}",
+        fontName=PDF_FONTE_BOLD if negrito else PDF_FONTE,
+        fontSize=fonte,
+        leading=leading or fonte * 1.28,
+        textColor=cor,
+        alignment=alinhamento,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    paragrafo = Paragraph(texto, estilo)
+    _, altura = paragrafo.wrap(largura, altura_max)
+    paragrafo.drawOn(canvas_pdf, x, y_superior - altura)
+    return y_superior - altura
+
+
+def _pdf_cabecalho_resumo(canvas_pdf, pagina: int, titulo: str, subtitulo: str, periodo: str):
+    largura, altura = A4
+    canvas_pdf.setFillColor(PDF_FUNDO)
+    canvas_pdf.rect(0, 0, largura, altura, stroke=0, fill=1)
+
+    canvas_pdf.setFillColor(PDF_NOITE)
+    canvas_pdf.rect(0, altura - 3.15 * cm, largura, 3.15 * cm, stroke=0, fill=1)
+    canvas_pdf.setFillColor(PDF_MEDIO)
+    canvas_pdf.rect(0, altura - 3.15 * cm, 0.18 * cm, 3.15 * cm, stroke=0, fill=1)
+    canvas_pdf.setFillColor(PDF_VERMELHO)
+    canvas_pdf.rect(0.18 * cm, altura - 3.15 * cm, 0.10 * cm, 3.15 * cm, stroke=0, fill=1)
+
+    _pdf_imagem_resumo(canvas_pdf, GEOBS_LOGO, 0.65 * cm, altura - 2.45 * cm, 2.25 * cm, 1.45 * cm)
+    _pdf_imagem_resumo(canvas_pdf, GOV_LOGO, largura - 5.55 * cm, altura - 2.42 * cm, 4.85 * cm, 1.38 * cm)
+
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 15)
+    canvas_pdf.drawString(3.15 * cm, altura - 1.25 * cm, titulo)
+    canvas_pdf.setFont(PDF_FONTE, 7.5)
+    canvas_pdf.drawString(3.15 * cm, altura - 1.72 * cm, subtitulo)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 7.3)
+    canvas_pdf.drawString(3.15 * cm, altura - 2.22 * cm, f"Período: {periodo}")
+
+    canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+    canvas_pdf.setFont(PDF_FONTE, 6.5)
+    canvas_pdf.drawString(1.05 * cm, 0.58 * cm, "GEOBS | Monitoramento da Climatização Escolar")
+    canvas_pdf.drawRightString(largura - 1.05 * cm, 0.58 * cm, f"{pagina}/3")
+    return altura - 3.65 * cm
+
+
+def _pdf_titulo_bloco(canvas_pdf, texto: str, x: float, y: float, largura: float):
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 10.5)
+    canvas_pdf.drawString(x, y, texto)
+    canvas_pdf.setFillColor(PDF_MEDIO)
+    canvas_pdf.roundRect(x, y - 0.25 * cm, min(largura, 1.25 * cm), 0.08 * cm, 2, stroke=0, fill=1)
+    return y - 0.52 * cm
+
+
+def _pdf_card(canvas_pdf, x: float, y: float, largura: float, altura: float, titulo: str, valor: str, detalhe: str, cor):
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setStrokeColor(PDF_BORDA)
+    canvas_pdf.setLineWidth(0.6)
+    canvas_pdf.roundRect(x, y, largura, altura, 7, stroke=1, fill=1)
+    canvas_pdf.setFillColor(cor)
+    canvas_pdf.roundRect(x, y, 0.13 * cm, altura, 7, stroke=0, fill=1)
+    canvas_pdf.rect(x + 0.06 * cm, y, 0.13 * cm, altura, stroke=0, fill=1)
+
+    canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 6.4)
+    canvas_pdf.drawString(x + 0.38 * cm, y + altura - 0.48 * cm, titulo.upper())
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 17)
+    canvas_pdf.drawString(x + 0.38 * cm, y + 0.73 * cm, valor)
+    canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+    canvas_pdf.setFont(PDF_FONTE, 6.1)
+    canvas_pdf.drawString(x + 0.38 * cm, y + 0.30 * cm, detalhe)
+
+
+def _pdf_cartoes_kpi_resumo(canvas_pdf, totais: dict, x: float, y_superior: float, largura: float):
+    espaco = 0.20 * cm
+    largura_card = (largura - 4 * espaco) / 5
+    altura_card = 2.00 * cm
+    dados = [
+        ("Total de escolas", _fmt_num_br(totais["total"]), "base filtrada", PDF_ESCURO),
+        ("Climatizadas", _fmt_num_br(totais["climatizadas"]), _fmt_pct_br(totais["conclusao"]), PDF_ESCURO),
+        ("Em andamento", _fmt_num_br(totais["andamento"]), "execução em curso", PDF_CLARO),
+        ("Em rota", _fmt_num_br(totais["rota"]), "programadas", PDF_VERMELHO),
+        ("Conclusão", _fmt_pct_br(totais["conclusao"]), "progresso geral", PDF_ESCURO),
+    ]
+    y = y_superior - altura_card
+    for i, (titulo, valor, detalhe, cor) in enumerate(dados):
+        _pdf_card(canvas_pdf, x + i * (largura_card + espaco), y, largura_card, altura_card, titulo, valor, detalhe, cor)
+    return y - 0.43 * cm
+
+
+def _pdf_donut_resumo(canvas_pdf, totais: dict, x: float, y: float, largura: float, altura: float):
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setStrokeColor(PDF_BORDA)
+    canvas_pdf.roundRect(x, y, largura, altura, 8, stroke=1, fill=1)
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 9.5)
+    canvas_pdf.drawString(x + 0.42 * cm, y + altura - 0.60 * cm, "Status geral")
+
+    valores = [
+        max(float(totais.get("climatizadas", 0)), 0),
+        max(float(totais.get("andamento", 0)), 0),
+        max(float(totais.get("rota", 0)), 0),
+    ]
+    total_valores = sum(valores)
+    cx = x + 2.55 * cm
+    cy = y + 2.30 * cm
+    raio = 1.62 * cm
+    if total_valores > 0:
+        desenho = Drawing(150, 150)
+        pizza = Pie()
+        pizza.x = 8
+        pizza.y = 8
+        pizza.width = 130
+        pizza.height = 130
+        pizza.data = valores
+        pizza.labels = ["", "", ""]
+        pizza.slices[0].fillColor = PDF_ESCURO
+        pizza.slices[1].fillColor = PDF_CLARO
+        pizza.slices[2].fillColor = PDF_VERMELHO
+        pizza.slices.strokeColor = PDF_BRANCO
+        pizza.slices.strokeWidth = 1.5
+        desenho.add(pizza)
+        renderPDF.draw(desenho, canvas_pdf, cx - raio, cy - raio)
+        canvas_pdf.setFillColor(PDF_BRANCO)
+        canvas_pdf.circle(cx, cy, 0.90 * cm, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_ESCURO)
+        canvas_pdf.setFont(PDF_FONTE_BOLD, 13)
+        canvas_pdf.drawCentredString(cx, cy + 0.05 * cm, _fmt_pct_br(totais.get("conclusao", 0)))
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 5.5)
+        canvas_pdf.drawCentredString(cx, cy - 0.38 * cm, "CONCLUSÃO")
+    else:
+        canvas_pdf.setFillColor(PDF_CINZA_BARRA)
+        canvas_pdf.circle(cx, cy, raio, stroke=0, fill=1)
+
+    legenda_x = x + 5.05 * cm
+    legenda = [
+        ("Climatizadas", PDF_ESCURO, totais.get("climatizadas", 0)),
+        ("Em andamento", PDF_CLARO, totais.get("andamento", 0)),
+        ("Em rota", PDF_VERMELHO, totais.get("rota", 0)),
+    ]
+    ly = y + altura - 1.42 * cm
+    for rotulo, cor, valor in legenda:
+        canvas_pdf.setFillColor(cor)
+        canvas_pdf.circle(legenda_x, ly + 0.04 * cm, 0.08 * cm, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 6.7)
+        canvas_pdf.drawString(legenda_x + 0.22 * cm, ly - 0.05 * cm, rotulo)
+        canvas_pdf.setFillColor(PDF_TEXTO)
+        canvas_pdf.setFont(PDF_FONTE_BOLD, 7)
+        canvas_pdf.drawRightString(x + largura - 0.42 * cm, ly - 0.05 * cm, _fmt_num_br(valor))
+        ly -= 0.60 * cm
+
+
+def _pdf_progresso_resumo(canvas_pdf, totais: dict, x: float, y: float, largura: float, altura: float):
+    canvas_pdf.setFillColor(PDF_BRANCO)
+    canvas_pdf.setStrokeColor(PDF_BORDA)
+    canvas_pdf.roundRect(x, y, largura, altura, 8, stroke=1, fill=1)
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 9.5)
+    canvas_pdf.drawString(x + 0.42 * cm, y + altura - 0.60 * cm, "Progresso geral")
+
+    conclusao = max(0.0, min(1.0, float(totais.get("conclusao", 0) or 0)))
+    canvas_pdf.setFillColor(PDF_ESCURO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 25)
+    canvas_pdf.drawString(x + 0.42 * cm, y + altura - 1.60 * cm, _fmt_pct_br(conclusao))
+    canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+    canvas_pdf.setFont(PDF_FONTE, 7)
+    canvas_pdf.drawString(x + 3.15 * cm, y + altura - 1.48 * cm, "concluído")
+
+    bar_x = x + 0.42 * cm
+    bar_y = y + altura - 2.45 * cm
+    bar_w = largura - 0.84 * cm
+    canvas_pdf.setFillColor(PDF_CINZA_BARRA)
+    canvas_pdf.roundRect(bar_x, bar_y, bar_w, 0.38 * cm, 5, stroke=0, fill=1)
+    if conclusao > 0:
+        canvas_pdf.setFillColor(PDF_MEDIO)
+        canvas_pdf.roundRect(bar_x, bar_y, bar_w * conclusao, 0.38 * cm, 5, stroke=0, fill=1)
+
+    pendencias = float(totais.get("pendencias", 0) or 0)
+    texto = (
+        f"{_fmt_num_br(totais.get('climatizadas', 0))} escolas concluídas e "
+        f"{_fmt_num_br(pendencias)} pendências no recorte."
+    )
+    _pdf_paragrafo_resumo(
+        canvas_pdf, texto, x + 0.42 * cm, y + 1.45 * cm, largura - 0.84 * cm,
+        fonte=7.2, leading=9.2, cor=PDF_TEXTO_SUAVE,
+    )
+
+
+def _dados_gre_resumo(base_filtrada: pd.DataFrame) -> pd.DataFrame:
+    if base_filtrada.empty:
+        return pd.DataFrame(columns=["GRE_Label", "Total", "Climatizadas", "Em andamento", "Em rota", "Pendencias", "Conclusao"])
+    dados = base_filtrada.copy()
+    for coluna in ["Total", "Climatizadas", "Em andamento", "Em rota"]:
+        dados[coluna] = pd.to_numeric(dados.get(coluna, 0), errors="coerce").fillna(0)
+    dados["Pendencias"] = dados["Em andamento"] + dados["Em rota"]
+    dados["Conclusao"] = dados.apply(lambda l: l["Climatizadas"] / l["Total"] if l["Total"] else 0.0, axis=1)
+    if "GRE_Label" not in dados.columns:
+        dados["GRE_Label"] = dados.get("GRE", "")
+    return dados
+
+
+def _insights_resumo(base_filtrada: pd.DataFrame, totais: dict, setor: pd.DataFrame, acompanhamento: pd.DataFrame) -> dict:
+    gre = _dados_gre_resumo(base_filtrada)
+    melhor = None
+    critica = None
+    if not gre.empty:
+        validas = gre[gre["Total"] > 0]
+        if not validas.empty:
+            melhor = validas.sort_values(["Conclusao", "Climatizadas"], ascending=[False, False]).iloc[0]
+        critica = gre.sort_values(["Pendencias", "Em andamento"], ascending=[False, False]).iloc[0]
+
+    setor_top = None
+    if not setor.empty:
+        setor_calc = setor.copy()
+        cols = list(setor_calc.columns)
+        col_nome = next((c for c in cols if "setor" in str(c).lower()), cols[0] if cols else None)
+        col_and = next((c for c in cols if "andamento" in str(c).lower()), None)
+        col_rota = next((c for c in cols if "rota" in str(c).lower()), None)
+        if col_nome and (col_and or col_rota):
+            setor_calc["_and"] = pd.to_numeric(setor_calc[col_and], errors="coerce").fillna(0) if col_and else 0
+            setor_calc["_rota"] = pd.to_numeric(setor_calc[col_rota], errors="coerce").fillna(0) if col_rota else 0
+            setor_calc["_pend"] = setor_calc["_and"] + setor_calc["_rota"]
+            if not setor_calc.empty:
+                setor_top = (str(setor_calc.sort_values("_pend", ascending=False).iloc[0][col_nome]), float(setor_calc["_pend"].max()))
+
+    status_top = None
+    if not acompanhamento.empty and "Status" in acompanhamento.columns:
+        contagens = acompanhamento["Status"].fillna("(SEM STATUS)").astype(str).value_counts()
+        if not contagens.empty:
+            status_top = (str(contagens.index[0]), int(contagens.iloc[0]))
+
+    return {
+        "melhor": melhor,
+        "critica": critica,
+        "setor_top": setor_top,
+        "status_top": status_top,
+        "totais": totais,
+    }
+
+
+def _texto_executivo_resumo(insights: dict) -> str:
+    totais = insights["totais"]
+    texto = (
+        f"O recorte analisado reúne {_fmt_num_br(totais['total'])} escolas. "
+        f"Dessas, {_fmt_num_br(totais['climatizadas'])} estão climatizadas, o que representa "
+        f"{_fmt_pct_br(totais['conclusao'])} de conclusão. Permanecem "
+        f"{_fmt_num_br(totais['andamento'])} unidades em andamento e "
+        f"{_fmt_num_br(totais['rota'])} em rota de climatização."
+    )
+    melhor = insights.get("melhor")
+    critica = insights.get("critica")
+    if melhor is not None and critica is not None:
+        texto += (
+            f" A maior taxa de conclusão aparece em {melhor.get('GRE_Label', '')} "
+            f"({_fmt_pct_br(melhor.get('Conclusao', 0))}), enquanto "
+            f"{critica.get('GRE_Label', '')} concentra o maior volume de pendências "
+            f"({_fmt_num_br(critica.get('Pendencias', 0))})."
+        )
+    return texto
+
+
+def _pdf_caixa_texto_dinamico(canvas_pdf, x: float, y: float, largura: float, altura: float, titulo: str, texto: str, alerta: bool = False):
+    fundo = colors.HexColor("#FFF1F1") if alerta else PDF_GELO
+    borda = colors.HexColor("#FECACA") if alerta else PDF_BORDA
+    destaque = PDF_VERMELHO if alerta else PDF_MEDIO
+    canvas_pdf.setFillColor(fundo)
+    canvas_pdf.setStrokeColor(borda)
+    canvas_pdf.roundRect(x, y, largura, altura, 7, stroke=1, fill=1)
+    canvas_pdf.setFillColor(destaque)
+    canvas_pdf.rect(x, y, 0.12 * cm, altura, stroke=0, fill=1)
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, 8)
+    canvas_pdf.drawString(x + 0.38 * cm, y + altura - 0.48 * cm, titulo)
+    _pdf_paragrafo_resumo(
+        canvas_pdf, texto, x + 0.38 * cm, y + altura - 0.75 * cm,
+        largura - 0.72 * cm, fonte=7.2, leading=9.0, cor=PDF_TEXTO,
+        altura_max=altura - 0.85 * cm,
+    )
+
+
+def _pdf_grafico_gre_resumo(canvas_pdf, base_filtrada: pd.DataFrame, x: float, y: float, largura: float, altura: float):
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        _pdf_paragrafo_resumo(canvas_pdf, "Não há dados por GRE para os filtros selecionados.", x, y + altura, largura, 8, cor=PDF_TEXTO_SUAVE)
+        return
+
+    dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados.sort_values("Total", ascending=False)
+    n = len(dados)
+    row_h = min(0.82 * cm, altura / max(n, 1))
+    label_w = 5.10 * cm
+    value_w = 0.80 * cm
+    bar_w = largura - label_w - value_w
+    max_total = max(float(dados["Total"].max()), 1.0)
+
+    # legenda
+    legend_y = y + altura + 0.18 * cm
+    legenda = [("Climatizadas", PDF_ESCURO), ("Em andamento", PDF_CLARO), ("Em rota", PDF_VERMELHO)]
+    lx = x + label_w
+    for texto, cor in legenda:
+        canvas_pdf.setFillColor(cor)
+        canvas_pdf.circle(lx, legend_y, 0.065 * cm, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 5.6)
+        canvas_pdf.drawString(lx + 0.16 * cm, legend_y - 0.06 * cm, texto)
+        lx += 2.25 * cm
+
+    yy = y + altura - row_h
+    for _, linha in dados.iterrows():
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        if len(label) > 30:
+            label = label[:28] + "..."
+        total = max(float(linha.get("Total", 0)), 0)
+        clim = max(float(linha.get("Climatizadas", 0)), 0)
+        andamento = max(float(linha.get("Em andamento", 0)), 0)
+        rota = max(float(linha.get("Em rota", 0)), 0)
+
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 5.8)
+        canvas_pdf.drawRightString(x + label_w - 0.18 * cm, yy + 0.12 * cm, label)
+        bar_x = x + label_w
+        bar_y = yy
+        bar_h = max(0.23 * cm, row_h * 0.34)
+        canvas_pdf.setFillColor(PDF_CINZA_BARRA)
+        canvas_pdf.roundRect(bar_x, bar_y, bar_w, bar_h, 3, stroke=0, fill=1)
+        if total > 0:
+            escala = bar_w / max_total
+            w1, w2, w3 = clim * escala, andamento * escala, rota * escala
+            if w1 > 0:
+                canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.rect(bar_x, bar_y, w1, bar_h, stroke=0, fill=1)
+            if w2 > 0:
+                canvas_pdf.setFillColor(PDF_CLARO); canvas_pdf.rect(bar_x + w1, bar_y, w2, bar_h, stroke=0, fill=1)
+            if w3 > 0:
+                canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(bar_x + w1 + w2, bar_y, w3, bar_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO)
+        canvas_pdf.setFont(PDF_FONTE_BOLD, 5.8)
+        canvas_pdf.drawRightString(x + largura, yy + 0.11 * cm, _fmt_num_br(total))
+        yy -= row_h
+
+
+def _pdf_ranking_pendencias_resumo(canvas_pdf, base_filtrada: pd.DataFrame, x: float, y: float, largura: float, altura: float, limite: int = 6):
+    dados = _dados_gre_resumo(base_filtrada).sort_values("Pendencias", ascending=False).head(limite)
+    if dados.empty:
+        return
+    maximo = max(float(dados["Pendencias"].max()), 1.0)
+    row_h = altura / max(len(dados), 1)
+    label_w = 4.35 * cm
+    value_w = 0.7 * cm
+    bar_w = largura - label_w - value_w
+    yy = y + altura - row_h * 0.72
+    for _, linha in dados.iterrows():
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        if len(label) > 24:
+            label = label[:22] + "..."
+        andamento = float(linha.get("Em andamento", 0) or 0)
+        rota = float(linha.get("Em rota", 0) or 0)
+        total = andamento + rota
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 5.6)
+        canvas_pdf.drawRightString(x + label_w - 0.16 * cm, yy, label)
+        bar_x = x + label_w
+        bar_y = yy - 0.06 * cm
+        bar_h = 0.28 * cm
+        canvas_pdf.setFillColor(PDF_CINZA_BARRA)
+        canvas_pdf.roundRect(bar_x, bar_y, bar_w, bar_h, 3, stroke=0, fill=1)
+        if total > 0:
+            total_w = bar_w * total / maximo
+            and_w = total_w * andamento / total if total else 0
+            canvas_pdf.setFillColor(PDF_CLARO); canvas_pdf.rect(bar_x, bar_y, and_w, bar_h, stroke=0, fill=1)
+            canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(bar_x + and_w, bar_y, total_w - and_w, bar_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO)
+        canvas_pdf.setFont(PDF_FONTE_BOLD, 5.8)
+        canvas_pdf.drawRightString(x + largura, yy, _fmt_num_br(total))
+        yy -= row_h
+
+
+def _normalizar_setor_resumo(setor: pd.DataFrame) -> pd.DataFrame:
+    if setor.empty:
+        return pd.DataFrame(columns=["Setor", "Em andamento", "Em rota", "Pendencias"])
+    dados = setor.copy()
+    cols = list(dados.columns)
+    col_nome = next((c for c in cols if "setor" in str(c).lower()), cols[0] if cols else None)
+    col_and = next((c for c in cols if "andamento" in str(c).lower()), None)
+    col_rota = next((c for c in cols if "rota" in str(c).lower()), None)
+    if not col_nome:
+        return pd.DataFrame(columns=["Setor", "Em andamento", "Em rota", "Pendencias"])
+    saida = pd.DataFrame()
+    saida["Setor"] = dados[col_nome].astype(str)
+    saida["Em andamento"] = pd.to_numeric(dados[col_and], errors="coerce").fillna(0) if col_and else 0
+    saida["Em rota"] = pd.to_numeric(dados[col_rota], errors="coerce").fillna(0) if col_rota else 0
+    saida["Pendencias"] = saida["Em andamento"] + saida["Em rota"]
+    return saida.sort_values("Pendencias", ascending=False)
+
+
+def _pdf_setorizacao_resumo(canvas_pdf, setor: pd.DataFrame, x: float, y: float, largura: float, altura: float, limite: int = 6):
+    dados = _normalizar_setor_resumo(setor).head(limite)
+    if dados.empty:
+        _pdf_paragrafo_resumo(canvas_pdf, "Sem dados de setorização.", x, y + altura, largura, 7, cor=PDF_TEXTO_SUAVE)
+        return
+    maximo = max(float(dados["Pendencias"].max()), 1.0)
+    row_h = altura / max(len(dados), 1)
+    label_w = 2.70 * cm
+    value_w = 0.65 * cm
+    bar_w = largura - label_w - value_w
+    yy = y + altura - row_h * 0.72
+    for _, linha in dados.iterrows():
+        label = str(linha["Setor"])
+        if len(label) > 18:
+            label = label[:16] + "..."
+        andamento = float(linha["Em andamento"])
+        rota = float(linha["Em rota"])
+        total = andamento + rota
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE)
+        canvas_pdf.setFont(PDF_FONTE, 5.4)
+        canvas_pdf.drawRightString(x + label_w - 0.12 * cm, yy, label)
+        bx = x + label_w
+        by = yy - 0.06 * cm
+        bh = 0.27 * cm
+        canvas_pdf.setFillColor(PDF_CINZA_BARRA); canvas_pdf.roundRect(bx, by, bar_w, bh, 3, stroke=0, fill=1)
+        if total > 0:
+            tw = bar_w * total / maximo
+            aw = tw * andamento / total if total else 0
+            canvas_pdf.setFillColor(PDF_CLARO); canvas_pdf.rect(bx, by, aw, bh, stroke=0, fill=1)
+            canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(bx + aw, by, tw - aw, bh, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO); canvas_pdf.setFont(PDF_FONTE_BOLD, 5.6)
+        canvas_pdf.drawRightString(x + largura, yy, _fmt_num_br(total))
+        yy -= row_h
+
+
+def _pdf_status_operacional_resumo(canvas_pdf, acompanhamento: pd.DataFrame, x: float, y: float, largura: float, altura: float, limite: int = 6):
+    if acompanhamento.empty or "Status" not in acompanhamento.columns:
+        _pdf_paragrafo_resumo(canvas_pdf, "Sem registros operacionais.", x, y + altura, largura, 7, cor=PDF_TEXTO_SUAVE)
+        return
+    contagens = acompanhamento["Status"].fillna("(SEM STATUS)").astype(str).value_counts().head(limite)
+    maximo = max(float(contagens.max()), 1.0)
+    row_h = altura / max(len(contagens), 1)
+    label_w = 3.45 * cm
+    value_w = 0.60 * cm
+    bar_w = largura - label_w - value_w
+    yy = y + altura - row_h * 0.72
+    for status, quantidade in contagens.items():
+        label = str(status)
+        if len(label) > 22:
+            label = label[:20] + "..."
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE, 5.4)
+        canvas_pdf.drawRightString(x + label_w - 0.12 * cm, yy, label)
+        bx = x + label_w
+        by = yy - 0.06 * cm
+        bh = 0.27 * cm
+        canvas_pdf.setFillColor(PDF_CINZA_BARRA); canvas_pdf.roundRect(bx, by, bar_w, bh, 3, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_MEDIO); canvas_pdf.roundRect(bx, by, bar_w * float(quantidade) / maximo, bh, 3, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO); canvas_pdf.setFont(PDF_FONTE_BOLD, 5.6)
+        canvas_pdf.drawRightString(x + largura, yy, _fmt_num_br(quantidade))
+        yy -= row_h
+
+
+def _periodo_capa_resumo(periodo: str) -> str:
+    if periodo and periodo != "Todo o período":
+        return str(periodo)
+    return datetime.now().strftime("%m/%Y")
+
+
+def gerar_relatorio_pdf(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+    periodo: str = "Todo o período",
+    gres_selecionadas: Optional[List[str]] = None,
+    area: str = "Todas",
+    responsavel: str = "Todos",
+    incluir_detalhes_operacionais: bool = False,
+) -> bytes:
+    """Gera um relatório executivo vertical, sempre com exatamente 3 páginas."""
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError("A biblioteca ReportLab não está instalada.")
+
+    _registrar_fontes_dashboard_pdf()
+    gres_selecionadas = gres_selecionadas or []
+    base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
+        base, responsaveis, acompanhamento, periodo,
+        gres_selecionadas, area, responsavel,
+    )
+    totais = _totais_relatorio(base_filtrada)
+    insights = _insights_resumo(base_filtrada, totais, setor, acomp_filtrado)
+    periodo_label = _periodo_capa_resumo(periodo)
+
+    buffer = BytesIO()
+    canvas_pdf = pdfcanvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    canvas_pdf.setTitle("Relatório Executivo da Climatização Escolar")
+    canvas_pdf.setAuthor("Secretaria de Estado da Educação - GEOBS")
+    largura, altura = A4
+    margem = 1.05 * cm
+    area_largura = largura - 2 * margem
+
+    # PÁGINA 1 - RESUMO EXECUTIVO
+    y = _pdf_cabecalho_resumo(
+        canvas_pdf, 1,
+        "Relatório Executivo da Climatização Escolar",
+        "Secretaria de Estado da Educação - Gerência de Obras",
+        periodo_label,
+    )
+    y = _pdf_cartoes_kpi_resumo(canvas_pdf, totais, margem, y, area_largura)
+
+    gap = 0.32 * cm
+    card_w = (area_largura - gap) / 2
+    card_h = 5.25 * cm
+    _pdf_donut_resumo(canvas_pdf, totais, margem, y - card_h, card_w, card_h)
+    _pdf_progresso_resumo(canvas_pdf, totais, margem + card_w + gap, y - card_h, card_w, card_h)
+    y = y - card_h - 0.48 * cm
+
+    y = _pdf_titulo_bloco(canvas_pdf, "Leitura executiva", margem, y, area_largura)
+    texto_executivo = _texto_executivo_resumo(insights)
+    _pdf_caixa_texto_dinamico(canvas_pdf, margem, y - 3.20 * cm, area_largura, 3.20 * cm, "Síntese automática dos resultados", texto_executivo)
+
+    # Textos-base compactos: dão contexto sem transformar o resumo em relatório longo.
+    y_base = y - 3.78 * cm
+    y_base = _pdf_titulo_bloco(canvas_pdf, "Escopo e método", margem, y_base, area_largura)
+    gap_base = 0.26 * cm
+    card_base_w = (area_largura - 2 * gap_base) / 3
+    card_base_h = 4.55 * cm
+    textos_base = [
+        ("Objetivo", "Apresentar uma síntese gerencial do avanço da climatização escolar, destacando resultados consolidados, diferenças territoriais e pontos que exigem acompanhamento."),
+        ("Metodologia", "Os indicadores e gráficos são recalculados a partir das mesmas bases e dos mesmos filtros do dashboard. O PDF não utiliza imagens fixas nem valores digitados manualmente."),
+        ("Estrutura", "A primeira página resume o cenário geral; a segunda compara as GREs; e a terceira reúne pendências, setorização, status operacionais e próximos focos."),
+    ]
+    for i, (titulo_base, texto_base) in enumerate(textos_base):
+        _pdf_caixa_texto_dinamico(
+            canvas_pdf,
+            margem + i * (card_base_w + gap_base),
+            y_base - card_base_h,
+            card_base_w,
+            card_base_h,
+            titulo_base,
+            texto_base,
+        )
+
+    # filtros e fonte em um quadro final discreto
+    filtro_gre = "Todas as GREs" if not gres_selecionadas else f"{len(gres_selecionadas)} GRE(s) selecionada(s)"
+    filtros_texto = (
+        f"Recorte utilizado: {periodo or 'Todo o período'}; {filtro_gre}; "
+        f"área técnica: {area or 'Todas'}; responsável: {responsavel or 'Todos'}. "
+        f"Fonte: {config.get('Fonte dos dados', 'GEOBS / Governo da Paraíba')}."
+    )
+    _pdf_caixa_texto_dinamico(
+        canvas_pdf, margem, 1.35 * cm, area_largura, 3.00 * cm,
+        "Recorte e fonte dos dados", filtros_texto,
+    )
+    canvas_pdf.showPage()
+
+    # PÁGINA 2 - PANORAMA POR GRE
+    y = _pdf_cabecalho_resumo(
+        canvas_pdf, 2,
+        "Panorama por GRE",
+        "Distribuição das escolas por estágio de climatização",
+        periodo_label,
+    )
+    y = _pdf_titulo_bloco(canvas_pdf, "Composição por Gerência Regional de Educação", margem, y, area_largura)
+    chart_h = 14.10 * cm
+    _pdf_grafico_gre_resumo(canvas_pdf, base_filtrada, margem, y - chart_h, area_largura, chart_h)
+    y = y - chart_h - 0.58 * cm
+
+    melhor = insights.get("melhor")
+    critica = insights.get("critica")
+    if melhor is not None and critica is not None:
+        analise_gre = (
+            f"{melhor.get('GRE_Label', '')} apresenta o maior percentual de conclusão, com "
+            f"{_fmt_pct_br(melhor.get('Conclusao', 0))}. Em sentido oposto, "
+            f"{critica.get('GRE_Label', '')} reúne {_fmt_num_br(critica.get('Pendencias', 0))} pendências, "
+            f"sendo {_fmt_num_br(critica.get('Em andamento', 0))} em andamento e "
+            f"{_fmt_num_br(critica.get('Em rota', 0))} em rota."
+        )
+
+        destaque_gap = 0.30 * cm
+        destaque_w = (area_largura - destaque_gap) / 2
+        destaque_h = 3.55 * cm
+        # melhor desempenho
+        canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
+        canvas_pdf.roundRect(margem, 6.25 * cm, destaque_w, destaque_h, 8, stroke=1, fill=1)
+        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.rect(margem, 6.25 * cm, 0.13 * cm, destaque_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.8)
+        canvas_pdf.drawString(margem + 0.38 * cm, 9.18 * cm, "MAIOR PERCENTUAL DE CONCLUSÃO")
+        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 21)
+        canvas_pdf.drawString(margem + 0.38 * cm, 7.95 * cm, _fmt_pct_br(melhor.get('Conclusao', 0)))
+        _pdf_paragrafo_resumo(canvas_pdf, str(melhor.get('GRE_Label', '')), margem + 3.4 * cm, 8.18 * cm, destaque_w - 3.75 * cm, fonte=7.1, leading=8.7, cor=PDF_TEXTO, negrito=True)
+        _pdf_paragrafo_resumo(canvas_pdf, f"{_fmt_num_br(melhor.get('Climatizadas', 0))} escolas climatizadas no recorte.", margem + 0.38 * cm, 7.25 * cm, destaque_w - 0.76 * cm, fonte=6.4, leading=8.0, cor=PDF_TEXTO_SUAVE)
+
+        # maior desafio
+        x_crit = margem + destaque_w + destaque_gap
+        canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
+        canvas_pdf.roundRect(x_crit, 6.25 * cm, destaque_w, destaque_h, 8, stroke=1, fill=1)
+        canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(x_crit, 6.25 * cm, 0.13 * cm, destaque_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.8)
+        canvas_pdf.drawString(x_crit + 0.38 * cm, 9.18 * cm, "MAIOR VOLUME DE PENDÊNCIAS")
+        canvas_pdf.setFillColor(PDF_VERMELHO_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 21)
+        canvas_pdf.drawString(x_crit + 0.38 * cm, 7.95 * cm, _fmt_num_br(critica.get('Pendencias', 0)))
+        _pdf_paragrafo_resumo(canvas_pdf, str(critica.get('GRE_Label', '')), x_crit + 2.7 * cm, 8.18 * cm, destaque_w - 3.05 * cm, fonte=7.1, leading=8.7, cor=PDF_TEXTO, negrito=True)
+        _pdf_paragrafo_resumo(canvas_pdf, f"{_fmt_num_br(critica.get('Em andamento', 0))} em andamento e {_fmt_num_br(critica.get('Em rota', 0))} em rota.", x_crit + 0.38 * cm, 7.25 * cm, destaque_w - 0.76 * cm, fonte=6.4, leading=8.0, cor=PDF_TEXTO_SUAVE)
+    else:
+        analise_gre = "Não há dados suficientes para comparar o desempenho entre as GREs no recorte selecionado."
+
+    _pdf_caixa_texto_dinamico(canvas_pdf, margem, 1.25 * cm, area_largura, 4.35 * cm, "Interpretação do gráfico", analise_gre, alerta=True)
+    canvas_pdf.showPage()
+
+    # PÁGINA 3 - PENDÊNCIAS E ACOMPANHAMENTO
+    y = _pdf_cabecalho_resumo(
+        canvas_pdf, 3,
+        "Pendências e acompanhamento",
+        "Prioridades territoriais, setorização e registros operacionais",
+        periodo_label,
+    )
+
+    y = _pdf_titulo_bloco(canvas_pdf, "Ranking de pendências por GRE", margem, y, area_largura)
+    ranking_h = 6.45 * cm
+    canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
+    canvas_pdf.roundRect(margem, y - ranking_h, area_largura, ranking_h, 8, stroke=1, fill=1)
+    _pdf_ranking_pendencias_resumo(canvas_pdf, base_filtrada, margem + 0.42 * cm, y - ranking_h + 0.52 * cm, area_largura - 0.84 * cm, ranking_h - 1.00 * cm, limite=6)
+    y = y - ranking_h - 0.52 * cm
+
+    gap = 0.34 * cm
+    half = (area_largura - gap) / 2
+    bloco_h = 6.30 * cm
+    canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
+    canvas_pdf.roundRect(margem, y - bloco_h, half, bloco_h, 8, stroke=1, fill=1)
+    canvas_pdf.roundRect(margem + half + gap, y - bloco_h, half, bloco_h, 8, stroke=1, fill=1)
+    canvas_pdf.setFillColor(PDF_TEXTO); canvas_pdf.setFont(PDF_FONTE_BOLD, 8.5)
+    canvas_pdf.drawString(margem + 0.35 * cm, y - 0.52 * cm, "Setorização")
+    canvas_pdf.drawString(margem + half + gap + 0.35 * cm, y - 0.52 * cm, "Status operacionais")
+    _pdf_setorizacao_resumo(canvas_pdf, setor, margem + 0.28 * cm, y - bloco_h + 0.48 * cm, half - 0.56 * cm, bloco_h - 1.25 * cm, limite=6)
+    _pdf_status_operacional_resumo(canvas_pdf, acomp_filtrado, margem + half + gap + 0.28 * cm, y - bloco_h + 0.48 * cm, half - 0.56 * cm, bloco_h - 1.25 * cm, limite=6)
+    y = y - bloco_h - 0.48 * cm
+
+    foco = "O principal foco gerencial deve permanecer nas GREs com maior estoque de pendências, articulando a conclusão das adequações e a programação das instalações."
+    if insights.get("setor_top"):
+        foco += f" Na setorização, {insights['setor_top'][0]} apresenta o maior volume registrado ({_fmt_num_br(insights['setor_top'][1])})."
+    if insights.get("status_top"):
+        foco += f" No acompanhamento operacional, o status mais frequente é '{insights['status_top'][0]}' ({_fmt_num_br(insights['status_top'][1])} registros)."
+    _pdf_caixa_texto_dinamico(canvas_pdf, margem, max(1.20 * cm, y - 3.10 * cm), area_largura, 3.10 * cm, "Conclusão e próximos focos", foco)
+
+    atualizacao = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
+    if atualizacao:
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE, 5.8)
+        canvas_pdf.drawString(margem, 1.02 * cm, f"Última atualização oficial: {str(atualizacao)[:100]}")
+
+    canvas_pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def _preview_barras_gre(base_filtrada: pd.DataFrame, limite: int = 10) -> str:
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<div class="report-empty">Sem dados para os filtros selecionados.</div>'
+    dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados.sort_values("Total", ascending=False)
+    dados = dados.head(limite)
+    maximo = max(float(dados["Total"].max()), 1.0)
+    linhas = []
+    for _, linha in dados.iterrows():
+        clim = float(linha.get("Climatizadas", 0)); andamento = float(linha.get("Em andamento", 0)); rota = float(linha.get("Em rota", 0))
+        total = max(float(linha.get("Total", 0)), 0)
+        w1 = clim / maximo * 100; w2 = andamento / maximo * 100; w3 = rota / maximo * 100
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        linhas.append(f'''<div class="rbar-row"><div class="rbar-label">{label}</div><div class="rbar-track"><span class="rbar clim" style="width:{w1:.2f}%"></span><span class="rbar and" style="width:{w2:.2f}%"></span><span class="rbar rota" style="width:{w3:.2f}%"></span></div><b>{_fmt_num_br(total)}</b></div>''')
+    return "".join(linhas)
+
+
+def _preview_ranking(base_filtrada: pd.DataFrame, limite: int = 6) -> str:
+    dados = _dados_gre_resumo(base_filtrada).sort_values("Pendencias", ascending=False).head(limite)
+    if dados.empty:
+        return '<div class="report-empty">Sem dados.</div>'
+    maximo = max(float(dados["Pendencias"].max()), 1.0)
+    linhas = []
+    for _, linha in dados.iterrows():
+        total = float(linha["Pendencias"]); andamento = float(linha["Em andamento"]); rota = float(linha["Em rota"])
+        tw = total / maximo * 100; aw = (andamento / total * tw) if total else 0; rw = tw - aw
+        label = str(linha.get("GRE_Label", linha.get("GRE", "")))
+        linhas.append(f'''<div class="rbar-row"><div class="rbar-label">{label}</div><div class="rbar-track"><span class="rbar and" style="width:{aw:.2f}%"></span><span class="rbar rota" style="width:{rw:.2f}%"></span></div><b>{_fmt_num_br(total)}</b></div>''')
+    return "".join(linhas)
+
+
+def _montar_preview_relatorio_resumo(base_filtrada: pd.DataFrame, setor: pd.DataFrame, acomp_filtrado: pd.DataFrame, totais: dict, insights: dict, periodo: str) -> str:
+    concl = max(0.0, min(1.0, float(totais.get("conclusao", 0) or 0)))
+    donut = f"conic-gradient(#003B73 0 {concl*100:.2f}%, #5DA7F2 {concl*100:.2f}% {(concl + (float(totais.get('andamento',0))/max(float(totais.get('total',0)),1)))*100:.2f}%, #EF4444 0)"
+    texto_exec = _texto_executivo_resumo(insights)
+    melhor = insights.get("melhor"); critica = insights.get("critica")
+    texto_gre = "Sem comparação disponível."
+    if melhor is not None and critica is not None:
+        texto_gre = f"Maior conclusão: {melhor.get('GRE_Label','')} ({_fmt_pct_br(melhor.get('Conclusao',0))}). Maior estoque de pendências: {critica.get('GRE_Label','')} ({_fmt_num_br(critica.get('Pendencias',0))})."
+    foco = "Priorizar as GREs com maior estoque de pendências e acompanhar a transição entre adequação e instalação."
+    if insights.get("status_top"):
+        foco += f" Status operacional predominante: {insights['status_top'][0]}."
+
+    return f'''
+    <style>
+    .report-preview-wrap{{background:#E8EEF6;padding:18px;border-radius:18px;font-family:"Segoe UI",Arial,sans-serif;}}
+    .report-page{{width:min(100%,760px);min-height:1010px;margin:0 auto 24px;background:#F3F7FB;box-shadow:0 8px 28px rgba(0,31,73,.16);position:relative;padding:112px 36px 38px;border-radius:4px;overflow:hidden;}}
+    .report-head{{position:absolute;inset:0 0 auto 0;height:92px;background:#001F49;color:#fff;padding:20px 32px;border-left:8px solid #1F77D0;}}
+    .report-head h2{{font-size:23px;margin:0 0 4px;font-weight:900;}} .report-head small{{opacity:.84;font-weight:600;}}
+    .report-footer{{position:absolute;bottom:14px;left:36px;right:36px;color:#637083;font-size:10px;display:flex;justify-content:space-between;}}
+    .rkpis{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;}}
+    .rkpi{{background:#fff;border:1px solid #D9E4F2;border-radius:10px;padding:12px 10px;border-left:4px solid #003B73;}} .rkpi.and{{border-left-color:#5DA7F2}} .rkpi.rota{{border-left-color:#EF4444}}
+    .rkpi small{{display:block;color:#637083;font-weight:800;font-size:9px;text-transform:uppercase;}} .rkpi b{{display:block;color:#1E2F47;font-size:23px;margin-top:5px;}}
+    .rgrid{{display:grid;grid-template-columns:1fr 1fr;gap:14px;}} .rpanel{{background:#fff;border:1px solid #D9E4F2;border-radius:12px;padding:15px;}}
+    .rpanel h3{{margin:0 0 12px;color:#1E2F47;font-size:15px;}} .rdonut{{width:150px;height:150px;border-radius:50%;margin:10px auto;background:{donut};display:grid;place-items:center;}}
+    .rdonut:after{{content:"{_fmt_pct_br(concl)}";width:88px;height:88px;border-radius:50%;background:#fff;display:grid;place-items:center;font-weight:900;color:#003B73;font-size:19px;}}
+    .rprogress{{height:14px;background:#E8EEF6;border-radius:999px;overflow:hidden;margin:16px 0 10px;}} .rprogress span{{display:block;height:100%;width:{concl*100:.2f}%;background:#1F77D0;}}
+    .rtext{{background:#EAF4FF;border:1px solid #D9E4F2;border-left:5px solid #1F77D0;border-radius:10px;padding:15px;color:#1E2F47;font-size:13px;line-height:1.5;margin-top:14px;}}
+    .rtitle{{color:#1E2F47;font-size:18px;margin:0 0 14px;font-weight:900;}} .rlegend{{font-size:10px;color:#637083;margin-bottom:10px;}}
+    .rbar-row{{display:grid;grid-template-columns:185px 1fr 35px;align-items:center;gap:9px;margin:8px 0;font-size:10px;color:#637083;}}
+    .rbar-label{{text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}} .rbar-track{{height:10px;background:#E8EEF6;border-radius:999px;overflow:hidden;display:flex;}}
+    .rbar{{height:100%;display:block;}} .rbar.clim{{background:#003B73}} .rbar.and{{background:#5DA7F2}} .rbar.rota{{background:#EF4444}}
+    .rtwo{{display:grid;grid-template-columns:1fr 1fr;gap:14px;}} .report-empty{{color:#637083;padding:20px;}}
+    @media(max-width:700px){{.rkpis{{grid-template-columns:1fr 1fr}}.rgrid,.rtwo{{grid-template-columns:1fr}}.rbar-row{{grid-template-columns:110px 1fr 30px}}}}
+    </style>
+    <div class="report-preview-wrap">
+      <div class="report-page">
+        <div class="report-head"><h2>Relatório Executivo da Climatização Escolar</h2><small>Período: {periodo}</small></div>
+        <div class="rkpis">
+          <div class="rkpi"><small>Total</small><b>{_fmt_num_br(totais['total'])}</b></div>
+          <div class="rkpi"><small>Climatizadas</small><b>{_fmt_num_br(totais['climatizadas'])}</b></div>
+          <div class="rkpi and"><small>Em andamento</small><b>{_fmt_num_br(totais['andamento'])}</b></div>
+          <div class="rkpi rota"><small>Em rota</small><b>{_fmt_num_br(totais['rota'])}</b></div>
+          <div class="rkpi"><small>Conclusão</small><b>{_fmt_pct_br(concl)}</b></div>
+        </div>
+        <div class="rgrid"><div class="rpanel"><h3>Status geral</h3><div class="rdonut"></div></div><div class="rpanel"><h3>Progresso geral</h3><b style="font-size:40px;color:#003B73">{_fmt_pct_br(concl)}</b><div class="rprogress"><span></span></div><p style="color:#637083">{_fmt_num_br(totais['pendencias'])} pendências no recorte.</p></div></div>
+        <div class="rtext"><b>Leitura executiva.</b> {texto_exec}</div><div class="report-footer"><span>GEOBS | Climatização Escolar</span><span>1/3</span></div>
+      </div>
+      <div class="report-page">
+        <div class="report-head"><h2>Panorama por GRE</h2><small>Distribuição por estágio de climatização</small></div>
+        <h3 class="rtitle">Composição por Gerência Regional de Educação</h3><div class="rlegend">● Climatizadas &nbsp; <span style="color:#5DA7F2">●</span> Em andamento &nbsp; <span style="color:#EF4444">●</span> Em rota</div>
+        {_preview_barras_gre(base_filtrada, 14)}
+        <div class="rtext"><b>Interpretação.</b> {texto_gre}</div><div class="report-footer"><span>GEOBS | Climatização Escolar</span><span>2/3</span></div>
+      </div>
+      <div class="report-page">
+        <div class="report-head"><h2>Pendências e acompanhamento</h2><small>Prioridades territoriais e operacionais</small></div>
+        <h3 class="rtitle">Ranking de pendências por GRE</h3>{_preview_ranking(base_filtrada, 6)}
+        <div class="rtwo" style="margin-top:22px"><div class="rpanel"><h3>Setorização</h3><p style="color:#637083;font-size:13px">A distribuição setorial complementa a leitura territorial das pendências.</p></div><div class="rpanel"><h3>Acompanhamento operacional</h3><p style="color:#637083;font-size:13px">Os registros mostram o estágio das movimentações e pontos de atenção.</p></div></div>
+        <div class="rtext"><b>Próximos focos.</b> {foco}</div><div class="report-footer"><span>GEOBS | Climatização Escolar</span><span>3/3</span></div>
+      </div>
+    </div>
+    '''
+
+
+def _relatorio_gre_barras_html(base_filtrada: pd.DataFrame) -> str:
+    """Replica, em formato compacto e imprimível, o gráfico empilhado por GRE do dashboard."""
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<div class="print-empty">Sem dados para os filtros selecionados.</div>'
+
+    if "Ordem" in dados.columns:
+        dados = dados.sort_values("Ordem")
+    else:
+        dados = dados.sort_values("Total", ascending=False)
+
+    maximo = max(float(pd.to_numeric(dados["Total"], errors="coerce").fillna(0).max()), 1.0)
+    linhas = []
+    for _, linha in dados.iterrows():
+        climatizadas = float(linha.get("Climatizadas", 0) or 0)
+        andamento = float(linha.get("Em andamento", 0) or 0)
+        rota = float(linha.get("Em rota", 0) or 0)
+        total = float(linha.get("Total", 0) or 0)
+        label = escape(str(linha.get("GRE_Label", linha.get("GRE", ""))))
+        w_clim = climatizadas / maximo * 100
+        w_and = andamento / maximo * 100
+        w_rota = rota / maximo * 100
+        linhas.append(
+            f'''<div class="print-gre-row">
+                <div class="print-gre-name" title="{label}">{label}</div>
+                <div class="print-bar-track">
+                    <span class="print-seg clim" style="width:{w_clim:.4f}%"></span>
+                    <span class="print-seg andamento" style="width:{w_and:.4f}%"></span>
+                    <span class="print-seg rota" style="width:{w_rota:.4f}%"></span>
+                </div>
+                <div class="print-bar-value">{_fmt_num_br(total)}</div>
+            </div>'''
+        )
+    return "".join(linhas)
+
+
+def _relatorio_ranking_html(base_filtrada: pd.DataFrame, limite: int = 6) -> str:
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<div class="print-empty">Sem pendências no recorte.</div>'
+    dados = dados.sort_values(["Pendencias", "Em andamento"], ascending=[False, False]).head(limite)
+    maximo = max(float(dados["Pendencias"].max()), 1.0)
+    linhas = []
+    for _, linha in dados.iterrows():
+        andamento = float(linha.get("Em andamento", 0) or 0)
+        rota = float(linha.get("Em rota", 0) or 0)
+        pendencias = float(linha.get("Pendencias", 0) or 0)
+        label = escape(str(linha.get("GRE_Label", linha.get("GRE", ""))))
+        w_and = andamento / maximo * 100
+        w_rota = rota / maximo * 100
+        linhas.append(
+            f'''<div class="print-rank-row">
+                <div class="print-rank-name" title="{label}">{label}</div>
+                <div class="print-rank-track">
+                    <span class="print-seg andamento" style="width:{w_and:.4f}%"></span>
+                    <span class="print-seg rota" style="width:{w_rota:.4f}%"></span>
+                </div>
+                <div class="print-rank-value">{_fmt_num_br(pendencias)}</div>
+            </div>'''
+        )
+    return "".join(linhas)
+
+
+def _relatorio_setores_html(setor: pd.DataFrame, limite: int = 6) -> str:
+    if setor.empty:
+        return '<div class="print-empty">Sem dados de setorização.</div>'
+
+    dados = setor.copy()
+    colunas = list(dados.columns)
+    col_nome = next((c for c in colunas if "setor" in str(c).lower()), colunas[0] if colunas else None)
+    col_and = next((c for c in colunas if "andamento" in str(c).lower()), None)
+    col_rota = next((c for c in colunas if "rota" in str(c).lower()), None)
+    if col_nome is None or (col_and is None and col_rota is None):
+        return '<div class="print-empty">A estrutura da planilha de setorização não foi reconhecida.</div>'
+
+    dados["_and"] = pd.to_numeric(dados[col_and], errors="coerce").fillna(0) if col_and else 0
+    dados["_rota"] = pd.to_numeric(dados[col_rota], errors="coerce").fillna(0) if col_rota else 0
+    dados["_total"] = dados["_and"] + dados["_rota"]
+    dados = dados.sort_values("_total", ascending=False).head(limite)
+    maximo = max(float(dados["_total"].max()), 1.0)
+
+    linhas = []
+    for _, linha in dados.iterrows():
+        nome = escape(str(linha.get(col_nome, "")))
+        andamento = float(linha.get("_and", 0) or 0)
+        rota = float(linha.get("_rota", 0) or 0)
+        total = float(linha.get("_total", 0) or 0)
+        linhas.append(
+            f'''<div class="print-mini-row">
+                <div class="print-mini-name" title="{nome}">{nome}</div>
+                <div class="print-mini-track">
+                    <span class="print-seg andamento" style="width:{andamento/maximo*100:.4f}%"></span>
+                    <span class="print-seg rota" style="width:{rota/maximo*100:.4f}%"></span>
+                </div>
+                <div class="print-mini-value">{_fmt_num_br(total)}</div>
+            </div>'''
+        )
+    return "".join(linhas)
+
+
+def _relatorio_status_html(acompanhamento: pd.DataFrame, limite: int = 6) -> str:
+    if acompanhamento.empty or "Status" not in acompanhamento.columns:
+        return '<div class="print-empty">Sem registros operacionais.</div>'
+
+    contagens = acompanhamento["Status"].fillna("(SEM STATUS)").astype(str).value_counts().head(limite)
+    if contagens.empty:
+        return '<div class="print-empty">Sem registros operacionais.</div>'
+    maximo = max(float(contagens.max()), 1.0)
+    linhas = []
+    for status, quantidade in contagens.items():
+        nome = escape(str(status))
+        linhas.append(
+            f'''<div class="print-mini-row">
+                <div class="print-mini-name" title="{nome}">{nome}</div>
+                <div class="print-mini-track">
+                    <span class="print-status-fill" style="width:{float(quantidade)/maximo*100:.4f}%"></span>
+                </div>
+                <div class="print-mini-value">{_fmt_num_br(quantidade)}</div>
+            </div>'''
+        )
+    return "".join(linhas)
+
+
+def _montar_html_relatorio_impressao(
+    base_filtrada: pd.DataFrame,
+    setor: pd.DataFrame,
+    acomp_filtrado: pd.DataFrame,
+    totais: dict,
+    insights: dict,
+    periodo_label: str,
+    config: dict,
+    filtros_label: str,
+) -> str:
+    """Monta uma aba-documento A4 vertical, pronta para imprimir ou salvar como PDF."""
+    total = max(float(totais.get("total", 0) or 0), 1.0)
+    conclusao = max(0.0, min(1.0, float(totais.get("conclusao", 0) or 0)))
+    pct_and = float(totais.get("andamento", 0) or 0) / total
+    fim_clim = conclusao * 360
+    fim_and = min(360.0, (conclusao + pct_and) * 360)
+
+    texto_executivo = escape(_texto_executivo_resumo(insights))
+    fonte = escape(str(config.get("Fonte dos dados", "GEOBS / Governo da Paraíba")))
+    atualizacao = escape(str(config.get("Última atualização oficial", config.get("Ultima atualização oficial", "Não informada"))))
+    periodo_seguro = escape(str(periodo_label))
+    filtros_seguro = escape(str(filtros_label))
+
+    melhor = insights.get("melhor")
+    critica = insights.get("critica")
+    if melhor is not None and critica is not None:
+        leitura_gre = (
+            f"A maior taxa de conclusão é observada em {melhor.get('GRE_Label', '')}, com "
+            f"{_fmt_pct_br(melhor.get('Conclusao', 0))}. A maior concentração de pendências está em "
+            f"{critica.get('GRE_Label', '')}, que reúne {_fmt_num_br(critica.get('Pendencias', 0))} unidades "
+            f"entre obras em andamento e escolas em rota de climatização."
+        )
+    else:
+        leitura_gre = "O recorte selecionado não possui dados suficientes para comparar o desempenho entre as GREs."
+
+    conclusao_texto = (
+        "Os resultados consolidados permitem acompanhar a evolução da climatização escolar e identificar os "
+        "territórios e estágios operacionais que exigem maior atenção. Recomenda-se priorizar as GREs com maior "
+        "estoque de pendências, mantendo a articulação entre adequações de infraestrutura, liberação das unidades "
+        "e programação da instalação dos equipamentos."
+    )
+    if insights.get("setor_top"):
+        conclusao_texto += (
+            f" Na setorização, {insights['setor_top'][0]} apresenta o maior volume registrado "
+            f"({_fmt_num_br(insights['setor_top'][1])})."
+        )
+    if insights.get("status_top"):
+        conclusao_texto += (
+            f" No acompanhamento operacional, o status mais recorrente é “{insights['status_top'][0]}”, "
+            f"com {_fmt_num_br(insights['status_top'][1])} registros."
+        )
+
+    melhor_pct = _fmt_pct_br(melhor.get('Conclusao', 0)) if melhor is not None else '—'
+    melhor_nome = escape(str(melhor.get('GRE_Label', 'Sem dados'))) if melhor is not None else 'Sem dados para comparação.'
+    critica_valor = _fmt_num_br(critica.get('Pendencias', 0)) if critica is not None else '—'
+    critica_nome = escape(str(critica.get('GRE_Label', 'Sem dados'))) if critica is not None else 'Sem dados para comparação.'
+
+    return f'''<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório de Climatização Escolar</title>
+<style>
+:root {{
+  --noite:#001F49; --escuro:#003B73; --medio:#1F77D0; --claro:#5DA7F2;
+  --gelo:#EAF4FF; --fundo:#F3F7FB; --borda:#D9E4F2; --texto:#1E2F47;
+  --suave:#637083; --vermelho:#EF4444; --vermelho-escuro:#B91C1C;
+}}
+* {{ box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }}
+html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-family:"Segoe UI", Arial, sans-serif; }}
+.print-toolbar {{
+  position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:center; gap:16px;
+  padding:12px 18px; background:rgba(255,255,255,.96); border-bottom:1px solid var(--borda);
+  box-shadow:0 6px 18px rgba(0,31,73,.12); color:var(--suave); font-size:13px; font-weight:700;
+}}
+.print-toolbar button {{ border:0; border-radius:10px; padding:11px 20px; background:linear-gradient(90deg,var(--noite),#0059A8); color:#fff; font:800 14px "Segoe UI",Arial; cursor:pointer; box-shadow:0 6px 16px rgba(0,31,73,.20); }}
+.print-document {{ padding:22px 0 36px; display:flex; flex-direction:column; align-items:center; gap:20px; }}
+.print-sheet {{
+  width:210mm; height:297mm; background:#fff; position:relative; overflow:hidden;
+  padding:16mm 15mm 13mm; box-shadow:0 12px 34px rgba(0,31,73,.18);
+}}
+.print-sheet::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:5mm; background:linear-gradient(180deg,var(--medio) 0 32%,var(--vermelho) 32% 46%,var(--noite) 46% 100%); }}
+.print-header {{ display:flex; align-items:center; justify-content:space-between; gap:15px; border-bottom:1px solid var(--borda); padding-bottom:7mm; margin-bottom:6mm; }}
+.print-header img.gov {{ width:45mm; max-height:15mm; object-fit:contain; }}
+.print-header img.geobs {{ width:18mm; height:18mm; object-fit:contain; }}
+.print-header-center {{ flex:1; text-align:center; }}
+.print-header-center .eyebrow {{ color:var(--medio); font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:1.1px; }}
+.print-header-center h1 {{ margin:2mm 0 1mm; color:var(--noite); font-size:22px; line-height:1.05; letter-spacing:-.4px; }}
+.print-header-center p {{ margin:0; color:var(--suave); font-size:10px; font-weight:700; }}
+.print-section-title {{ margin:0 0 3mm; color:var(--noite); font-size:18px; line-height:1.1; font-weight:950; }}
+.print-section-title::after {{ content:""; display:block; width:18mm; height:1.2mm; margin-top:2.2mm; background:var(--medio); border-radius:99px; }}
+.print-subtitle {{ color:var(--suave); font-size:10.2px; line-height:1.48; text-align:justify; margin:0 0 4mm; }}
+.print-intro {{ background:linear-gradient(90deg,#EFF7FF,#FFFFFF); border:1px solid var(--borda); border-left:1.6mm solid var(--medio); border-radius:3mm; padding:4mm 5mm; margin-bottom:5mm; color:#24415F; font-size:10.3px; line-height:1.48; text-align:justify; }}
+.print-kpis {{ display:grid; grid-template-columns:repeat(5,1fr); gap:2.6mm; margin:0 0 5mm; }}
+.print-kpi {{ min-height:24mm; background:#fff; border:1px solid var(--borda); border-radius:3mm; padding:3.4mm; position:relative; overflow:hidden; box-shadow:0 2mm 5mm rgba(10,40,80,.06); }}
+.print-kpi::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:1.3mm; background:var(--accent,var(--escuro)); }}
+.print-kpi small {{ display:block; color:var(--suave); font-size:7px; font-weight:900; text-transform:uppercase; line-height:1.15; }}
+.print-kpi b {{ display:block; margin-top:3mm; color:var(--accent,var(--escuro)); font-size:22px; line-height:1; letter-spacing:-.6px; }}
+.print-two {{ display:grid; grid-template-columns:.92fr 1.08fr; gap:4mm; }}
+.print-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:4.5mm; box-shadow:0 2mm 5mm rgba(10,40,80,.055); }}
+.print-card h3 {{ margin:0 0 3mm; color:var(--escuro); font-size:12px; }}
+.print-donut {{ width:48mm; height:48mm; margin:2mm auto; border-radius:50%; position:relative; background:conic-gradient(var(--escuro) 0deg {fim_clim:.3f}deg,var(--claro) {fim_clim:.3f}deg {fim_and:.3f}deg,var(--vermelho) {fim_and:.3f}deg 360deg); }}
+.print-donut::after {{ content:""; position:absolute; inset:13mm; border-radius:50%; background:#fff; box-shadow:0 0 0 .3mm var(--borda); }}
+.print-donut-label {{ position:absolute; inset:0; z-index:2; display:grid; place-items:center; text-align:center; color:var(--escuro); font-size:18px; font-weight:950; }}
+.print-legend {{ display:flex; justify-content:center; flex-wrap:wrap; gap:4mm; color:var(--suave); font-size:7.6px; font-weight:800; }}
+.print-dot {{ display:inline-block; width:2.4mm; height:2.4mm; border-radius:50%; margin-right:1mm; vertical-align:-.2mm; }}
+.print-progress-number {{ color:var(--escuro); font-size:34px; font-weight:950; margin-top:6mm; line-height:1; }}
+.print-progress-track {{ height:8mm; background:#E8EEF6; border:1px solid #D6E2EF; border-radius:99px; overflow:hidden; margin:6mm 0 2.5mm; }}
+.print-progress-fill {{ height:100%; width:{conclusao*100:.4f}%; background:linear-gradient(90deg,var(--noite),#005FB8); border-radius:99px; }}
+.print-text-box {{ margin-top:4mm; background:var(--gelo); border:1px solid var(--borda); border-left:1.5mm solid var(--medio); border-radius:3mm; padding:4mm 5mm; color:#24415F; font-size:9.5px; line-height:1.45; text-align:justify; }}
+.print-method {{ display:grid; grid-template-columns:repeat(3,1fr); gap:3mm; margin-top:4mm; }}
+.print-method div {{ border:1px solid var(--borda); border-radius:3mm; padding:3.5mm; background:#F8FBFF; color:var(--suave); font-size:8.4px; line-height:1.38; }}
+.print-method b {{ color:var(--escuro); display:block; margin-bottom:1.5mm; font-size:9.5px; }}
+.print-filter-note {{ margin-top:3mm; color:var(--suave); font-size:7.7px; line-height:1.35; }}
+.print-chart-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:4mm 4.5mm; }}
+.print-chart-legend {{ text-align:center; color:var(--suave); font-size:7.5px; font-weight:800; margin-bottom:3mm; }}
+.print-gre-row {{ display:grid; grid-template-columns:37mm 1fr 10mm; align-items:center; gap:2mm; margin:2.15mm 0; }}
+.print-gre-name {{ color:#18365C; font-size:7.2px; font-weight:900; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.print-bar-track, .print-rank-track, .print-mini-track {{ height:5.4mm; background:#ECF1F7; border-radius:1.4mm; overflow:hidden; display:flex; }}
+.print-seg {{ display:block; height:100%; min-width:0; }}
+.print-seg.clim {{ background:var(--escuro); }} .print-seg.andamento {{ background:linear-gradient(90deg,#0B4EA2,#7CC5FF); }} .print-seg.rota {{ background:linear-gradient(90deg,#B91C1C,#FF8D8D); }}
+.print-bar-value {{ color:var(--texto); font-size:7px; font-weight:900; text-align:right; }}
+.print-highlight-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:4mm; }}
+.print-highlight {{ border:1px solid var(--borda); border-left:1.5mm solid var(--accent); border-radius:3mm; padding:4mm; background:#fff; }}
+.print-highlight small {{ color:var(--suave); font-size:7.2px; font-weight:900; text-transform:uppercase; }}
+.print-highlight b {{ display:block; color:var(--accent); font-size:22px; line-height:1; margin:2.5mm 0 1mm; }}
+.print-highlight p {{ margin:0; color:var(--texto); font-size:8.4px; line-height:1.35; }}
+.print-rank-row {{ display:grid; grid-template-columns:40mm 1fr 10mm; align-items:center; gap:2mm; margin:3.2mm 0; }}
+.print-rank-name, .print-mini-name {{ color:#18365C; font-size:7.3px; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.print-rank-name {{ text-align:right; }} .print-rank-value {{ color:var(--vermelho-escuro); font-size:8px; font-weight:950; text-align:right; }}
+.print-bottom-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:4mm; }}
+.print-mini-row {{ display:grid; grid-template-columns:31mm 1fr 8mm; align-items:center; gap:1.5mm; margin:3.1mm 0; }}
+.print-mini-name {{ font-size:6.8px; text-align:right; }} .print-mini-value {{ font-size:7px; font-weight:900; text-align:right; }}
+.print-mini-track {{ height:4.5mm; }} .print-status-fill {{ height:100%; background:linear-gradient(90deg,var(--noite),var(--medio)); border-radius:1.2mm; }}
+.print-footer {{ position:absolute; left:15mm; right:15mm; bottom:7mm; border-top:1px solid var(--borda); padding-top:2.5mm; display:flex; justify-content:space-between; color:var(--suave); font-size:6.7px; font-weight:700; }}
+.print-empty {{ color:var(--suave); font-size:9px; padding:8mm; text-align:center; }}
+@page {{ size:A4 portrait; margin:0; }}
+@media print {{
+  html,body {{ background:#fff; }}
+  .print-toolbar {{ display:none !important; }}
+  .print-document {{ padding:0; gap:0; display:block; }}
+  .print-sheet {{ margin:0; box-shadow:none; page-break-after:always; break-after:page; }}
+  .print-sheet:last-child {{ page-break-after:auto; break-after:auto; }}
+}}
+</style>
+</head>
+<body>
+<div class="print-toolbar">
+  <button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+  <span>Use papel A4, orientação retrato, escala 100% e margens “nenhuma”.</span>
+</div>
+<div class="print-document">
+
+<section class="print-sheet">
+  <div class="print-header">
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório Gerencial da Climatização Escolar</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+  </div>
+  <h2 class="print-section-title">1. Síntese executiva</h2>
+  <div class="print-intro">
+    O presente relatório apresenta uma síntese do acompanhamento das ações de climatização das escolas da rede estadual da Paraíba. Os indicadores e gráficos foram organizados a partir das mesmas bases e critérios utilizados no dashboard da GEOBS, permitindo visualizar o estágio atual das intervenções, o nível de conclusão e os principais pontos que demandam acompanhamento gerencial.
+  </div>
+  <div class="print-kpis">
+    <div class="print-kpi"><small>Total de escolas</small><b>{_fmt_num_br(totais.get('total',0))}</b></div>
+    <div class="print-kpi"><small>Climatizadas</small><b>{_fmt_num_br(totais.get('climatizadas',0))}</b></div>
+    <div class="print-kpi" style="--accent:var(--claro)"><small>Em andamento</small><b>{_fmt_num_br(totais.get('andamento',0))}</b></div>
+    <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em rota</small><b>{_fmt_num_br(totais.get('rota',0))}</b></div>
+    <div class="print-kpi" style="--accent:var(--medio)"><small>Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
+  </div>
+  <div class="print-two">
+    <div class="print-card">
+      <h3>Distribuição geral por situação</h3>
+      <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
+      <div class="print-legend">
+        <span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span>
+        <span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span>
+        <span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span>
+      </div>
+    </div>
+    <div class="print-card">
+      <h3>Progresso geral da climatização</h3>
+      <div class="print-progress-number">{_fmt_pct_br(conclusao)}</div>
+      <div class="print-progress-track"><div class="print-progress-fill"></div></div>
+      <p class="print-subtitle">{_fmt_num_br(totais.get('climatizadas',0))} escolas climatizadas e {_fmt_num_br(totais.get('pendencias',0))} pendências no recorte selecionado.</p>
+      <div class="print-text-box"><b>Leitura dos resultados.</b> {texto_executivo}</div>
+    </div>
+  </div>
+  <div class="print-method">
+    <div><b>Objetivo</b>Apresentar, em formato sintético, os resultados consolidados e os pontos que exigem acompanhamento.</div>
+    <div><b>Metodologia</b>Os valores são recalculados conforme os filtros aplicados, utilizando as mesmas bases do painel.</div>
+    <div><b>Uso gerencial</b>O relatório apoia a priorização das adequações, liberações e instalações nas unidades escolares.</div>
+  </div>
+  <div class="print-filter-note"><b>Recorte:</b> {filtros_seguro} · <b>Fonte:</b> {fonte}</div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 1 de 3</span></div>
+</section>
+
+<section class="print-sheet">
+  <div class="print-header">
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+    <div class="print-header-center"><div class="eyebrow">Panorama territorial</div><h1>Resultados por Gerência Regional</h1><p>Distribuição das escolas por estágio de climatização</p></div>
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+  </div>
+  <h2 class="print-section-title">2. Panorama por GRE</h2>
+  <p class="print-subtitle">O gráfico apresenta, para cada Gerência Regional de Educação, a quantidade de escolas climatizadas, em andamento e em rota. O comprimento total das barras permite comparar o porte do atendimento, enquanto as cores evidenciam a composição de cada situação.</p>
+  <div class="print-chart-card">
+    <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
+    {_relatorio_gre_barras_html(base_filtrada)}
+  </div>
+  <div class="print-highlight-grid">
+    <div class="print-highlight" style="--accent:var(--escuro)">
+      <small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p>
+    </div>
+    <div class="print-highlight" style="--accent:var(--vermelho)">
+      <small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p>
+    </div>
+  </div>
+  <div class="print-text-box"><b>Interpretação.</b> {escape(leitura_gre)}</div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 2 de 3</span></div>
+</section>
+
+<section class="print-sheet">
+  <div class="print-header">
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Situação Operacional</h1><p>Prioridades territoriais, setorização e registros de acompanhamento</p></div>
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+  </div>
+  <h2 class="print-section-title">3. Prioridades de acompanhamento</h2>
+  <p class="print-subtitle">A leitura das pendências permite direcionar o acompanhamento para as GREs e setores com maior volume de unidades ainda não concluídas. As barras combinam escolas em andamento e em rota de climatização.</p>
+  <div class="print-chart-card">
+    <h3 style="margin:0 0 2mm;color:var(--escuro);font-size:11px">Ranking de pendências por GRE</h3>
+    <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
+    {_relatorio_ranking_html(base_filtrada, 6)}
+  </div>
+  <div class="print-bottom-grid">
+    <div class="print-card"><h3>Setorização das pendências</h3>{_relatorio_setores_html(setor, 6)}</div>
+    <div class="print-card"><h3>Status dos registros operacionais</h3>{_relatorio_status_html(acomp_filtrado, 6)}</div>
+  </div>
+  <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
+  <div class="print-filter-note"><b>Última atualização oficial:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
+  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 3 de 3</span></div>
+</section>
+
+</div>
+</body>
+</html>'''
+
+
+def renderizar_gerador_relatorio(
+    base: pd.DataFrame,
+    setor: pd.DataFrame,
+    responsaveis: pd.DataFrame,
+    acompanhamento: pd.DataFrame,
+    config: dict,
+):
+    """Exibe uma aba exclusiva de relatório, preparada para impressão pelo navegador."""
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stTabs"] button {font-size:1rem;font-weight:800;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("## 🖨️ Relatório para impressão")
+    st.caption(
+        "A aba abaixo funciona como um documento vertical. Ela reúne textos-base, indicadores e os principais "
+        "gráficos do dashboard. Use o botão “Imprimir / Salvar como PDF” dentro do documento."
+    )
+
+    periodos_encontrados = []
+    if "Periodo" in base.columns:
+        periodos_encontrados = [
+            str(v) for v in base["Periodo"].dropna().unique()
+            if str(v).strip() and str(v).strip() != "Todo o período"
+        ]
+    periodos = ["Todo o período"] + sorted(set(periodos_encontrados))
+
+    mapa_gres = (
+        base[["GRE", "GRE_Label", "Ordem"]]
+        .drop_duplicates("GRE")
+        .sort_values("Ordem")
+        .set_index("GRE")["GRE_Label"]
+        .astype(str)
+        .to_dict()
+    ) if not base.empty else {}
+    opcoes_gre = list(mapa_gres.keys())
+
+    resp_opcoes = responsaveis.copy()
+    if not resp_opcoes.empty:
+        resp_opcoes["_Área Relatório"] = resp_opcoes.apply(_area_tecnica_linha, axis=1)
+    else:
+        resp_opcoes["_Área Relatório"] = pd.Series(dtype=str)
+    areas = ["Todas"] + sorted(v for v in resp_opcoes["_Área Relatório"].dropna().astype(str).unique() if v)
+
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            periodo = st.selectbox("Período", periodos, key="impressao_periodo")
+        with c2:
+            area = st.selectbox("Área técnica", areas, key="impressao_area")
+        c3, c4 = st.columns(2)
+        with c3:
+            gres = st.multiselect(
+                "GRE", opcoes_gre,
+                format_func=lambda v: mapa_gres.get(v, v),
+                placeholder="Todas as GREs",
+                key="impressao_gres",
+            )
+        resp_area = resp_opcoes.copy()
+        if area != "Todas":
+            resp_area = resp_area[resp_area["_Área Relatório"] == area]
+        nomes = ["Todos"] + sorted(
+            v for v in resp_area.get("Responsável Técnico", pd.Series(dtype=str)).dropna().astype(str).unique() if v
+        )
+        with c4:
+            responsavel = st.selectbox("Responsável técnico", nomes, key="impressao_responsavel")
+
+    try:
+        base_filtrada, _, acomp_filtrado = _filtrar_relatorio(
+            base, responsaveis, acompanhamento, periodo, gres, area, responsavel,
+        )
+        totais = _totais_relatorio(base_filtrada)
+        insights = _insights_resumo(base_filtrada, totais, setor, acomp_filtrado)
+
+        gres_texto = "Todas as GREs" if not gres else ", ".join(mapa_gres.get(v, str(v)) for v in gres)
+        filtros_label = (
+            f"Período: {periodo}; GRE: {gres_texto}; área técnica: {area}; "
+            f"responsável: {responsavel}."
+        )
+        html_relatorio = _montar_html_relatorio_impressao(
+            base_filtrada=base_filtrada,
+            setor=setor,
+            acomp_filtrado=acomp_filtrado,
+            totais=totais,
+            insights=insights,
+            periodo_label=_periodo_capa_resumo(periodo),
+            config=config,
+            filtros_label=filtros_label,
+        )
+        components.html(html_relatorio, height=3650, scrolling=True)
+    except Exception as erro:
+        st.error("Não foi possível montar a página de relatório com os filtros selecionados.")
+        st.exception(erro)
+
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -1601,338 +3634,6 @@ body {
     margin:2px 4px 2px 0;
 }
 
-
-/* ==========================================================
-   NOVAS VISUALIZAÇÕES ANALÍTICAS
-   ========================================================== */
-.analytics-section {
-    margin-top: 16px;
-}
-
-.analytics-grid {
-    display: grid;
-    grid-template-columns: 1.02fr 1.18fr;
-    gap: 16px;
-}
-
-.analytics-left {
-    display: grid;
-    grid-template-rows: auto auto;
-    gap: 16px;
-}
-
-.analytics-subtitle {
-    margin-top: -2px;
-    margin-bottom: 12px;
-    color: var(--texto-suave);
-    font-size: 13px;
-    font-weight: 750;
-}
-
-.svg-chart-wrap {
-    width: 100%;
-    min-height: 330px;
-    overflow-x: auto;
-}
-
-.svg-chart-wrap svg {
-    width: 100%;
-    min-width: 650px;
-    height: 330px;
-    display: block;
-}
-
-.area-legend,
-.map-legend {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-    color: #40516A;
-    font-size: 12px;
-    font-weight: 800;
-}
-
-.legend-square {
-    width: 13px;
-    height: 13px;
-    display: inline-block;
-    border-radius: 3px;
-    margin-right: 6px;
-    vertical-align: -2px;
-}
-
-.vertical-bars {
-    min-height: 315px;
-    display: flex;
-    align-items: flex-end;
-    gap: 11px;
-    padding: 22px 12px 8px 42px;
-    position: relative;
-    border-left: 1px solid #B8C9DC;
-    border-bottom: 1px solid #B8C9DC;
-    background: repeating-linear-gradient(
-        to top,
-        transparent 0,
-        transparent 59px,
-        rgba(149,174,202,.25) 60px
-    );
-}
-
-.vertical-bar-item {
-    flex: 1 1 0;
-    min-width: 42px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: center;
-    position: relative;
-}
-
-.vertical-bar-value {
-    color: var(--azul-noite);
-    font-size: 13px;
-    font-weight: 950;
-    margin-bottom: 5px;
-}
-
-.vertical-bar-column {
-    width: min(42px, 72%);
-    min-height: 3px;
-    border-radius: 7px 7px 2px 2px;
-    background: linear-gradient(180deg, var(--azul-escuro), var(--azul-noite));
-    box-shadow: 0 5px 12px rgba(0,59,115,.18);
-}
-
-.vertical-bar-label {
-    margin-top: 8px;
-    min-height: 34px;
-    color: #17365D;
-    font-size: 10px;
-    font-weight: 850;
-    line-height: 1.15;
-    text-align: center;
-    word-break: break-word;
-}
-
-.performance-panel .panel-body {
-    padding-bottom: 16px;
-}
-
-.performance-summary {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 9px;
-    margin: 4px 0 14px;
-}
-
-.performance-summary-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 9px 11px;
-    border: 1px solid var(--borda);
-    border-radius: 11px;
-    background: #F8FBFF;
-    color: #40516A;
-    font-size: 11px;
-    font-weight: 850;
-}
-
-.performance-summary-item i {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 5px;
-}
-
-.performance-summary-item strong {
-    color: var(--azul-noite);
-    font-size: 15px;
-    font-weight: 950;
-}
-
-.gre-performance-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(125px, 1fr));
-    gap: 11px;
-    align-content: start;
-}
-
-.gre-performance-card {
-    --status-color: var(--azul-medio);
-    position: relative;
-    min-height: 158px;
-    padding: 15px 13px 12px;
-    border: 1px solid #D9E4F2;
-    border-radius: 14px;
-    background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFE 100%);
-    box-shadow: 0 5px 14px rgba(0,31,73,.08);
-    overflow: hidden;
-    transition: transform .18s ease, box-shadow .18s ease;
-}
-
-.gre-performance-card::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 6px;
-    background: var(--status-color);
-}
-
-.gre-performance-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 18px rgba(0,31,73,.13);
-}
-
-.gre-performance-card.high { --status-color: var(--azul-noite); }
-.gre-performance-card.medium { --status-color: var(--azul-medio); }
-.gre-performance-card.low { --status-color: var(--azul-claro); }
-.gre-performance-card.critical { --status-color: var(--vermelho); }
-.gre-performance-card.no-data { --status-color: #AFC1D5; }
-
-.gre-performance-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 2px;
-}
-
-.gre-performance-name {
-    color: var(--azul-noite);
-    font-size: 14px;
-    font-weight: 950;
-}
-
-.gre-performance-pct {
-    color: var(--status-color);
-    font-size: 17px;
-    font-weight: 950;
-}
-
-.gre-performance-location {
-    min-height: 30px;
-    margin-top: 5px;
-    color: #516174;
-    font-size: 11px;
-    line-height: 1.25;
-    font-weight: 750;
-}
-
-.gre-performance-values {
-    display: flex;
-    align-items: baseline;
-    gap: 5px;
-    margin-top: 10px;
-    color: #40516A;
-    font-size: 11px;
-    font-weight: 750;
-}
-
-.gre-performance-values strong {
-    color: var(--azul-noite);
-    font-size: 24px;
-    line-height: 1;
-    font-weight: 950;
-}
-
-.gre-performance-track {
-    height: 8px;
-    margin-top: 10px;
-    border-radius: 999px;
-    background: #E5EDF6;
-    overflow: hidden;
-}
-
-.gre-performance-fill {
-    height: 100%;
-    min-width: 0;
-    border-radius: 999px;
-    background: var(--status-color);
-}
-
-.gre-performance-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 8px;
-    color: #68788D;
-    font-size: 10px;
-    font-weight: 800;
-}
-
-.map-legend {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-    margin-top: 14px;
-    padding: 11px;
-    border: 1px solid var(--borda);
-    border-radius: 13px;
-    background: #F8FBFF;
-    color: #40516A;
-    font-size: 11px;
-    font-weight: 850;
-}
-
-.map-legend span {
-    white-space: nowrap;
-}
-
-.chart-empty {
-    min-height: 180px;
-    display: grid;
-    place-items: center;
-    color: var(--texto-suave);
-    font-size: 14px;
-    font-weight: 800;
-    text-align: center;
-}
-
-@media (max-width: 1200px) {
-    .analytics-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .gre-performance-grid {
-        grid-template-columns: repeat(4, minmax(135px, 1fr));
-    }
-}
-
-@media (max-width: 760px) {
-    .svg-chart-wrap svg {
-        min-width: 570px;
-    }
-
-    .vertical-bars {
-        overflow-x: auto;
-        min-width: 630px;
-    }
-
-    .performance-summary {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .gre-performance-grid {
-        grid-template-columns: repeat(2, minmax(135px, 1fr));
-    }
-}
-
-@media (max-width: 430px) {
-    .gre-performance-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
 .hidden { display: none !important; }
 
 .footer {
@@ -2224,45 +3925,6 @@ body {
                         <span><span class="dot" style="background:linear-gradient(90deg, #8B1010 0%, #DC2626 54%, #FFB4B4 100%);"></span>Em rota de climatização</span>
                     </div>
                     <div class="sector-grid" id="sectorGrid"></div>
-                </div>
-            </div>
-        </section>
-
-        <section class="analytics-section">
-            <div class="analytics-grid">
-                <div class="analytics-left">
-                    <div class="panel panel-pad">
-                        <div class="chart-title">Panorama por GRE</div>
-                        <div class="analytics-subtitle">Total, climatizadas e pendências</div>
-                        <div class="svg-chart-wrap" id="areaChart"></div>
-                        <div class="area-legend">
-                            <span><i class="legend-square" style="background:var(--azul-noite)"></i>Climatizadas</span>
-                            <span><i class="legend-square" style="background:var(--azul-medio)"></i>Pendências</span>
-                            <span><i class="legend-square" style="background:var(--vermelho)"></i>Total</span>
-                        </div>
-                    </div>
-
-                    <div class="panel panel-pad">
-                        <div class="chart-title">Climatização por GRE</div>
-                        <div class="analytics-subtitle">Quantidade de escolas climatizadas</div>
-                        <div class="vertical-bars" id="verticalBarChart"></div>
-                    </div>
-                </div>
-
-                <div class="panel performance-panel">
-                    <div class="panel-head">Desempenho por GRE</div>
-                    <div class="panel-body">
-                        <div class="chart-title">Resultados da climatização por gerência</div>
-                        <div class="analytics-subtitle">Climatizadas / total de escolas e percentual de conclusão</div>
-                        <div class="performance-summary" id="grePerformanceSummary"></div>
-                        <div class="gre-performance-grid" id="grePerformanceGrid"></div>
-                        <div class="map-legend">
-                            <span><i class="legend-square" style="background:var(--azul-noite)"></i>Alto (≥ 70%)</span>
-                            <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
-                            <span><i class="legend-square" style="background:var(--azul-claro)"></i>Baixo (30% a 49%)</span>
-                            <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                        </div>
-                    </div>
                 </div>
             </div>
         </section>
@@ -2612,7 +4274,7 @@ function initializeFilters() {
     const viewFilter = document.getElementById("viewFilter");
     const saved = loadDashboardState();
 
-    // O painel trabalha com a visão consolidada disponível na base.
+    // O painel passa a trabalhar somente com a visão consolidada de todo o período.
     setOptions(periodFilter, PERIODOS_FIXOS, "Todo o período");
 
     const areasDescobertas = uniqueValues(respData.map(d => technicalAreaOfResponsible(d)))
@@ -2909,165 +4571,6 @@ function renderPanorama(rows) {
             `A GRE com maior volume de pendências é <strong>${escapeHtml(greLabel(maior))}</strong>, ` +
             `com <strong>${fmtNum(maior.Pendências)}</strong> escolas em andamento ou em rota.`;
     }
-}
-
-
-function compactGreLabel(row) {
-    const numero = String(row?.GRE || "").match(/\d+/)?.[0] || String(row?.GRE || "");
-    return numero ? `${numero}ª GRE` : String(row?.GRE || "GRE");
-}
-
-function locationOnly(row) {
-    const local = String(row?.["Localização"] || "").trim();
-    if (local) return local;
-    const label = String(row?.GRE_Label || "");
-    const parts = label.split("—");
-    return parts.length > 1 ? parts.slice(1).join("—").trim() : "";
-}
-
-function renderAreaChart(rows) {
-    const target = document.getElementById("areaChart");
-    if (!target) return;
-    if (!rows.length) {
-        target.innerHTML = '<div class="chart-empty">Sem dados para os filtros selecionados.</div>';
-        return;
-    }
-
-    const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
-    const width = Math.max(760, data.length * 84);
-    const height = 330;
-    const margin = {top: 22, right: 20, bottom: 58, left: 55};
-    const chartW = width - margin.left - margin.right;
-    const chartH = height - margin.top - margin.bottom;
-    const maxValue = Math.max(...data.map(d => Number(d.Total || 0)), 1);
-    const niceMax = Math.max(10, Math.ceil(maxValue / 20) * 20);
-    const x = index => margin.left + (data.length === 1 ? chartW / 2 : index * chartW / (data.length - 1));
-    const y = value => margin.top + chartH - (Number(value || 0) / niceMax) * chartH;
-    const baseline = margin.top + chartH;
-
-    const series = [
-        {key: "Total", stroke: "#EF4444", fill: "rgba(239,68,68,.16)"},
-        {key: "Pendências", stroke: "#1F77D0", fill: "rgba(31,119,208,.20)"},
-        {key: "Climatizadas", stroke: "#001F49", fill: "rgba(0,31,73,.42)"},
-    ];
-
-    let grid = "";
-    for (let tick = 0; tick <= 5; tick++) {
-        const value = niceMax * tick / 5;
-        const yy = y(value);
-        grid += `<line x1="${margin.left}" y1="${yy}" x2="${width-margin.right}" y2="${yy}" stroke="#D9E4F2" stroke-dasharray="4 5"/>`;
-        grid += `<text x="${margin.left-10}" y="${yy+4}" text-anchor="end" fill="#516174" font-size="11" font-weight="700">${fmtNum(value)}</text>`;
-    }
-
-    let areas = "";
-    series.forEach(s => {
-        const points = data.map((d,i) => `${x(i)},${y(d[s.key])}`).join(" ");
-        const areaPoints = `${margin.left},${baseline} ${points} ${x(data.length-1)},${baseline}`;
-        areas += `<polygon points="${areaPoints}" fill="${s.fill}"/>`;
-        areas += `<polyline points="${points}" fill="none" stroke="${s.stroke}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
-        data.forEach((d,i) => {
-            areas += `<circle cx="${x(i)}" cy="${y(d[s.key])}" r="4.5" fill="#FFFFFF" stroke="${s.stroke}" stroke-width="2.5"><title>${escapeHtml(compactGreLabel(d))}: ${escapeHtml(s.key)} ${fmtNum(d[s.key])}</title></circle>`;
-        });
-    });
-
-    let labels = "";
-    data.forEach((d,i) => {
-        labels += `<text x="${x(i)}" y="${height-29}" text-anchor="middle" fill="#17365D" font-size="11" font-weight="800">${escapeHtml(compactGreLabel(d))}</text>`;
-    });
-
-    target.innerHTML = `
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfico de área por GRE">
-            ${grid}
-            <line x1="${margin.left}" y1="${baseline}" x2="${width-margin.right}" y2="${baseline}" stroke="#AFC1D5"/>
-            <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${baseline}" stroke="#AFC1D5"/>
-            ${areas}
-            ${labels}
-            <text x="17" y="${height/2}" transform="rotate(-90 17 ${height/2})" fill="#17365D" font-size="12" font-weight="800">Quantidade de escolas</text>
-        </svg>`;
-}
-
-function renderVerticalBarChart(rows) {
-    const target = document.getElementById("verticalBarChart");
-    if (!target) return;
-    if (!rows.length) {
-        target.innerHTML = '<div class="chart-empty">Sem dados para os filtros selecionados.</div>';
-        return;
-    }
-
-    const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
-    const maxValue = Math.max(...data.map(d => Number(d.Climatizadas || 0)), 1);
-    target.innerHTML = data.map(d => {
-        const value = Number(d.Climatizadas || 0);
-        const height = Math.max(3, value / maxValue * 235);
-        return `
-            <div class="vertical-bar-item" title="${escapeHtml(greLabel(d))}: ${fmtNum(value)} climatizadas">
-                <div class="vertical-bar-value">${fmtNum(value)}</div>
-                <div class="vertical-bar-column" style="height:${height}px"></div>
-                <div class="vertical-bar-label">${escapeHtml(compactGreLabel(d))}</div>
-            </div>`;
-    }).join("");
-}
-
-function performanceClass(row) {
-    const total = Number(row?.Total || 0);
-    const clim = Number(row?.Climatizadas || 0);
-    if (total <= 0) {
-        return {key:"no-data", color:"#AFC1D5", name:"Sem dados", pct:0};
-    }
-
-    const pct = Math.max(0, Math.min(1, clim / total));
-    if (pct >= .70) return {key:"high", color:"#001F49", name:"Alto", pct};
-    if (pct >= .50) return {key:"medium", color:"#1F77D0", name:"Médio", pct};
-    if (pct >= .30) return {key:"low", color:"#5DA7F2", name:"Baixo", pct};
-    return {key:"critical", color:"#EF4444", name:"Crítico", pct};
-}
-
-function renderGrePerformance(rows) {
-    const target = document.getElementById("grePerformanceGrid");
-    const summary = document.getElementById("grePerformanceSummary");
-    if (!target || !summary) return;
-
-    if (!rows.length) {
-        summary.innerHTML = "";
-        target.innerHTML = '<div class="chart-empty" style="grid-column:1/-1;">Sem dados para os filtros selecionados.</div>';
-        return;
-    }
-
-    const data = rows.slice().sort((a,b) => Number(a.Ordem || 0) - Number(b.Ordem || 0));
-    const counts = {high:0, medium:0, low:0, critical:0};
-
-    data.forEach(row => {
-        const perf = performanceClass(row);
-        if (Object.prototype.hasOwnProperty.call(counts, perf.key)) counts[perf.key] += 1;
-    });
-
-    summary.innerHTML = `
-        <div class="performance-summary-item"><span><i style="background:var(--azul-noite)"></i>Alto</span><strong>${fmtNum(counts.high)}</strong></div>
-        <div class="performance-summary-item"><span><i style="background:var(--azul-medio)"></i>Médio</span><strong>${fmtNum(counts.medium)}</strong></div>
-        <div class="performance-summary-item"><span><i style="background:var(--azul-claro)"></i>Baixo</span><strong>${fmtNum(counts.low)}</strong></div>
-        <div class="performance-summary-item"><span><i style="background:var(--vermelho)"></i>Crítico</span><strong>${fmtNum(counts.critical)}</strong></div>`;
-
-    target.innerHTML = data.map(row => {
-        const perf = performanceClass(row);
-        const clim = Number(row.Climatizadas || 0);
-        const total = Number(row.Total || 0);
-        const pend = Math.max(0, total - clim);
-        const local = locationOnly(row) || "Localização não informada";
-        const width = Math.max(0, Math.min(100, perf.pct * 100));
-        const title = `${compactGreLabel(row)} — ${local}: ${fmtNum(clim)} de ${fmtNum(total)} escolas climatizadas (${fmtPct(perf.pct)})`;
-
-        return `
-            <div class="gre-performance-card ${perf.key}" title="${escapeHtml(title)}">
-                <div class="gre-performance-top">
-                    <div class="gre-performance-name">${escapeHtml(compactGreLabel(row))}</div>
-                    <div class="gre-performance-pct">${total > 0 ? fmtPct(perf.pct) : "—"}</div>
-                </div>
-                <div class="gre-performance-location">${escapeHtml(local)}</div>
-                <div class="gre-performance-values"><strong>${fmtNum(clim)}</strong><span>de ${fmtNum(total)} escolas</span></div>
-                <div class="gre-performance-track"><div class="gre-performance-fill" style="width:${width}%"></div></div>
-                <div class="gre-performance-foot"><span>${perf.name}</span><span>${fmtNum(pend)} pendente${pend === 1 ? "" : "s"}</span></div>
-            </div>`;
-    }).join("");
 }
 
 function renderRanking(targetId, rows, metric, className = "", maxRows = 8) {
@@ -3466,9 +4969,6 @@ function renderDashboard() {
     renderSetores();
     renderSummary(rows, totals);
     renderResponsaveis(rows);
-    renderAreaChart(rows);
-    renderVerticalBarChart(rows);
-    renderGrePerformance(rows);
 
     if (f.visao === "Em andamento") {
         renderRanking("rankingTotalFull", rows, "Em andamento", "andamento", 16);
@@ -3552,15 +5052,29 @@ def renderizar():
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
 
-        # O dashboard é exibido diretamente. A aba e a página de impressão/PDF
-        # foram removidas porque não são necessárias nesta versão.
-        components.html(html, height=8000, scrolling=True)
+        aba_dashboard, aba_relatorio = st.tabs([
+            "📊 Dashboard",
+            "🖨️ Relatório para impressão",
+        ])
+
+        with aba_dashboard:
+            components.html(html, height=6200, scrolling=True)
+
+        with aba_relatorio:
+            renderizar_gerador_relatorio(
+                base,
+                setor,
+                responsaveis,
+                acompanhamento,
+                config,
+            )
     except Exception as erro:
         st.error(
             "Erro ao montar o dashboard. Verifique se as abas publicadas continuam "
             "acessíveis e com os nomes de colunas esperados."
         )
         st.exception(erro)
+
 
 def iniciar_dashboard():
     """Inicia o painel sem quebrar em versões antigas do Streamlit."""
