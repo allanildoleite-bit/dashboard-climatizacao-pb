@@ -3940,7 +3940,7 @@ body {
 
 .analytics-grid {
     display: grid;
-    grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+    grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
     gap: 16px;
     align-items: start;
 }
@@ -3993,7 +3993,7 @@ body {
 }
 
 .real-map-stage {
-    position:relative; width:100%; aspect-ratio:1100/610; min-height:520px;
+    position:relative; width:100%; aspect-ratio:1100/590; min-height:650px;
     border:1px solid #D9E4F2; border-radius:18px; overflow:hidden;
     background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFE 100%);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 8px 22px rgba(0,31,73,.08);
@@ -4014,13 +4014,13 @@ body {
 .gre-map-label { pointer-events:none; transition:opacity .22s ease; paint-order:stroke; stroke:rgba(0,31,73,.24); stroke-width:1.55; }
 .gre-map-label.dark { fill:#17365D; stroke:rgba(255,255,255,.72); }
 .gre-map-label.light { fill:#FFFFFF; }
-.gre-map-label .gre-num { font-size:15px; font-weight:950; }
-.gre-map-label .gre-city { font-size:10px; font-weight:850; }
-.gre-map-label .gre-value { font-size:12.5px; font-weight:950; }
+.gre-map-label .gre-num { font-size:18px; font-weight:950; }
+.gre-map-label .gre-city { font-size:12px; font-weight:850; }
+.gre-map-label .gre-value { font-size:15px; font-weight:950; }
 .gre-region.is-muted,.gre-map-label.is-muted { opacity:.17; }
 .gre-region.is-selected { opacity:1; filter:drop-shadow(0 0 7px rgba(0,31,73,.55)); }
 .gre-map-label.is-selected { opacity:1; }
-@media(max-width:760px){ .real-map-stage{min-width:820px;min-height:455px;} }
+@media(max-width:760px){ .real-map-stage{min-width:980px;min-height:540px;} }
 .map-legend {
     display: flex;
     justify-content: center;
