@@ -2725,11 +2725,15 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 
 .print-real-map { position:relative; width:100%; overflow:hidden; border:1px solid #D9E4F2; border-radius:4mm; background:#fff; }
 .print-real-map img { display:block; width:100%; height:auto; }
-.print-map-label { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#fff; line-height:1.05; text-shadow:0 .5mm 1.2mm rgba(0,0,0,.55), 0 0 .4mm rgba(0,0,0,.45); }
+.print-map-label { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#17365D; line-height:1.05; text-shadow:0 .3mm 0 rgba(255,255,255,.98), 0 0 1.1mm rgba(255,255,255,.90); }
 .print-map-label b { display:block; font-size:8.1px; font-weight:900; }
 .print-map-label span { display:block; margin-top:.5mm; font-size:6.9px; font-weight:800; }
 .print-map-label small { display:block; margin-top:.7mm; font-size:10px; font-weight:950; }
-.print-map-label.baixo, .print-map-label.sem-dados { color:#001F49; text-shadow:0 .4mm 1mm rgba(255,255,255,.92); }
+.print-map-label.alto { color:#001F49; }
+.print-map-label.medio { color:#1F77D0; }
+.print-map-label.baixo { color:#B67B00; }
+.print-map-label.critico { color:#EF4444; }
+.print-map-label.sem-dados { color:#5C708C; }
 </style>
 </head>
 <body>
@@ -3948,18 +3952,20 @@ body {
     object-fit: contain;
     object-position: center;
     display: block;
+    filter: grayscale(1) saturate(0) brightness(1.06) contrast(.94);
+    opacity: .96;
 }
 .real-map-overlays { position:absolute; inset:0; pointer-events:none; }
 .real-map-label {
     position:absolute;
     transform:translate(-50%,-50%);
     text-align:center;
-    color:#FFFFFF;
+    color:#17365D;
     line-height:1.06;
     text-shadow:
-        0 2px 6px rgba(0,0,0,.55),
-        0 0 2px rgba(0,0,0,.40),
-        0 0 12px rgba(0,31,73,.28);
+        0 1px 0 rgba(255,255,255,.95),
+        0 0 10px rgba(255,255,255,.92),
+        0 2px 8px rgba(255,255,255,.68);
     opacity:1;
     transition:opacity .2s ease, transform .2s ease, filter .2s ease;
     z-index:2;
@@ -3983,13 +3989,11 @@ body {
     font-size:16px;
     font-weight:950;
 }
-.real-map-label.low,
-.real-map-label.no-data {
-    color:#001F49;
-    text-shadow:
-        0 1px 3px rgba(255,255,255,.85),
-        0 0 10px rgba(255,255,255,.70);
-}
+.real-map-label.high { color: var(--azul-noite); }
+.real-map-label.medium { color: var(--azul-medio); }
+.real-map-label.low { color: #B67B00; }
+.real-map-label.critical { color: var(--vermelho); }
+.real-map-label.no-data { color:#5C708C; }
 .real-map-label.is-muted {
     opacity:.18;
     filter:saturate(.2);
@@ -3997,7 +4001,7 @@ body {
 .real-map-label.is-selected {
     opacity:1;
     transform:translate(-50%,-50%) scale(1.08);
-    filter:drop-shadow(0 0 10px rgba(255,255,255,.85));
+    filter:drop-shadow(0 0 10px rgba(255,255,255,.90));
     z-index:4;
 }
 @media (max-width:760px) {
@@ -4603,7 +4607,7 @@ body {
                     <div class="panel-head">Mapa por GRE</div>
                     <div class="panel-body">
                         <div class="chart-title">Prioridade da climatização por GRE</div>
-                        <div class="analytics-subtitle">Cores dos indicadores: alto, médio, baixo e crítico</div>
+                        <div class="analytics-subtitle">Mapa em base neutra com destaque apenas nas cores prioritárias</div>
                         <div class="performance-summary" id="grePerformanceSummary"></div>
                         <div class="real-map-stage real-map-stage-v2" id="grePerformanceGrid">
                             <img class="real-map-image" src="__GRE_MAP_IMAGE__" alt="Mapa cartográfico real das GREs da Paraíba">
@@ -4614,7 +4618,7 @@ body {
                             <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
                             <span><i class="legend-square" style="background:var(--amarelo)"></i>Baixo (30% a 49%)</span>
                             <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                            <span>Rótulos com o número, a sede e a quantidade climatizada</span>
+                            <span>Somente as cores prioritárias aparecem em destaque</span>
                         </div>
                     </div>
                 </div>
