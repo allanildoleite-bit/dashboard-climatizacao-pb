@@ -2525,16 +2525,71 @@ _GRE_MAP_LAYOUT_PRINT = [
 ]
 
 
-_GRE_MAP_POSITIONS = {
-    9: (12.0, 39.5), 10: (25.0, 39.0), 8: (38.0, 23.0), 7: (17.0, 66.0),
-    11: (28.5, 79.0), 13: (39.0, 43.0), 6: (50.5, 48.5), 5: (49.5, 79.5),
-    4: (67.0, 26.0), 3: (70.0, 49.0), 15: (70.5, 72.0), 2: (82.5, 34.0),
-    14: (90.0, 39.0), 12: (83.5, 65.5), 16: (93.0, 55.0), 1: (95.5, 46.5),
-}
+_GRE_MAP_LAYOUT = [
+    (9,  "95,220 130,205 175,210 205,250 202,300 175,345 120,370 85,340 70,290 72,245", 135, 280, 305, 328),
+    (10, "205,230 255,212 320,220 340,280 325,340 250,355 202,300", 265, 280, 305, 328),
+    (8,  "310,170 360,130 435,120 490,150 505,215 455,250 395,260 340,280 320,220", 405, 182, 207, 230),
+    (7,  "120,370 175,345 250,355 285,405 280,470 220,510 140,525 90,505 70,450 85,400", 185, 438, 463, 486),
+    (11, "220,510 280,470 340,485 370,530 330,575 255,598 205,575 195,535", 285, 540, 565, 588),
+    (13, "395,260 455,250 520,275 545,335 500,365 430,370 380,345 340,280", 448, 302, 327, 350),
+    (6,  "520,275 590,270 650,300 675,360 650,420 600,448 540,440 500,365 545,335", 590, 345, 370, 393),
+    (5,  "540,440 600,448 650,420 700,465 730,530 710,600 630,635 565,615 500,575 470,505", 615, 528, 553, 576),
+    (4,  "650,155 710,130 780,138 820,175 825,235 780,260 725,285 650,300 590,270 600,215", 715, 192, 217, 240),
+    (3,  "650,300 725,285 780,320 805,380 770,440 700,465 650,420 675,360", 728, 357, 382, 405),
+    (15, "770,440 820,425 880,445 905,500 875,560 805,590 735,565 700,465", 812, 500, 525, 548),
+    (2,  "820,175 885,170 950,195 980,245 965,305 910,330 850,320 780,260 825,235", 895, 242, 267, 290),
+    (14, "980,245 1035,235 1085,260 1110,315 1095,370 1045,395 990,380 965,305", 1040, 305, 330, 353),
+    (12, "880,445 935,430 985,450 1015,495 1000,555 955,590 905,500", 948, 500, 525, 548),
+    (16, "1045,395 1095,370 1115,390 1110,430 1090,430 1093,463 1065,485 1028,480 1000,430", 1060, 425, 450, 473),
+    (1,  "1090,430 1120,420 1140,442 1138,470 1115,482 1093,463", 1118, 443, 466, 486),
+]
+GRE_STATE_OUTLINE = "70,290 72,245 95,220 130,205 175,210 255,212 310,170 360,130 435,120 490,150 650,155 710,130 780,138 885,170 950,195 1035,235 1085,260 1110,315 1115,390 1140,442 1138,470 1115,482 1093,463 1065,485 1000,555 955,590 875,560 805,590 730,530 710,600 630,635 565,615 500,575 330,575 255,598 205,575 140,525 90,505 70,450 85,400 70,340"
+
+
+def _map_status(total: float, clim: float) -> tuple[str, str, str]:
+    pct = clim / total if total > 0 else 0.0
+    if total <= 0:
+        return "no-data", "#B8C9DC", "#17365D"
+    if pct >= 0.70:
+        return "high", "#001F49", "#FFFFFF"
+    if pct >= 0.50:
+        return "medium", "#1F77D0", "#FFFFFF"
+    if pct >= 0.30:
+        return "low", "#F2A900", "#17365D"
+    return "critical", "#EF4444", "#FFFFFF"
+
+
+def _smooth_svg_path_from_points(points_str: str) -> str:
+    pts = []
+    for item in str(points_str).strip().split():
+        if "," not in item:
+            continue
+        x_str, y_str = item.split(",", 1)
+        try:
+            pts.append((float(x_str), float(y_str)))
+        except ValueError:
+            continue
+    if not pts:
+        return ""
+    if len(pts) < 3:
+        segs = [f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"]
+        for x, y in pts[1:]:
+            segs.append(f"L {x:.1f} {y:.1f}")
+        return " ".join(segs) + " Z"
+    def mid(a, b):
+        return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+    start_pt = mid(pts[-1], pts[0])
+    parts = [f"M {start_pt[0]:.1f} {start_pt[1]:.1f}"]
+    for i, atual in enumerate(pts):
+        prox = pts[(i + 1) % len(pts)]
+        mp = mid(atual, prox)
+        parts.append(f"Q {atual[0]:.1f} {atual[1]:.1f} {mp[0]:.1f} {mp[1]:.1f}")
+    parts.append("Z")
+    return " ".join(parts)
 
 
 def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
-    """Mapa cartográfico com rótulos simples e valores coerentes com o gráfico de barras."""
+    """Mapa cartográfico SVG com cores de prioridade e rótulos climatizadas/total."""
     dados = _dados_gre_resumo(base_filtrada)
     por_numero = {}
     for _, linha in dados.iterrows():
@@ -2542,34 +2597,43 @@ def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
         if numero:
             por_numero[int(numero.group())] = linha
 
-    marcadores = []
-    for numero, (left, top) in _GRE_MAP_POSITIONS.items():
+    regioes = []
+    for numero, pontos, cx, cy, city_y, value_y in GRE_MAP_LAYOUT:
         linha = por_numero.get(numero)
         total = float(linha.get("Total", 0) or 0) if linha is not None else 0.0
         clim = float(linha.get("Climatizadas", 0) or 0) if linha is not None else 0.0
-        pct = clim / total if total > 0 else 0.0
-        if total <= 0:
-            classe = "sem-dados"
-        elif pct >= 0.70:
-            classe = "alto"
-        elif pct >= 0.50:
-            classe = "medio"
-        elif pct >= 0.30:
-            classe = "baixo"
-        else:
-            classe = "critico"
+        _, cor, cor_texto = _map_status(total, clim)
         cidade = _esc(locationOnly(linha)) if linha is not None else ""
-        valor = _fmt_num_br(clim) if linha is not None else "—"
-        marcadores.append(
-            f'<div class="print-map-label {classe}" style="left:{left}%;top:{top}%;">'
-            f'<b>{numero}ª GRE</b><span>{cidade}</span><small>{valor}</small></div>'
+        valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
+        path_d = _smooth_svg_path_from_points(pontos)
+        regioes.append(
+            f'<g>'
+            f'<path d="{path_d}" fill="{cor}" stroke="#FFFFFF" stroke-width="4.2" stroke-linejoin="round" />'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" font-size="13" font-weight="900" fill="{cor_texto}">{numero}ª GRE</text>'
+            f'<text x="{cx}" y="{city_y}" text-anchor="middle" font-size="10.5" font-weight="850" fill="{cor_texto}">{cidade}</text>'
+            f'<text x="{cx}" y="{value_y}" text-anchor="middle" font-size="11.5" font-weight="950" fill="{cor_texto}">{valor}</text>'
+            f'</g>'
         )
 
+    outline = _smooth_svg_path_from_points(GRE_STATE_OUTLINE)
+    linhas = [
+        'M90 230 C180 180, 310 165, 420 145 S620 120, 760 132',
+        'M82 270 C178 230, 310 225, 420 205 S650 185, 838 198',
+        'M78 318 C188 290, 330 292, 460 280 S680 268, 900 282',
+        'M82 370 C198 352, 342 352, 486 346 S730 344, 972 356',
+        'M92 430 C214 420, 364 420, 516 422 S778 432, 1010 446',
+        'M126 492 C250 492, 388 502, 550 514 S780 534, 960 548',
+        'M220 556 C330 566, 452 582, 620 594 S832 596, 968 578',
+    ]
     return (
-        '<div class="print-real-map">'
-        f'<img src="{GRE_MAP_IMAGE}" alt="Mapa cartográfico das GREs da Paraíba">'
-        + ''.join(marcadores)
-        + '</div>'
+        '<div class="print-real-map print-svg-map">'
+        '<svg viewBox="40 100 1130 560" class="print-map-svg" role="img" aria-label="Mapa por GRE">'
+        '<defs><filter id="pmShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#17365D" flood-opacity="0.16"/></filter></defs>'
+        f'<path d="{outline}" fill="#F7FAFE" stroke="#D7E3F1" stroke-width="4.6"></path>'
+        '<g opacity="0.18" stroke="#D7E3F1" fill="none" stroke-width="1.3">' + ''.join(f'<path d="{d}"/>' for d in linhas) + '</g>'
+        '<g filter="url(#pmShadow)">' + ''.join(regioes) + '</g>'
+        '</svg>'
+        '</div>'
     )
 
 
@@ -2723,17 +2787,9 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   .print-sheet:last-child {{ page-break-after:auto; break-after:auto; }}
 }}
 
-.print-real-map { position:relative; width:100%; overflow:hidden; border:1px solid #D9E4F2; border-radius:4mm; background:#fff; }
-.print-real-map img { display:block; width:100%; height:auto; }
-.print-map-label { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#17365D; line-height:1.05; text-shadow:0 .3mm 0 rgba(255,255,255,.98), 0 0 1.1mm rgba(255,255,255,.90); }
-.print-map-label b { display:block; font-size:8.1px; font-weight:900; }
-.print-map-label span { display:block; margin-top:.5mm; font-size:6.9px; font-weight:800; }
-.print-map-label small { display:block; margin-top:.7mm; font-size:10px; font-weight:950; }
-.print-map-label.alto { color:#001F49; }
-.print-map-label.medio { color:#1F77D0; }
-.print-map-label.baixo { color:#B67B00; }
-.print-map-label.critico { color:#EF4444; }
-.print-map-label.sem-dados { color:#5C708C; }
+.print-real-map { position:relative; width:100%; margin-top:3mm; }
+.print-map-svg { width:100%; height:auto; display:block; }
+
 </style>
 </head>
 <body>
@@ -3924,12 +3980,12 @@ body {
 .real-map-stage {
     position: relative;
     width: 100%;
-    aspect-ratio: 4 / 3;
-    min-height: 460px;
+    aspect-ratio: 2.05 / 1;
+    min-height: 430px;
     border: 1px solid #D9E4F2;
     border-radius: 18px;
     overflow: hidden;
-    background: #FFFFFF;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFE 100%);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.70), 0 8px 22px rgba(0,31,73,.08);
 }
 .real-map-stage-v2::after {
@@ -3946,70 +4002,53 @@ body {
     box-shadow: 0 3px 10px rgba(0,31,73,.10);
     pointer-events: none;
 }
-.real-map-image {
+.gre-map-svg {
     width: 100%;
     height: 100%;
-    object-fit: contain;
-    object-position: center;
     display: block;
-    filter: grayscale(1) saturate(0) brightness(1.06) contrast(.94);
-    opacity: .96;
 }
-.real-map-overlays { position:absolute; inset:0; pointer-events:none; }
-.real-map-label {
-    position:absolute;
-    transform:translate(-50%,-50%);
-    text-align:center;
-    color:#17365D;
-    line-height:1.06;
-    text-shadow:
-        0 1px 0 rgba(255,255,255,.95),
-        0 0 10px rgba(255,255,255,.92),
-        0 2px 8px rgba(255,255,255,.68);
-    opacity:1;
-    transition:opacity .2s ease, transform .2s ease, filter .2s ease;
-    z-index:2;
+.gre-map-region {
+    stroke: #FFFFFF;
+    stroke-width: 4.2;
+    stroke-linejoin: round;
+    transition: opacity .22s ease, transform .22s ease;
 }
-.real-map-label strong,
-.real-map-label b {
-    display:block;
-    font-size:13px;
-    font-weight:950;
-    letter-spacing:.2px;
+.gre-map-region.high { fill: var(--azul-noite); }
+.gre-map-region.medium { fill: var(--azul-medio); }
+.gre-map-region.low { fill: var(--amarelo); }
+.gre-map-region.critical { fill: var(--vermelho); }
+.gre-map-region.no-data { fill: #B8C9DC; }
+.gre-map-region.is-muted,
+.gre-map-text.is-muted { opacity: .18; }
+.gre-map-region.is-selected,
+.gre-map-text.is-selected { opacity: 1; }
+.gre-map-text { transition: opacity .22s ease; }
+.gre-map-label-main,
+.gre-map-label-city,
+.gre-map-label-value {
+    text-anchor: middle;
+    font-weight: 900;
+    paint-order: stroke;
+    stroke-width: 1.15;
 }
-.real-map-label span {
-    display:block;
-    margin-top:2px;
-    font-size:10px;
-    font-weight:900;
+.gre-map-label-main { font-size: 13px; }
+.gre-map-label-city { font-size: 10.5px; font-weight: 850; }
+.gre-map-label-value { font-size: 11.5px; }
+.gre-map-text.light .gre-map-label-main,
+.gre-map-text.light .gre-map-label-city,
+.gre-map-text.light .gre-map-label-value {
+    fill: #FFFFFF;
+    stroke: rgba(0,31,73,.20);
 }
-.real-map-label small {
-    display:block;
-    margin-top:4px;
-    font-size:16px;
-    font-weight:950;
-}
-.real-map-label.high { color: var(--azul-noite); }
-.real-map-label.medium { color: var(--azul-medio); }
-.real-map-label.low { color: #B67B00; }
-.real-map-label.critical { color: var(--vermelho); }
-.real-map-label.no-data { color:#5C708C; }
-.real-map-label.is-muted {
-    opacity:.18;
-    filter:saturate(.2);
-}
-.real-map-label.is-selected {
-    opacity:1;
-    transform:translate(-50%,-50%) scale(1.08);
-    filter:drop-shadow(0 0 10px rgba(255,255,255,.90));
-    z-index:4;
+.gre-map-text.dark .gre-map-label-main,
+.gre-map-text.dark .gre-map-label-city,
+.gre-map-text.dark .gre-map-label-value {
+    fill: #17365D;
+    stroke: rgba(255,255,255,.72);
 }
 @media (max-width:760px) {
-    .real-map-stage { min-width:650px; min-height:auto; }
-    .real-map-label strong,
-    .real-map-label b { font-size:10px; }
-    .real-map-label span { font-size:8.5px; }
-    .real-map-label small { font-size:12px; }
+    .real-map-stage { min-width: 650px; min-height: 360px; overflow-x: auto; }
+    .gre-map-svg { min-width: 650px; }
 }
 .map-legend {
     display: flex;
@@ -4609,16 +4648,13 @@ body {
                         <div class="chart-title">Prioridade da climatização por GRE</div>
                         <div class="analytics-subtitle">Mapa em base neutra com destaque apenas nas cores prioritárias</div>
                         <div class="performance-summary" id="grePerformanceSummary"></div>
-                        <div class="real-map-stage real-map-stage-v2" id="grePerformanceGrid">
-                            <img class="real-map-image" src="__GRE_MAP_IMAGE__" alt="Mapa cartográfico real das GREs da Paraíba">
-                            <div class="real-map-overlays" id="realMapOverlays"></div>
-                        </div>
+                        <div class="real-map-stage real-map-stage-v2" id="grePerformanceGrid"></div>
                         <div class="map-legend">
                             <span><i class="legend-square" style="background:var(--azul-noite)"></i>Alto (≥ 70%)</span>
                             <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
                             <span><i class="legend-square" style="background:var(--amarelo)"></i>Baixo (30% a 49%)</span>
                             <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                            <span>Somente as cores prioritárias aparecem em destaque</span>
+                            <span>Cada GRE é preenchida apenas pela cor de prioridade</span>
                         </div>
                     </div>
                 </div>
@@ -5386,12 +5422,56 @@ function renderVerticalBarChart(rows, selectedGres = []) {
     }).join("");
 }
 
-const GRE_MAP_POSITIONS = {
-    9:[12.0,39.5], 10:[25.0,39.0], 8:[38.0,23.0], 7:[17.0,66.0],
-    11:[28.5,79.0], 13:[39.0,43.0], 6:[50.5,48.5], 5:[49.5,79.5],
-    4:[67.0,26.0], 3:[70.0,49.0], 15:[70.5,72.0], 2:[82.5,34.0],
-    14:[90.0,39.0], 12:[83.5,65.5], 16:[93.0,55.0], 1:[95.5,46.5]
-};
+const GRE_MAP_LAYOUT = [
+    {num:9,  points:"95,220 130,205 175,210 205,250 202,300 175,345 120,370 85,340 70,290 72,245", cx:135, cy:280, cityY:305, valueY:328},
+    {num:10, points:"205,230 255,212 320,220 340,280 325,340 250,355 202,300", cx:265, cy:280, cityY:305, valueY:328},
+    {num:8,  points:"310,170 360,130 435,120 490,150 505,215 455,250 395,260 340,280 320,220", cx:405, cy:182, cityY:207, valueY:230},
+    {num:7,  points:"120,370 175,345 250,355 285,405 280,470 220,510 140,525 90,505 70,450 85,400", cx:185, cy:438, cityY:463, valueY:486},
+    {num:11, points:"220,510 280,470 340,485 370,530 330,575 255,598 205,575 195,535", cx:285, cy:540, cityY:565, valueY:588},
+    {num:13, points:"395,260 455,250 520,275 545,335 500,365 430,370 380,345 340,280", cx:448, cy:302, cityY:327, valueY:350},
+    {num:6,  points:"520,275 590,270 650,300 675,360 650,420 600,448 540,440 500,365 545,335", cx:590, cy:345, cityY:370, valueY:393},
+    {num:5,  points:"540,440 600,448 650,420 700,465 730,530 710,600 630,635 565,615 500,575 470,505", cx:615, cy:528, cityY:553, valueY:576},
+    {num:4,  points:"650,155 710,130 780,138 820,175 825,235 780,260 725,285 650,300 590,270 600,215", cx:715, cy:192, cityY:217, valueY:240},
+    {num:3,  points:"650,300 725,285 780,320 805,380 770,440 700,465 650,420 675,360", cx:728, cy:357, cityY:382, valueY:405},
+    {num:15, points:"770,440 820,425 880,445 905,500 875,560 805,590 735,565 700,465", cx:812, cy:500, cityY:525, valueY:548},
+    {num:2,  points:"820,175 885,170 950,195 980,245 965,305 910,330 850,320 780,260 825,235", cx:895, cy:242, cityY:267, valueY:290},
+    {num:14, points:"980,245 1035,235 1085,260 1110,315 1095,370 1045,395 990,380 965,305", cx:1040, cy:305, cityY:330, valueY:353},
+    {num:12, points:"880,445 935,430 985,450 1015,495 1000,555 955,590 905,500", cx:948, cy:500, cityY:525, valueY:548},
+    {num:16, points:"1045,395 1095,370 1115,390 1110,430 1090,430 1093,463 1065,485 1028,480 1000,430", cx:1060, cy:425, cityY:450, valueY:473},
+    {num:1,  points:"1090,430 1120,420 1140,442 1138,470 1115,482 1093,463", cx:1118, cy:443, cityY:466, valueY:486},
+];
+const GRE_STATE_OUTLINE = "70,290 72,245 95,220 130,205 175,210 255,212 310,170 360,130 435,120 490,150 650,155 710,130 780,138 885,170 950,195 1035,235 1085,260 1110,315 1115,390 1140,442 1138,470 1115,482 1093,463 1065,485 1000,555 955,590 875,560 805,590 730,530 710,600 630,635 565,615 500,575 330,575 255,598 205,575 140,525 90,505 70,450 85,400 70,340";
+const GRE_BACKGROUND_LINES = [
+    'M90 230 C180 180, 310 165, 420 145 S620 120, 760 132',
+    'M82 270 C178 230, 310 225, 420 205 S650 185, 838 198',
+    'M78 318 C188 290, 330 292, 460 280 S680 268, 900 282',
+    'M82 370 C198 352, 342 352, 486 346 S730 344, 972 356',
+    'M92 430 C214 420, 364 420, 516 422 S778 432, 1010 446',
+    'M126 492 C250 492, 388 502, 550 514 S780 534, 960 548',
+    'M220 556 C330 566, 452 582, 620 594 S832 596, 968 578'
+];
+function parseGrePoints(pointsStr) {
+    return String(pointsStr || '').trim().split(/\s+/).map(item => {
+        const [x, y] = item.split(',').map(Number);
+        return {x, y};
+    }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+function smoothClosedPath(pointsStr) {
+    const pts = Array.isArray(pointsStr) ? pointsStr : parseGrePoints(pointsStr);
+    if (!pts.length) return '';
+    if (pts.length < 3) return 'M ' + pts.map((p, i) => `${i ? 'L' : ''} ${p.x} ${p.y}`).join(' ') + ' Z';
+    const mid = (a,b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+    const start = mid(pts[pts.length - 1], pts[0]);
+    let d = `M ${start.x.toFixed(1)} ${start.y.toFixed(1)}`;
+    for (let i = 0; i < pts.length; i++) {
+        const curr = pts[i];
+        const next = pts[(i + 1) % pts.length];
+        const m = mid(curr, next);
+        d += ` Q ${curr.x.toFixed(1)} ${curr.y.toFixed(1)} ${m.x.toFixed(1)} ${m.y.toFixed(1)}`;
+    }
+    return d + ' Z';
+}
+
 
 function performanceClass(row) {
     const total = Number(row?.Total || 0);
@@ -5405,7 +5485,7 @@ function performanceClass(row) {
 }
 
 function renderGrePerformance(rows, selectedGres = []) {
-    const target = document.getElementById("realMapOverlays");
+    const target = document.getElementById("grePerformanceGrid");
     const summary = document.getElementById("grePerformanceSummary");
     if (!target || !summary) return;
 
@@ -5427,26 +5507,42 @@ function renderGrePerformance(rows, selectedGres = []) {
         <div class="performance-summary-item"><span><i style="background:var(--amarelo)"></i>Baixo</span><strong>${fmtNum(counts.low)}</strong></div>
         <div class="performance-summary-item"><span><i style="background:var(--vermelho)"></i>Crítico</span><strong>${fmtNum(counts.critical)}</strong></div>`;
 
-    target.innerHTML = Object.entries(GRE_MAP_POSITIONS).map(([numTxt, pos]) => {
-        const num = Number(numTxt);
-        const row = byNum[num] || null;
+    const outline = smoothClosedPath(GRE_STATE_OUTLINE);
+    const shapes = GRE_MAP_LAYOUT.map(shape => {
+        const row = byNum[shape.num] || null;
         const perf = performanceClass(row);
+        const total = Number(row?.Total || 0);
         const clim = Number(row?.Climatizadas || 0);
         const city = row ? (locationOnly(row) || "") : "";
-        const greValue = row?.GRE || `${num}ª GRE`;
+        const greValue = row?.GRE || `${shape.num}ª GRE`;
         const selected = selectedSet.has(greValue);
-        const stateClass = hasSelection ? (selected ? "is-selected" : "is-muted") : "";
-        const left = Number(pos[0]);
-        const top = Number(pos[1]);
-        const title = `${num}ª GRE — ${city}: ${fmtNum(clim)} escolas climatizadas`;
+        const stateClass = hasSelection ? (selected ? 'is-selected' : 'is-muted') : '';
+        const textTone = (perf.key === 'low' || perf.key === 'no-data') ? 'dark' : 'light';
+        const value = total > 0 ? `${fmtNum(clim)}/${fmtNum(total)}` : '—';
+        const title = `${shape.num}ª GRE — ${city}: ${value}`;
         return `
-            <div class="real-map-label ${perf.key} ${stateClass}" data-gre="${num}" style="left:${left}%;top:${top}%;" 
-                 title="${escapeHtml(title)}">
-                <strong>${num}ª GRE</strong>
-                <span>${escapeHtml(city || "Localização não informada")}</span>
-                <small>${fmtNum(clim)}</small>
-            </div>`;
-    }).join("");
+            <g>
+                <title>${escapeHtml(title)}</title>
+                <path class="gre-map-region ${perf.key} ${stateClass}" d="${smoothClosedPath(shape.points)}"></path>
+                <g class="gre-map-text ${textTone} ${stateClass}">
+                    <text class="gre-map-label-main" x="${shape.cx}" y="${shape.cy}">${shape.num}ª GRE</text>
+                    <text class="gre-map-label-city" x="${shape.cx}" y="${shape.cityY}">${escapeHtml(city || '')}</text>
+                    <text class="gre-map-label-value" x="${shape.cx}" y="${shape.valueY}">${value}</text>
+                </g>
+            </g>`;
+    }).join('');
+
+    target.innerHTML = `
+        <svg class="gre-map-svg" viewBox="40 100 1130 560" role="img" aria-label="Mapa por GRE">
+            <defs>
+                <filter id="greMapShadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#17365D" flood-opacity="0.16"/>
+                </filter>
+            </defs>
+            <path d="${outline}" fill="#F7FAFE" stroke="#D7E3F1" stroke-width="4.6"></path>
+            <g opacity="0.18" stroke="#D7E3F1" fill="none" stroke-width="1.3">${GRE_BACKGROUND_LINES.map(d => `<path d="${d}"/>`).join('')}</g>
+            <g filter="url(#greMapShadow)">${shapes}</g>
+        </svg>`;
 }
 
 
