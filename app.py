@@ -2534,7 +2534,7 @@ _GRE_MAP_POSITIONS = {
 
 
 def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
-    """Mapa cartográfico como imagem-base, com indicadores dinâmicos sobrepostos."""
+    """Mapa cartográfico com rótulos simples e valores coerentes com o gráfico de barras."""
     dados = _dados_gre_resumo(base_filtrada)
     por_numero = {}
     for _, linha in dados.iterrows():
@@ -2550,25 +2550,19 @@ def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
         pct = clim / total if total > 0 else 0.0
         if total <= 0:
             classe = "sem-dados"
-            status = "Sem dados"
         elif pct >= 0.70:
             classe = "alto"
-            status = "Alto"
         elif pct >= 0.50:
             classe = "medio"
-            status = "Médio"
         elif pct >= 0.30:
             classe = "baixo"
-            status = "Baixo"
         else:
             classe = "critico"
-            status = "Crítico"
-        valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
-        percentual = _fmt_pct_br(pct) if total > 0 else "—"
+        cidade = _esc(locationOnly(linha)) if linha is not None else ""
+        valor = _fmt_num_br(clim) if linha is not None else "—"
         marcadores.append(
-            f'<div class="print-map-marker {classe}" style="left:{left}%;top:{top}%;" '
-            f'title="{numero}ª GRE · {status}">'
-            f'<b>{numero}ª</b><span>{valor}</span><small>{percentual}</small></div>'
+            f'<div class="print-map-label {classe}" style="left:{left}%;top:{top}%;">'
+            f'<b>{numero}ª GRE</b><span>{cidade}</span><small>{valor}</small></div>'
         )
 
     return (
@@ -2731,15 +2725,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 
 .print-real-map { position:relative; width:100%; overflow:hidden; border:1px solid #D9E4F2; border-radius:4mm; background:#fff; }
 .print-real-map img { display:block; width:100%; height:auto; }
-.print-map-marker { position:absolute; transform:translate(-50%,-50%); min-width:22mm; padding:1.8mm 2mm; border-radius:2.4mm; text-align:center; color:#fff; border:.6mm solid #fff; box-shadow:0 1mm 2.5mm rgba(0,31,73,.18); line-height:1.05; }
-.print-map-marker b { display:block; font-size:7.8px; }
-.print-map-marker span { display:block; margin-top:.8mm; font-size:6.9px; font-weight:800; }
-.print-map-marker small { display:block; margin-top:.7mm; font-size:6.4px; font-weight:800; }
-.print-map-marker.alto { background:#001F49; }
-.print-map-marker.medio { background:#1F77D0; }
-.print-map-marker.baixo { background:#F2A900; color:#001F49; }
-.print-map-marker.critico { background:#EF4444; }
-.print-map-marker.sem-dados { background:#AFC1D5; color:#001F49; }
+.print-map-label { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#fff; line-height:1.05; text-shadow:0 .5mm 1.2mm rgba(0,0,0,.55), 0 0 .4mm rgba(0,0,0,.45); }
+.print-map-label b { display:block; font-size:8.1px; font-weight:900; }
+.print-map-label span { display:block; margin-top:.5mm; font-size:6.9px; font-weight:800; }
+.print-map-label small { display:block; margin-top:.7mm; font-size:10px; font-weight:950; }
+.print-map-label.baixo, .print-map-label.sem-dados { color:#001F49; text-shadow:0 .4mm 1mm rgba(255,255,255,.92); }
 </style>
 </head>
 <body>
@@ -3960,36 +3950,62 @@ body {
     display: block;
 }
 .real-map-overlays { position:absolute; inset:0; pointer-events:none; }
-.real-map-badge {
+.real-map-label {
     position:absolute;
     transform:translate(-50%,-50%);
-    min-width:104px;
-    padding:8px 10px 7px;
-    border-radius:12px;
-    background:var(--status-color, #AFC1D5);
-    color:#FFFFFF;
     text-align:center;
-    box-shadow:0 7px 18px rgba(0,31,73,.24);
-    border:2px solid rgba(255,255,255,.96);
-    line-height:1.08;
-    opacity:.98;
+    color:#FFFFFF;
+    line-height:1.06;
+    text-shadow:
+        0 2px 6px rgba(0,0,0,.55),
+        0 0 2px rgba(0,0,0,.40),
+        0 0 12px rgba(0,31,73,.28);
+    opacity:1;
+    transition:opacity .2s ease, transform .2s ease, filter .2s ease;
+    z-index:2;
 }
-.real-map-badge strong { display:block; font-size:12px; font-weight:950; }
-.real-map-badge span { display:block; margin-top:3px; font-size:10px; font-weight:900; }
-.real-map-badge small { display:block; margin-top:4px; font-size:9px; font-weight:850; opacity:.98; }
-.real-map-badge.high { --status-color:var(--azul-noite); }
-.real-map-badge.medium { --status-color:var(--azul-medio); }
-.real-map-badge.low { --status-color:var(--amarelo); color:var(--azul-noite); }
-.real-map-badge.critical { --status-color:var(--vermelho); }
-.real-map-badge.no-data { --status-color:#AFC1D5; color:var(--azul-noite); }
-.real-map-badge.is-muted { opacity:.30; filter:saturate(.35); }
-.real-map-badge.is-selected { opacity:1; transform:translate(-50%,-50%) scale(1.07); z-index:3; }
+.real-map-label strong,
+.real-map-label b {
+    display:block;
+    font-size:13px;
+    font-weight:950;
+    letter-spacing:.2px;
+}
+.real-map-label span {
+    display:block;
+    margin-top:2px;
+    font-size:10px;
+    font-weight:900;
+}
+.real-map-label small {
+    display:block;
+    margin-top:4px;
+    font-size:16px;
+    font-weight:950;
+}
+.real-map-label.low,
+.real-map-label.no-data {
+    color:#001F49;
+    text-shadow:
+        0 1px 3px rgba(255,255,255,.85),
+        0 0 10px rgba(255,255,255,.70);
+}
+.real-map-label.is-muted {
+    opacity:.18;
+    filter:saturate(.2);
+}
+.real-map-label.is-selected {
+    opacity:1;
+    transform:translate(-50%,-50%) scale(1.08);
+    filter:drop-shadow(0 0 10px rgba(255,255,255,.85));
+    z-index:4;
+}
 @media (max-width:760px) {
     .real-map-stage { min-width:650px; min-height:auto; }
-    .real-map-badge { min-width:62px; padding:5px 6px 4px; }
-    .real-map-badge strong { font-size:10px; }
-    .real-map-badge span { font-size:9px; }
-    .real-map-badge small { font-size:8px; }
+    .real-map-label strong,
+    .real-map-label b { font-size:10px; }
+    .real-map-label span { font-size:8.5px; }
+    .real-map-label small { font-size:12px; }
 }
 .map-legend {
     display: flex;
@@ -4598,7 +4614,7 @@ body {
                             <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
                             <span><i class="legend-square" style="background:var(--amarelo)"></i>Baixo (30% a 49%)</span>
                             <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                            <span>Indicadores coloridos por prioridade</span>
+                            <span>Rótulos com o número, a sede e a quantidade climatizada</span>
                         </div>
                     </div>
                 </div>
@@ -5411,25 +5427,24 @@ function renderGrePerformance(rows, selectedGres = []) {
         const num = Number(numTxt);
         const row = byNum[num] || null;
         const perf = performanceClass(row);
-        const total = Number(row?.Total || 0);
         const clim = Number(row?.Climatizadas || 0);
         const city = row ? (locationOnly(row) || "") : "";
-        const value = total > 0 ? `${fmtNum(clim)}/${fmtNum(total)}` : "—";
-        const pct = total > 0 ? fmtPct(perf.pct) : "Sem dados";
         const greValue = row?.GRE || `${num}ª GRE`;
         const selected = selectedSet.has(greValue);
         const stateClass = hasSelection ? (selected ? "is-selected" : "is-muted") : "";
         const left = Number(pos[0]);
         const top = Number(pos[1]);
+        const title = `${num}ª GRE — ${city}: ${fmtNum(clim)} escolas climatizadas`;
         return `
-            <div class="real-map-badge ${perf.key} ${stateClass}" style="left:${left}%;top:${top}%;" 
-                 title="${escapeHtml(`${num}ª GRE — ${city}: ${value} (${pct})`)}">
+            <div class="real-map-label ${perf.key} ${stateClass}" data-gre="${num}" style="left:${left}%;top:${top}%;" 
+                 title="${escapeHtml(title)}">
                 <strong>${num}ª GRE</strong>
                 <span>${escapeHtml(city || "Localização não informada")}</span>
-                <small>${value} · ${pct}</small>
+                <small>${fmtNum(clim)}</small>
             </div>`;
     }).join("");
 }
+
 
 function renderRanking(targetId, rows, metric, className = "", maxRows = 8) {
     const panel = document.getElementById(targetId);
