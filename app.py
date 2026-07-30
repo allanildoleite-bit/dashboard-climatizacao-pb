@@ -3940,7 +3940,7 @@ body {
 
 .analytics-grid {
     display: grid;
-    grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+    grid-template-columns: minmax(0, 1.10fr) minmax(0, .90fr);
     gap: 16px;
     align-items: start;
 }
@@ -3993,7 +3993,7 @@ body {
 }
 
 .real-map-stage {
-    position:relative; width:100%; aspect-ratio:1100/590; min-height:650px;
+    position:relative; width:100%; aspect-ratio:1100/590; min-height:455px;
     border:1px solid #D9E4F2; border-radius:18px; overflow:hidden;
     background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFE 100%);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 8px 22px rgba(0,31,73,.08);
@@ -4014,13 +4014,13 @@ body {
 .gre-map-label { pointer-events:none; transition:opacity .22s ease; paint-order:stroke; stroke:rgba(0,31,73,.24); stroke-width:1.55; }
 .gre-map-label.dark { fill:#17365D; stroke:rgba(255,255,255,.72); }
 .gre-map-label.light { fill:#FFFFFF; }
-.gre-map-label .gre-num { font-size:18px; font-weight:950; }
-.gre-map-label .gre-city { font-size:12px; font-weight:850; }
-.gre-map-label .gre-value { font-size:15px; font-weight:950; }
+.gre-map-label .gre-num { font-size:12.6px; font-weight:950; }
+.gre-map-label .gre-city { font-size:8.4px; font-weight:850; }
+.gre-map-label .gre-value { font-size:10.5px; font-weight:950; }
 .gre-region.is-muted,.gre-map-label.is-muted { opacity:.17; }
 .gre-region.is-selected { opacity:1; filter:drop-shadow(0 0 7px rgba(0,31,73,.55)); }
 .gre-map-label.is-selected { opacity:1; }
-@media(max-width:760px){ .real-map-stage{min-width:980px;min-height:540px;} }
+@media(max-width:760px){ .real-map-stage{min-width:686px;min-height:378px;} }
 .map-legend {
     display: flex;
     justify-content: center;
@@ -5442,7 +5442,7 @@ function renderGrePerformance(rows, selectedGres = []) {
         const [x,y]=GRE_LABEL_CENTERS[numTxt];
         const tone=(perf.key==='low'||perf.key==='no-data')?'dark':'light';
         regions.push(`<path class="gre-region ${perf.key} ${stateClass}" data-gre="${num}" d="${GRE_REGION_PATHS[numTxt]}"><title>${num}ª GRE — ${GRE_SEDES[numTxt]}: ${value}</title></path>`);
-        labels.push(`<g class="gre-map-label ${tone} ${stateClass}"><text class="gre-num" x="${x}" y="${y-13}" text-anchor="middle">${num}ª GRE</text><text class="gre-city" x="${x}" y="${y+2}" text-anchor="middle">${escapeHtml(GRE_SEDES[numTxt]||'')}</text><text class="gre-value" x="${x}" y="${y+19}" text-anchor="middle">${value}</text></g>`);
+        labels.push(`<g class="gre-map-label ${tone} ${stateClass}"><text class="gre-num" x="${x}" y="${y-9}" text-anchor="middle">${num}ª GRE</text><text class="gre-city" x="${x}" y="${y+1}" text-anchor="middle">${escapeHtml(GRE_SEDES[numTxt]||'')}</text><text class="gre-value" x="${x}" y="${y+13}" text-anchor="middle">${value}</text></g>`);
     });
     target.innerHTML=`<svg class="gre-real-svg" viewBox="${GRE_MAP_VIEWBOX}" role="img" aria-label="Mapa geográfico real das GREs da Paraíba"><path d="${GRE_STATE_PATH}" fill="#F4F7FA" stroke="#7E8B99" stroke-width="1.8"/>${regions.join('')}<path class="gre-municipal-lines" d="${GRE_MUNICIPAL_PATHS}"/>${labels.join('')}</svg>`;
 }
