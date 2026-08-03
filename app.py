@@ -2673,8 +2673,40 @@ def _montar_html_relatorio_impressao(
     periodo_label: str,
     config: dict,
     filtros_label: str,
+    graficos_selecionados: list[str] | None = None,
 ) -> str:
     """Monta uma aba-documento A4 vertical, pronta para imprimir ou salvar como PDF."""
+    opcoes_padrao = {
+        "Síntese executiva",
+        "Gráfico de área por GRE",
+        "Barras de climatização por GRE",
+        "Mapa das GREs",
+        "Ranking de pendências",
+        "Setorização das pendências",
+    }
+    escolhidos = set(graficos_selecionados or opcoes_padrao)
+    mostrar_sintese = "Síntese executiva" in escolhidos
+    mostrar_area = "Gráfico de área por GRE" in escolhidos
+    mostrar_barras = "Barras de climatização por GRE" in escolhidos
+    mostrar_mapa = "Mapa das GREs" in escolhidos
+    mostrar_ranking = "Ranking de pendências" in escolhidos
+    mostrar_setorizacao = "Setorização das pendências" in escolhidos
+    mostrar_pagina_graficos = mostrar_area or mostrar_barras
+    mostrar_pagina_prioridades = mostrar_ranking or mostrar_setorizacao
+
+    regras_visibilidade = "".join([
+        "" if mostrar_sintese else ".page-sintese{display:none!important;}",
+        "" if mostrar_pagina_graficos else ".page-graficos{display:none!important;}",
+        "" if mostrar_area else ".item-area{display:none!important;}",
+        "" if mostrar_barras else ".item-barras{display:none!important;}",
+        "" if mostrar_mapa else ".page-mapa{display:none!important;}",
+        "" if mostrar_pagina_prioridades else ".page-prioridades{display:none!important;}",
+        "" if mostrar_ranking else ".item-ranking{display:none!important;}",
+        "" if mostrar_setorizacao else ".item-setorizacao{display:none!important;}",
+        ".print-new-chart-grid.single{grid-template-columns:1fr!important;}",
+    ])
+    classe_grade_graficos = "single" if (mostrar_area ^ mostrar_barras) else ""
+
     total = max(float(totais.get("total", 0) or 0), 1.0)
     conclusao = max(0.0, min(1.0, float(totais.get("conclusao", 0) or 0)))
     pct_and = float(totais.get("andamento", 0) or 0) / total
@@ -2742,10 +2774,10 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   padding:16mm 15mm 13mm; box-shadow:0 12px 34px rgba(0,31,73,.18);
 }}
 .print-sheet::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:5mm; background:linear-gradient(180deg,var(--medio) 0 32%,var(--vermelho) 32% 46%,var(--noite) 46% 100%); }}
-.print-header {{ display:flex; align-items:center; justify-content:space-between; gap:15px; border-bottom:1px solid var(--borda); padding-bottom:7mm; margin-bottom:6mm; }}
-.print-header img.gov {{ width:45mm; max-height:15mm; object-fit:contain; }}
-.print-header img.geobs {{ width:18mm; height:18mm; object-fit:contain; }}
-.print-header-center {{ flex:1; text-align:center; }}
+.print-header {{ display:grid; grid-template-columns:30mm minmax(0,1fr) 30mm; align-items:center; gap:6mm; border-bottom:1px solid var(--borda); padding-bottom:7mm; margin-bottom:6mm; }}
+.print-header img.gov {{ width:30mm; max-height:16mm; object-fit:contain; justify-self:center; }}
+.print-header img.geobs {{ width:24mm; max-height:16mm; object-fit:contain; justify-self:center; }}
+.print-header-center {{ width:100%; min-width:0; text-align:center; justify-self:center; }}
 .print-header-center .eyebrow {{ color:var(--medio); font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:1.1px; }}
 .print-header-center h1 {{ margin:2mm 0 1mm; color:var(--noite); font-size:22px; line-height:1.05; letter-spacing:-.4px; }}
 .print-header-center p {{ margin:0; color:var(--suave); font-size:10px; font-weight:700; }}
@@ -2836,11 +2868,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <body>
 <div class="print-toolbar">
   <button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
-  <span>Use papel A4, orientação retrato, escala 100% e margens “nenhuma”.</span>
+  
 </div>
 <div class="print-document">
 
-<section class="print-sheet">
+<section class="print-sheet page-sintese">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
     <div class="print-header-center">
@@ -2885,33 +2917,33 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div><b>Uso gerencial</b>O relatório apoia a priorização das adequações, liberações e instalações nas unidades escolares.</div>
   </div>
   <div class="print-filter-note"><b>Recorte:</b> {filtros_seguro} · <b>Fonte:</b> {fonte}</div>
-  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 1 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>GEOBS – SEE</span></div>
 </section>
 
-<section class="print-sheet">
+<section class="print-sheet page-graficos">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
     <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Visualizações por Gerência Regional</h1><p>Total, climatizadas e pendências por GRE</p></div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2. Panorama gráfico por GRE</h2>
-  <div class="print-new-chart-grid">
-    <div class="print-new-chart-card">
+  <div class="print-new-chart-grid {classe_grade_graficos}">
+    <div class="print-new-chart-card item-area">
       <h3>Gráfico de área — panorama por GRE</h3>
       <p>Total, escolas climatizadas e pendências.</p>
       {_relatorio_area_svg(base_filtrada)}
       <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
     </div>
-    <div class="print-new-chart-card">
+    <div class="print-new-chart-card item-barras">
       <h3>Climatização por GRE</h3>
       <p>Quantidade de escolas climatizadas.</p>
       {_relatorio_barras_verticais_svg(base_filtrada)}
     </div>
   </div>
-  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 2 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>GEOBS – SEE</span></div>
 </section>
 
-<section class="print-sheet">
+<section class="print-sheet page-mapa">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
     <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Mapa por Gerência Regional</h1><p>Climatizadas em relação ao total de escolas</p></div>
@@ -2933,10 +2965,10 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
   </div>
   <div class="print-text-box"><b>Interpretação.</b> {escape(leitura_gre)}</div>
-  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 3 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>GEOBS – SEE</span></div>
 </section>
 
-<section class="print-sheet">
+<section class="print-sheet page-prioridades">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
     <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Setorização</h1><p>Prioridades territoriais e distribuição das pendências</p></div>
@@ -2944,17 +2976,17 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <h2 class="print-section-title">4. Prioridades de acompanhamento</h2>
   <p class="print-subtitle">A leitura das pendências permite direcionar o acompanhamento para as GREs e setores com maior volume de unidades ainda não concluídas. As barras combinam escolas em andamento e em rota de climatização.</p>
-  <div class="print-chart-card">
+  <div class="print-chart-card item-ranking">
     <h3 style="margin:0 0 2mm;color:var(--escuro);font-size:11px">Ranking de pendências por GRE</h3>
     <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
     {_relatorio_ranking_html(base_filtrada, 6)}
   </div>
-  <div class="print-card" style="margin-top:4mm;min-height:72mm;">
+  <div class="print-card item-setorizacao" style="margin-top:4mm;min-height:72mm;">
     <h3>Setorização das pendências</h3>{_relatorio_setores_html(setor, 10)}
   </div>
   <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
   <div class="print-filter-note"><b>Última atualização da base:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
-  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 4 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>GEOBS – SEE</span></div>
 </section>
 
 </div>
@@ -3033,6 +3065,26 @@ def renderizar_gerador_relatorio(
         with c4:
             responsavel = st.selectbox("Responsável técnico", nomes, key="impressao_responsavel")
 
+        opcoes_graficos = [
+            "Síntese executiva",
+            "Gráfico de área por GRE",
+            "Barras de climatização por GRE",
+            "Mapa das GREs",
+            "Ranking de pendências",
+            "Setorização das pendências",
+        ]
+        graficos_selecionados = st.multiselect(
+            "Conteúdos e gráficos do relatório",
+            opcoes_graficos,
+            default=opcoes_graficos,
+            key="impressao_graficos",
+            help="Selecione somente os conteúdos que deverão aparecer no relatório para impressão ou PDF.",
+        )
+
+    if not graficos_selecionados:
+        st.warning("Selecione pelo menos um conteúdo ou gráfico para gerar o relatório.")
+        return
+
     try:
         base_filtrada, _, acomp_filtrado = _filtrar_relatorio(
             base, responsaveis, acompanhamento, periodo, gres, area, responsavel,
@@ -3054,6 +3106,7 @@ def renderizar_gerador_relatorio(
             periodo_label=_periodo_capa_resumo(periodo),
             config=config,
             filtros_label=filtros_label,
+            graficos_selecionados=graficos_selecionados,
         )
         components.html(html_relatorio, height=4850, scrolling=True)
     except Exception as erro:
