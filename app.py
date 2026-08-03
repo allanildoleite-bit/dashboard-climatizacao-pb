@@ -2748,6 +2748,26 @@ def _montar_html_relatorio_impressao(
     critica_valor = _fmt_num_br(critica.get('Pendencias', 0)) if critica is not None else '—'
     critica_nome = escape(str(critica.get('GRE_Label', 'Sem dados'))) if critica is not None else 'Sem dados para comparação.'
 
+    # Sumário dinâmico: capa e sumário ocupam as páginas 1 e 2.
+    pagina_atual = 3
+    itens_sumario = []
+    if mostrar_sintese:
+        itens_sumario.append(("1. Síntese executiva", pagina_atual))
+        pagina_atual += 1
+    if mostrar_pagina_graficos:
+        itens_sumario.append(("2. Panorama gráfico por GRE", pagina_atual))
+        pagina_atual += 1
+    if mostrar_mapa:
+        itens_sumario.append(("3. Desempenho e resultados da climatização", pagina_atual))
+        pagina_atual += 1
+    if mostrar_pagina_prioridades:
+        itens_sumario.append(("4. Prioridades de acompanhamento", pagina_atual))
+        pagina_atual += 1
+    sumario_html = "".join(
+        f'<div class="toc-row"><span>{escape(titulo)}</span><i></i><b>{pagina}</b></div>'
+        for titulo, pagina in itens_sumario
+    )
+
     return f'''<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2768,12 +2788,45 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   box-shadow:0 6px 18px rgba(0,31,73,.12); color:var(--suave); font-size:13px; font-weight:700;
 }}
 .print-toolbar button {{ border:0; border-radius:10px; padding:11px 20px; background:linear-gradient(90deg,var(--noite),#0059A8); color:#fff; font:800 14px "Segoe UI",Arial; cursor:pointer; box-shadow:0 6px 16px rgba(0,31,73,.20); }}
-.print-document {{ padding:22px 0 36px; display:flex; flex-direction:column; align-items:center; gap:20px; }}
+.print-document {{ padding:22px 0 36px; display:flex; flex-direction:column; align-items:center; gap:20px; counter-reset:pagina; }}
 .print-sheet {{
   width:210mm; height:297mm; background:#fff; position:relative; overflow:hidden;
-  padding:16mm 15mm 13mm; box-shadow:0 12px 34px rgba(0,31,73,.18);
+  padding:16mm 15mm 13mm; box-shadow:0 12px 34px rgba(0,31,73,.18); counter-increment:pagina;
 }}
-.print-sheet::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:5mm; background:linear-gradient(180deg,var(--medio) 0 32%,var(--vermelho) 32% 46%,var(--noite) 46% 100%); }}
+.print-sheet::before {{
+  content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:url("{GEOBS_LOGO}") center 53% / 74mm auto no-repeat; opacity:.045;
+}}
+.print-sheet::after {{ content:""; position:absolute; z-index:2; left:0; top:0; bottom:0; width:5mm; background:linear-gradient(180deg,var(--medio) 0 32%,var(--vermelho) 32% 46%,var(--noite) 46% 100%); }}
+.print-sheet > * {{ position:relative; z-index:1; }}
+.cover-page {{ padding:18mm 18mm 15mm; display:flex; flex-direction:column; }}
+.cover-page::before {{ background:url("{GEOBS_LOGO}") center 58% / 92mm auto no-repeat; opacity:.055; }}
+.cover-top {{ display:grid; grid-template-columns:42mm 1fr 42mm; align-items:center; gap:8mm; min-height:34mm; }}
+.cover-top img {{ width:100%; height:22mm; object-fit:contain; }}
+.cover-top .cover-gov {{ max-width:42mm; }}
+.cover-top .cover-geobs {{ max-width:34mm; justify-self:end; }}
+.cover-center {{ text-align:center; }}
+.cover-kicker {{ margin-top:24mm; color:var(--medio); font-size:11px; font-weight:950; letter-spacing:1.7px; text-transform:uppercase; }}
+.cover-title {{ max-width:160mm; margin:7mm auto 0; color:var(--noite); font-size:30px; line-height:1.08; font-weight:950; letter-spacing:-.7px; text-align:center; }}
+.cover-rule {{ width:38mm; height:1.4mm; margin:7mm auto; border-radius:99px; background:linear-gradient(90deg,var(--noite),var(--medio)); }}
+.cover-subtitle {{ margin:0 auto; color:var(--suave); font-size:13px; line-height:1.45; text-align:center; font-weight:750; }}
+.cover-meta {{ width:150mm; margin:28mm auto 0; display:grid; grid-template-columns:1fr 1fr; gap:4mm; }}
+.cover-meta div {{ min-height:20mm; padding:4mm 5mm; border:1px solid var(--borda); border-radius:3mm; background:rgba(248,251,255,.92); }}
+.cover-meta small {{ display:block; color:var(--suave); font-size:7.5px; font-weight:900; text-transform:uppercase; letter-spacing:.4px; }}
+.cover-meta b {{ display:block; margin-top:2mm; color:var(--escuro); font-size:11px; line-height:1.35; }}
+.cover-institution {{ margin-top:auto; text-align:center; color:var(--suave); font-size:8.4px; font-weight:750; line-height:1.45; }}
+.toc-page {{ padding-top:18mm; }}
+.toc-header {{ display:grid; grid-template-columns:34mm 1fr 34mm; align-items:center; gap:6mm; padding-bottom:7mm; border-bottom:1px solid var(--borda); }}
+.toc-header img {{ width:100%; height:17mm; object-fit:contain; }}
+.toc-header h1 {{ margin:0; text-align:center; color:var(--noite); font-size:25px; font-weight:950; }}
+.toc-intro {{ margin:12mm 0 8mm; color:var(--suave); font-size:10.5px; line-height:1.5; text-align:center; }}
+.toc-list {{ width:158mm; margin:0 auto; padding:7mm; border:1px solid var(--borda); border-radius:4mm; background:rgba(248,251,255,.92); }}
+.toc-row {{ display:flex; align-items:flex-end; gap:3mm; min-height:13mm; padding:3.4mm 1mm; border-bottom:1px solid #E5ECF4; color:var(--texto); font-size:11px; font-weight:850; }}
+.toc-row:last-child {{ border-bottom:0; }}
+.toc-row span {{ max-width:125mm; }}
+.toc-row i {{ flex:1; border-bottom:1px dotted #91A4B9; transform:translateY(-1.2mm); }}
+.toc-row b {{ min-width:8mm; color:var(--medio); font-size:12px; text-align:right; }}
+.print-footer::after {{ content:"Página " counter(pagina); margin-left:auto; color:var(--suave); font-weight:850; }}
 .print-header {{ display:grid; grid-template-columns:30mm minmax(0,1fr) 30mm; align-items:center; gap:6mm; border-bottom:1px solid var(--borda); padding-bottom:7mm; margin-bottom:6mm; }}
 .print-header img.gov {{ width:30mm; max-height:16mm; object-fit:contain; justify-self:center; }}
 .print-header img.geobs {{ width:24mm; max-height:16mm; object-fit:contain; justify-self:center; }}
@@ -2871,6 +2924,40 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   
 </div>
 <div class="print-document">
+
+<section class="print-sheet cover-page">
+  <div class="cover-top">
+    <img class="cover-gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div></div>
+    <img class="cover-geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <div class="cover-center">
+    <div class="cover-kicker">Secretaria de Estado da Educação · Gerência de Obras</div>
+    <h1 class="cover-title">Relatório de Climatização Escolar<br>GEOBS – SEE</h1>
+    <div class="cover-rule"></div>
+    <p class="cover-subtitle">Monitoramento gerencial das ações de climatização da rede estadual de ensino da Paraíba</p>
+  </div>
+  <div class="cover-meta">
+    <div><small>Período analisado</small><b>{periodo_seguro}</b></div>
+    <div><small>Data de emissão</small><b>{datetime.now().strftime('%d/%m/%Y')}</b></div>
+    <div><small>Última atualização da base</small><b>{atualizacao}</b></div>
+    <div><small>Fonte dos dados</small><b>{fonte}</b></div>
+  </div>
+  <div class="cover-institution">Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE.<br>{filtros_seguro}</div>
+  <div class="print-footer"><span>Relatório de Climatização Escolar – GEOBS – SEE</span></div>
+</section>
+
+<section class="print-sheet toc-page">
+  <div class="toc-header">
+    <img src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <h1>Sumário</h1>
+    <img src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <p class="toc-intro">As seções abaixo são organizadas automaticamente conforme os conteúdos selecionados no gerador do relatório.</p>
+  <div class="toc-list">{sumario_html}</div>
+  <div class="print-filter-note" style="margin-top:10mm"><b>Recorte aplicado:</b> {filtros_seguro}</div>
+  <div class="print-footer"><span>Relatório de Climatização Escolar – GEOBS – SEE</span></div>
+</section>
 
 <section class="print-sheet page-sintese">
   <div class="print-header">
