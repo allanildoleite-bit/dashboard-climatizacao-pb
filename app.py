@@ -2721,7 +2721,7 @@ def _montar_html_relatorio_impressao(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Relatório de Climatização Escolar</title>
+<title>Relatório de Climatização Escolar – GEOBS – SEE</title>
 <style>
 :root {{
   --noite:#001F49; --escuro:#003B73; --medio:#1F77D0; --claro:#5DA7F2;
@@ -2814,22 +2814,22 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   .print-sheet:last-child {{ page-break-after:auto; break-after:auto; }}
 }}
 
-.print-real-map { position:relative; width:100%; margin-top:3mm; }
-.print-real-map-svg { width:100%; height:auto; display:block; transform:scale(1.035); transform-origin:center; }
-.print-gre-region { stroke:#fff; stroke-width:2.2; stroke-linejoin:round; }
-.print-gre-label { paint-order:stroke; stroke:rgba(0,31,73,.18); stroke-width:1.0; }
-.print-real-map img { width:100%; display:block; }
-.print-map-overlays { position:absolute; inset:0; }
-.print-map-label { position:absolute; transform:translate(-50%,-50%); text-align:center; line-height:1.05; color:#17365D; text-shadow:0 .3mm 0 rgba(255,255,255,.98), 0 0 1.1mm rgba(255,255,255,.90); }
-.print-map-label b { display:block; font-size:7.6px; font-weight:900; }
-.print-map-label span { display:block; margin-top:.5mm; font-size:6.3px; font-weight:800; }
-.print-map-label small { display:block; margin-top:.7mm; font-size:8.3px; font-weight:950; }
-.print-priority-dot { width:2.6mm; height:2.6mm; border-radius:50%; display:inline-block; margin-bottom:.6mm; box-shadow:0 0 0 .45mm rgba(255,255,255,.92); }
-.print-map-label.high { color:#001F49; } .print-map-label.high .print-priority-dot { background:#001F49; }
-.print-map-label.medium { color:#1F77D0; } .print-map-label.medium .print-priority-dot { background:#1F77D0; }
-.print-map-label.low { color:#A26B00; } .print-map-label.low .print-priority-dot { background:#F2A900; }
-.print-map-label.critical { color:#EF4444; } .print-map-label.critical .print-priority-dot { background:#EF4444; }
-.print-map-label.no-data { color:#7088A5; } .print-map-label.no-data .print-priority-dot { background:#AFC1D5; }
+.print-real-map {{ position:relative; width:100%; margin-top:3mm; }}
+.print-real-map-svg {{ width:100%; height:auto; display:block; transform:scale(1.035); transform-origin:center; }}
+.print-gre-region {{ stroke:#fff; stroke-width:2.2; stroke-linejoin:round; }}
+.print-gre-label {{ paint-order:stroke; stroke:rgba(0,31,73,.18); stroke-width:1.0; }}
+.print-real-map img {{ width:100%; display:block; }}
+.print-map-overlays {{ position:absolute; inset:0; }}
+.print-map-label {{ position:absolute; transform:translate(-50%,-50%); text-align:center; line-height:1.05; color:#17365D; text-shadow:0 .3mm 0 rgba(255,255,255,.98), 0 0 1.1mm rgba(255,255,255,.90); }}
+.print-map-label b {{ display:block; font-size:7.6px; font-weight:900; }}
+.print-map-label span {{ display:block; margin-top:.5mm; font-size:6.3px; font-weight:800; }}
+.print-map-label small {{ display:block; margin-top:.7mm; font-size:8.3px; font-weight:950; }}
+.print-priority-dot {{ width:2.6mm; height:2.6mm; border-radius:50%; display:inline-block; margin-bottom:.6mm; box-shadow:0 0 0 .45mm rgba(255,255,255,.92); }}
+.print-map-label.high {{ color:#001F49; }} .print-map-label.high .print-priority-dot {{ background:#001F49; }}
+.print-map-label.medium {{ color:#1F77D0; }} .print-map-label.medium .print-priority-dot {{ background:#1F77D0; }}
+.print-map-label.low {{ color:#A26B00; }} .print-map-label.low .print-priority-dot {{ background:#F2A900; }}
+.print-map-label.critical {{ color:#EF4444; }} .print-map-label.critical .print-priority-dot {{ background:#EF4444; }}
+.print-map-label.no-data {{ color:#7088A5; }} .print-map-label.no-data .print-priority-dot {{ background:#AFC1D5; }}
 
 </style>
 </head>
@@ -2842,13 +2842,13 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 
 <section class="print-sheet">
   <div class="print-header">
-    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
     <div class="print-header-center">
       <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
-      <h1>Relatório Gerencial da Climatização Escolar</h1>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
       <p>Período analisado: {periodo_seguro}</p>
     </div>
-    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">1. Síntese executiva</h2>
   <div class="print-intro">
@@ -2885,14 +2885,14 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div><b>Uso gerencial</b>O relatório apoia a priorização das adequações, liberações e instalações nas unidades escolares.</div>
   </div>
   <div class="print-filter-note"><b>Recorte:</b> {filtros_seguro} · <b>Fonte:</b> {fonte}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 1 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 1 de 4</span></div>
 </section>
 
 <section class="print-sheet">
   <div class="print-header">
-    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-    <div class="print-header-center"><div class="eyebrow">Panorama territorial</div><h1>Visualizações por Gerência Regional</h1><p>Total, climatizadas e pendências por GRE</p></div>
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Visualizações por Gerência Regional</h1><p>Total, climatizadas e pendências por GRE</p></div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2. Panorama gráfico por GRE</h2>
   <div class="print-new-chart-grid">
@@ -2908,14 +2908,14 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
       {_relatorio_barras_verticais_svg(base_filtrada)}
     </div>
   </div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 2 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 2 de 4</span></div>
 </section>
 
 <section class="print-sheet">
   <div class="print-header">
-    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-    <div class="print-header-center"><div class="eyebrow">Desempenho territorial</div><h1>Mapa por Gerência Regional</h1><p>Climatizadas em relação ao total de escolas</p></div>
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Mapa por Gerência Regional</h1><p>Climatizadas em relação ao total de escolas</p></div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">3. Desempenho e resultados da climatização</h2>
   <p class="print-subtitle">O mapa geográfico apresenta a classificação das GREs conforme o percentual de escolas climatizadas em relação ao total. Os valores internos mostram a razão climatizadas/total.</p>
@@ -2933,14 +2933,14 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
   </div>
   <div class="print-text-box"><b>Interpretação.</b> {escape(leitura_gre)}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 3 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 3 de 4</span></div>
 </section>
 
 <section class="print-sheet">
   <div class="print-header">
-    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Setorização</h1><p>Prioridades territoriais e distribuição das pendências</p></div>
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Setorização</h1><p>Prioridades territoriais e distribuição das pendências</p></div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">4. Prioridades de acompanhamento</h2>
   <p class="print-subtitle">A leitura das pendências permite direcionar o acompanhamento para as GREs e setores com maior volume de unidades ainda não concluídas. As barras combinam escolas em andamento e em rota de climatização.</p>
@@ -2954,7 +2954,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
   <div class="print-filter-note"><b>Última atualização da base:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
-  <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 4 de 4</span></div>
+  <div class="print-footer"><span>Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE</span><span>Página 4 de 4</span></div>
 </section>
 
 </div>
