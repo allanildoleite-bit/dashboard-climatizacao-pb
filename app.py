@@ -3062,6 +3062,180 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 </html>'''
 
 
+
+def _relatorio_composicao_svg(totais: dict) -> str:
+    total = max(float(totais.get("total", 0) or 0), 1.0)
+    itens = [
+        ("Climatizadas", float(totais.get("climatizadas", 0) or 0), "#003B73"),
+        ("Em andamento", float(totais.get("andamento", 0) or 0), "#1F77D0"),
+        ("Em rota", float(totais.get("rota", 0) or 0), "#EF4444"),
+    ]
+    largura, altura = 760, 190
+    x0, y0, w, h = 42, 55, 675, 42
+    partes, legenda = [], []
+    atual = x0
+    for i, (nome, valor, cor) in enumerate(itens):
+        largura_item = w * valor / total
+        partes.append(f'<rect x="{atual:.1f}" y="{y0}" width="{largura_item:.1f}" height="{h}" fill="{cor}"/>')
+        if largura_item > 45:
+            partes.append(f'<text x="{atual+largura_item/2:.1f}" y="{y0+26}" text-anchor="middle" fill="#fff" font-size="13" font-weight="900">{_fmt_num_br(valor)}</text>')
+        lx = 95 + i * 225
+        legenda.append(f'<rect x="{lx}" y="130" width="12" height="12" rx="2" fill="{cor}"/><text x="{lx+19}" y="141" fill="#334A66" font-size="11" font-weight="800">{nome}: {_fmt_num_br(valor)} ({_fmt_pct_br(valor/total)})</text>')
+        atual += largura_item
+    return f'''<svg class="report-svg" viewBox="0 0 {largura} {altura}" role="img" aria-label="Composição da situação das escolas">
+      <rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="8" fill="#EDF2F7"/>
+      {''.join(partes)}{''.join(legenda)}
+    </svg>'''
+
+
+def _relatorio_taxa_conclusao_svg(base_filtrada: pd.DataFrame) -> str:
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return '<p class="empty">Sem dados para o recorte selecionado.</p>'
+    dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados
+    largura, altura = 760, 335
+    esq, dir_, top, base = 55, 18, 25, 58
+    w, h = largura-esq-dir_, altura-top-base
+    n = max(len(dados), 1)
+    passo = w/n
+    barras=[]
+    for i, (_, l) in enumerate(dados.iterrows()):
+        pct=max(0,min(1,float(l.get("Conclusao",0) or 0)))
+        bh=pct*h
+        x=esq+i*passo+passo*.19; bw=passo*.62; y=top+h-bh
+        cor="#001F49" if pct>=.70 else "#1F77D0" if pct>=.50 else "#F2A900" if pct>=.30 else "#EF4444"
+        rot=str(l.get("GRE_Label",l.get("GRE","")))
+        numero=re.search(r"\d+",rot); lab=f"{numero.group()}ª" if numero else rot[:4]
+        barras.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(2,bh):.1f}" rx="3" fill="{cor}"/><text x="{x+bw/2:.1f}" y="{max(14,y-5):.1f}" text-anchor="middle" font-size="8" font-weight="900" fill="#17365D">{pct*100:.0f}%</text><text x="{x+bw/2:.1f}" y="{altura-34}" text-anchor="middle" font-size="8" font-weight="800" fill="#17365D">{escape(lab)}</text>')
+    grades=[]
+    for p in [0,.25,.50,.75,1]:
+        y=top+h-p*h
+        grades.append(f'<line x1="{esq}" y1="{y:.1f}" x2="{largura-dir_}" y2="{y:.1f}" stroke="#DDE6F0"/><text x="{esq-8}" y="{y+3:.1f}" text-anchor="end" font-size="8" fill="#637083">{p*100:.0f}%</text>')
+    return f'<svg class="report-svg" viewBox="0 0 {largura} {altura}">{"".join(grades)}{"".join(barras)}</svg>'
+
+
+def _relatorio_pendencias_svg(base_filtrada: pd.DataFrame) -> str:
+    dados=_dados_gre_resumo(base_filtrada)
+    if dados.empty: return '<p class="empty">Sem dados para o recorte selecionado.</p>'
+    dados=dados.sort_values(["Pendencias","Em andamento"],ascending=[False,False])
+    largura,altura=760,390; esq,dir_,top,base=118,35,20,28
+    w,h=largura-esq-dir_,altura-top-base; n=max(len(dados),1); passo=h/n
+    mx=max(float(dados["Pendencias"].max()),1)
+    el=[]
+    for i,(_,l) in enumerate(dados.iterrows()):
+        y=top+i*passo+3; bh=max(10,passo-7)
+        andam=float(l.get("Em andamento",0) or 0); rota=float(l.get("Em rota",0) or 0); pend=andam+rota
+        wa=w*andam/mx; wr=w*rota/mx
+        nome=escape(str(l.get("GRE_Label",l.get("GRE",""))))
+        el.append(f'<text x="{esq-8}" y="{y+bh*.7:.1f}" text-anchor="end" font-size="8.2" font-weight="800" fill="#17365D">{nome}</text><rect x="{esq}" y="{y:.1f}" width="{wa:.1f}" height="{bh:.1f}" rx="3" fill="#1F77D0"/><rect x="{esq+wa:.1f}" y="{y:.1f}" width="{wr:.1f}" height="{bh:.1f}" rx="3" fill="#EF4444"/><text x="{esq+wa+wr+6:.1f}" y="{y+bh*.7:.1f}" font-size="8.2" font-weight="900" fill="#17365D">{_fmt_num_br(pend)}</text>')
+    legenda='<rect x="270" y="374" width="10" height="10" fill="#1F77D0"/><text x="285" y="383" font-size="8.5" fill="#40516A">Em andamento</text><rect x="405" y="374" width="10" height="10" fill="#EF4444"/><text x="420" y="383" font-size="8.5" fill="#40516A">Em rota</text>'
+    return f'<svg class="report-svg" viewBox="0 0 {largura} {altura}">{"".join(el)}{legenda}</svg>'
+
+
+def _montar_html_relatorio_impressao(
+    base_filtrada: pd.DataFrame,
+    setor: pd.DataFrame,
+    acomp_filtrado: pd.DataFrame,
+    totais: dict,
+    insights: dict,
+    periodo_label: str,
+    config: dict,
+    filtros_label: str,
+    graficos_selecionados: list[str] | None = None,
+) -> str:
+    """Relatório técnico completo, organizado em narrativa, gráficos e interpretação."""
+    dados=_dados_gre_resumo(base_filtrada)
+    total=float(totais.get("total",0) or 0); clim=float(totais.get("climatizadas",0) or 0)
+    andamento=float(totais.get("andamento",0) or 0); rota=float(totais.get("rota",0) or 0)
+    pend=andamento+rota; conclusao=float(totais.get("conclusao",0) or 0)
+    fonte=escape(str(config.get("Fonte dos dados","Gerência de Obras – SEE")))
+    atualizacao=escape(str(config.get("Data da última atualização", config.get("Última atualização da base", config.get("Última atualização oficial","Não informada")))))
+    periodo=escape(str(periodo_label)); emissao=datetime.now().strftime("%d/%m/%Y")
+
+    validas=dados[dados["Total"]>0].copy() if not dados.empty else pd.DataFrame()
+    melhor=validas.sort_values(["Conclusao","Climatizadas"],ascending=[False,False]).iloc[0] if not validas.empty else None
+    pior=validas.sort_values(["Conclusao","Pendencias"],ascending=[True,False]).iloc[0] if not validas.empty else None
+    top_pend=dados.sort_values(["Pendencias","Em andamento"],ascending=[False,False]).head(3) if not dados.empty else pd.DataFrame()
+    top_clim=dados.sort_values("Climatizadas",ascending=False).head(3) if not dados.empty else pd.DataFrame()
+    top_names=[str(x) for x in top_pend.get("GRE_Label",pd.Series(dtype=str)).tolist()]
+    top_clim_names=[str(x) for x in top_clim.get("GRE_Label",pd.Series(dtype=str)).tolist()]
+    top_share=(float(top_pend["Pendencias"].sum())/pend if pend>0 and not top_pend.empty else 0)
+
+    avaliacao="elevado" if conclusao>=.70 else "intermediário" if conclusao>=.50 else "ainda limitado"
+    melhor_nome=escape(str(melhor.get("GRE_Label","—"))) if melhor is not None else "—"
+    melhor_pct=_fmt_pct_br(float(melhor.get("Conclusao",0))) if melhor is not None else "—"
+    pior_nome=escape(str(pior.get("GRE_Label","—"))) if pior is not None else "—"
+    pior_pct=_fmt_pct_br(float(pior.get("Conclusao",0))) if pior is not None else "—"
+
+    prioridade_imediata=[]; prioridade_conclusao=[]; prioridade_manutencao=[]
+    if not validas.empty:
+        for _,l in validas.iterrows():
+            nome=escape(str(l.get("GRE_Label",""))); pct=float(l.get("Conclusao",0)); pdn=float(l.get("Pendencias",0)); anda=float(l.get("Em andamento",0))
+            if pct<.50 and pdn>0: prioridade_imediata.append(nome)
+            elif pct<.70 and anda>0: prioridade_conclusao.append(nome)
+            elif pct>=.70: prioridade_manutencao.append(nome)
+    def lista_html(vals): return ", ".join(vals[:8]) if vals else "Nenhuma GRE enquadrada neste critério no recorte selecionado."
+
+    composicao=_relatorio_composicao_svg(totais)
+    area_svg=_relatorio_area_svg(base_filtrada)
+    barras_svg=_relatorio_barras_verticais_svg(base_filtrada)
+    taxa_svg=_relatorio_taxa_conclusao_svg(base_filtrada)
+    mapa_svg=_relatorio_mapa_gre_html(base_filtrada)
+    pend_svg=_relatorio_pendencias_svg(base_filtrada)
+    ranking_html=_relatorio_ranking_html(base_filtrada,8)
+    setores_html=_relatorio_setores_html(setor,8)
+    status_html=_relatorio_status_html(acomp_filtrado,8)
+
+    top_clim_txt=", ".join(escape(x) for x in top_clim_names) if top_clim_names else "as GREs do recorte analisado"
+    top_pend_txt=", ".join(escape(x) for x in top_names) if top_names else "as GREs do recorte analisado"
+
+    toc=''.join([
+      '<div class="toc"><b>1 INTRODUÇÃO</b><span></span><em>3</em></div>',
+      '<div class="toc sub">1.1 Objetivo e abrangência<span></span><em>3</em></div>',
+      '<div class="toc"><b>2 SÍNTESE EXECUTIVA</b><span></span><em>4</em></div>',
+      '<div class="toc sub">2.1 Indicadores gerais e composição<span></span><em>4</em></div>',
+      '<div class="toc"><b>3 PANORAMA POR GERÊNCIA REGIONAL</b><span></span><em>5</em></div>',
+      '<div class="toc sub">3.1 Quantitativos e taxa de conclusão<span></span><em>5–6</em></div>',
+      '<div class="toc"><b>4 DISTRIBUIÇÃO ESPACIAL</b><span></span><em>7</em></div>',
+      '<div class="toc"><b>5 ANÁLISE DAS PENDÊNCIAS</b><span></span><em>8–9</em></div>',
+      '<div class="toc sub">5.1 Pendências por GRE, estágio e setor<span></span><em>8–9</em></div>',
+      '<div class="toc"><b>6 PRIORIDADES DE ACOMPANHAMENTO</b><span></span><em>10</em></div>',
+      '<div class="toc"><b>7 CONSIDERAÇÕES FINAIS</b><span></span><em>11</em></div>',
+    ])
+
+    header=f'''<header class="internal-header"><img src="{GOV_LOGO}"><div><small>SECRETARIA DE ESTADO DA EDUCAÇÃO · GERÊNCIA DE OBRAS</small><strong>Relatório de Climatização Escolar – GEOBS – SEE</strong></div><img src="{GEOBS_LOGO}"></header>'''
+    footer='<footer>Gerência de Obras – Secretaria de Estado da Educação da Paraíba <span></span></footer>'
+    fig_source=f'<div class="fig-source">Fonte: {fonte}. Elaboração: Equipe de Engenharia Elétrica da Gerência de Obras – SEE.</div>'
+
+    return f'''<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatório de Climatização Escolar</title><style>
+    *{{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}}html,body{{margin:0;background:#dfe7f0;color:#1c2c42;font-family:Arial,sans-serif}}.toolbar{{position:sticky;top:0;z-index:9;text-align:center;padding:10px;background:#fff;border-bottom:1px solid #ccd8e6}}.toolbar button{{border:0;border-radius:8px;background:#003B73;color:#fff;padding:10px 20px;font-weight:700;cursor:pointer}}.document{{display:flex;flex-direction:column;align-items:center;gap:18px;padding:20px}}.page{{width:210mm;height:297mm;background:#fff;position:relative;overflow:hidden;padding:30mm 20mm 22mm 30mm;box-shadow:0 10px 30px #16395b2e;counter-increment:page}}.page::before{{content:"";position:absolute;inset:0;background:url("{GOV_WATERMARK_LOGO}") center 55%/105mm auto no-repeat;opacity:.027;pointer-events:none}}.page>*{{position:relative;z-index:1}}.cover{{padding:22mm 24mm;display:flex;flex-direction:column}}.cover::before{{background-size:125mm;opacity:.035}}.cover-logos{{display:grid;grid-template-columns:43mm 1fr 43mm;align-items:center}}.cover-logos img{{max-width:38mm;max-height:23mm;object-fit:contain}}.cover-logos img:last-child{{justify-self:end;max-width:31mm}}.cover-center{{text-align:center;margin-top:35mm}}.cover-center small{{font-size:10pt;letter-spacing:1.5px;color:#1F77D0;font-weight:700}}.cover-center h1{{font-size:25pt;line-height:1.15;color:#001F49;margin:10mm 0 5mm}}.cover-center p{{font-size:12pt;color:#52647a;line-height:1.5}}.cover-info{{margin-top:27mm;text-align:center;font-size:11pt;line-height:1.8;color:#334a66}}.cover-bottom{{margin-top:auto;text-align:center;color:#52647a;font-size:10pt}}.internal-header{{position:absolute;top:10mm;left:30mm;right:20mm;height:15mm;display:grid;grid-template-columns:30mm 1fr 30mm;align-items:center;border-bottom:.4mm solid #d4dfeb;padding-bottom:3mm}}.internal-header img{{max-width:28mm;max-height:12mm;object-fit:contain}}.internal-header img:last-child{{justify-self:end;max-width:23mm}}.internal-header div{{text-align:center}}.internal-header small{{display:block;font-size:6.7pt;letter-spacing:.5px;color:#1F77D0;font-weight:700}}.internal-header strong{{display:block;margin-top:1mm;color:#001F49;font-size:10pt}}footer{{position:absolute;left:30mm;right:20mm;bottom:9mm;border-top:.3mm solid #d4dfeb;padding-top:2mm;font-size:7.5pt;color:#637083;display:flex}}footer span{{margin-left:auto}}footer span::after{{content:"Página " counter(page)}}h1.sec{{font-size:16pt;color:#001F49;margin:0 0 7mm;text-transform:uppercase}}h2{{font-size:12.5pt;color:#003B73;margin:6mm 0 3mm}}p{{font-family:"Times New Roman",serif;font-size:12pt;line-height:1.5;text-align:justify;text-indent:1.25cm;margin:0 0 4mm}}p.no-indent{{text-indent:0}}.meta-line{{font-family:"Times New Roman",serif;font-size:11pt;line-height:1.6;margin:2mm 0}}.toc-title{{font-size:18pt;text-align:center;color:#001F49;margin:5mm 0 12mm}}.toc{{display:flex;align-items:flex-end;gap:2mm;font-size:10.5pt;margin:3.2mm 0;color:#17365D}}.toc.sub{{padding-left:8mm;font-size:9.5pt;color:#52647a}}.toc span{{flex:1;border-bottom:1px dotted #91a4b9;transform:translateY(-1mm)}}.toc em{{font-style:normal;font-weight:700;color:#1F77D0}}.kpis{{display:grid;grid-template-columns:repeat(5,1fr);gap:3mm;margin:5mm 0}}.kpi{{border-top:1.2mm solid #1F77D0;padding:3mm 2mm;text-align:center;background:#f8fbff}}.kpi small{{display:block;font-size:7.5pt;color:#637083;text-transform:uppercase}}.kpi b{{display:block;margin-top:2mm;font-size:18pt;color:#001F49}}.figure{{margin:4mm auto 2mm;text-align:center;break-inside:avoid}}.figure-title{{font-family:"Times New Roman",serif;font-size:10pt;text-align:left;margin-bottom:2mm}}.report-svg,.print-svg-chart,.print-real-map-svg{{width:100%;max-height:105mm;display:block}}.map-wrap{{height:155mm;display:flex;align-items:center}}.map-wrap .print-real-map-svg{{max-height:150mm}}.fig-source{{font-family:"Times New Roman",serif;font-size:8.5pt;text-align:left;color:#52647a;margin-top:1.5mm}}.analysis{{margin-top:4mm}}.empty{{text-align:center;text-indent:0;color:#637083}}.rank-box{{margin-top:3mm}}.print-rank-row,.print-mini-row{{display:grid;grid-template-columns:38mm 1fr 12mm;align-items:center;gap:2mm;margin:2.2mm 0;font-size:8.2pt}}.print-rank-name,.print-mini-name{{text-align:right;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.print-rank-track,.print-mini-track{{height:5mm;background:#edf2f7;border-radius:2mm;overflow:hidden;display:flex}}.print-seg{{height:100%;display:block}}.print-seg.andamento{{background:#1F77D0}}.print-seg.rota{{background:#EF4444}}.print-status-fill{{height:100%;display:block;background:#003B73}}.priority{{margin:3mm 0 5mm;padding-left:5mm;border-left:1.2mm solid #1F77D0}}.priority strong{{display:block;color:#003B73;font-size:11pt;margin-bottom:1.5mm}}.priority p{{text-indent:0;font-size:11.5pt}}@media print{{html,body{{background:#fff}}.toolbar{{display:none}}.document{{padding:0;gap:0}}.page{{box-shadow:none;page-break-after:always}}}}@page{{size:A4 portrait;margin:0}}
+    </style></head><body><div class="toolbar"><button onclick="window.print()">Imprimir / Salvar como PDF</button></div><main class="document">
+
+    <section class="page cover"><div class="cover-logos"><img src="{GOV_LOGO}"><div></div><img src="{GEOBS_LOGO}"></div><div class="cover-center"><small>SECRETARIA DE ESTADO DA EDUCAÇÃO · GERÊNCIA DE OBRAS</small><h1>RELATÓRIO DE CLIMATIZAÇÃO ESCOLAR</h1><p class="no-indent">Monitoramento dos resultados, pendências e prioridades das Gerências Regionais de Educação da Paraíba</p></div><div class="cover-info"><b>Período analisado:</b> {periodo}<br><b>Atualização da base:</b> {atualizacao}<br><b>Data de emissão:</b> {emissao}</div><div class="cover-bottom">João Pessoa – PB<br>2026</div></section>
+
+    <section class="page">{header}<h1 class="toc-title">SUMÁRIO</h1>{toc}{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">1 Introdução</h1><h2>1.1 Objetivo e abrangência</h2><p>Este relatório apresenta o panorama do processo de climatização das unidades escolares vinculadas à Secretaria de Estado da Educação da Paraíba, com base nos dados consolidados e acompanhados pela Gerência de Obras. O documento sistematiza os resultados alcançados, evidencia diferenças entre as Gerências Regionais de Educação e orienta a definição de ações de continuidade.</p><p>A análise considera o quantitativo total de unidades escolares, as escolas já climatizadas, os serviços em andamento e as unidades inseridas em rota de climatização. A apresentação estadual e regionalizada permite examinar níveis de atendimento, concentração territorial das demandas e estágio operacional das pendências.</p><p>Os valores correspondem à situação registrada na data de atualização informada na base. Portanto, constituem um retrato do monitoramento no momento da emissão e podem variar conforme novos serviços sejam concluídos ou atualizados.</p><h2>1.2 Informações do levantamento</h2><div class="meta-line"><b>Período analisado:</b> {periodo}</div><div class="meta-line"><b>Data de atualização:</b> {atualizacao}</div><div class="meta-line"><b>Fonte dos dados:</b> {fonte}</div>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">2 Síntese executiva</h1><p>O recorte analisado reúne <b>{_fmt_num_br(total)}</b> unidades escolares, das quais <b>{_fmt_num_br(clim)}</b> encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b> do total. Permanecem <b>{_fmt_num_br(andamento)}</b> unidades com serviços em andamento e <b>{_fmt_num_br(rota)}</b> unidades em rota de climatização.</p><p>O nível geral de avanço é classificado como <b>{avaliacao}</b>. A maior taxa de conclusão é observada em <b>{melhor_nome}</b>, com <b>{melhor_pct}</b>, enquanto <b>{pior_nome}</b> apresenta o menor percentual, com <b>{pior_pct}</b>.</p><div class="kpis"><div class="kpi"><small>Total</small><b>{_fmt_num_br(total)}</b></div><div class="kpi"><small>Climatizadas</small><b>{_fmt_num_br(clim)}</b></div><div class="kpi"><small>Em andamento</small><b>{_fmt_num_br(andamento)}</b></div><div class="kpi"><small>Em rota</small><b>{_fmt_num_br(rota)}</b></div><div class="kpi"><small>Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div></div><div class="figure"><div class="figure-title">Figura 1 – Distribuição geral da situação das unidades escolares</div>{composicao}{fig_source}</div><p class="analysis">A composição demonstra o peso relativo das unidades já atendidas e das demandas remanescentes. A soma das escolas em andamento e em rota representa <b>{_fmt_pct_br(pend/max(total,1))}</b> da rede analisada, indicando o volume que ainda requer atuação operacional e gerencial.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">3 Panorama por Gerência Regional</h1><h2>3.1 Quantitativos absolutos</h2><p>As GREs possuem redes escolares de tamanhos distintos. Por isso, a leitura deve combinar valores absolutos e percentuais. As maiores quantidades de escolas climatizadas estão concentradas em <b>{top_clim_txt}</b>, porém esse resultado deve ser confrontado com o total de unidades de cada regional.</p><div class="figure"><div class="figure-title">Figura 2 – Total, unidades climatizadas e pendências por GRE</div>{area_svg}{fig_source}</div><p class="analysis">A Figura 2 permite comparar a dimensão da rede com o atendimento realizado e a demanda remanescente. As diferenças observadas demonstram que uma regional com grande número de escolas climatizadas pode ainda manter quantidade expressiva de unidades pendentes.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">3 Panorama por Gerência Regional</h1><h2>3.2 Quantidade de unidades climatizadas</h2><p>O quantitativo de unidades climatizadas expressa a produção acumulada em cada regional. A comparação absoluta é especialmente útil para dimensionar o volume de atendimento, mas não substitui a avaliação proporcional.</p><div class="figure"><div class="figure-title">Figura 3 – Quantidade de unidades escolares climatizadas por GRE</div>{barras_svg}{fig_source}</div><h2>3.3 Taxa de conclusão</h2><div class="figure"><div class="figure-title">Figura 4 – Percentual de climatização por GRE</div>{taxa_svg}{fig_source}</div><p class="analysis">A taxa de conclusão reduz o efeito do tamanho da rede e permite comparar o avanço relativo. As GREs acima de 70% integram a faixa de desempenho alto; entre 50% e 69%, desempenho médio; entre 30% e 49%, desempenho baixo; e abaixo de 30%, desempenho crítico.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">4 Distribuição espacial dos resultados</h1><p>A espacialização evidencia como o processo de climatização se distribui pelo território paraibano. O mapa reúne os municípios nas 16 Gerências Regionais de Educação e utiliza classes de desempenho baseadas na taxa de conclusão.</p><div class="figure map-wrap"><div style="width:100%"><div class="figure-title">Figura 5 – Classificação territorial do desempenho da climatização escolar</div>{mapa_svg}{fig_source}</div></div><p class="analysis">A leitura territorial mostra que o avanço não ocorre de forma homogênea. Regiões de desempenho baixo ou crítico devem ser analisadas em conjunto com o estoque de pendências, o estágio dos processos, as condições de contratação e a logística de atendimento.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">5 Análise das pendências</h1><h2>5.1 Situação geral e distribuição por GRE</h2><p>Foram identificadas <b>{_fmt_num_br(pend)}</b> unidades pendentes, sendo <b>{_fmt_num_br(andamento)}</b> em andamento e <b>{_fmt_num_br(rota)}</b> em rota. As três GREs com maior concentração de pendências são <b>{top_pend_txt}</b>, que juntas representam <b>{_fmt_pct_br(top_share)}</b> do total pendente.</p><div class="figure"><div class="figure-title">Figura 6 – Pendências por GRE e estágio operacional</div>{pend_svg}{fig_source}</div><p class="analysis">As unidades em andamento possuem maior possibilidade de conclusão no curto ou médio prazo, desde que não existam impedimentos técnicos, administrativos ou logísticos. As unidades em rota exigem atenção à programação, disponibilidade de equipamentos e condições para início do atendimento.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">5 Análise das pendências</h1><h2>5.2 Ranking regional</h2><p>O ranking destaca as regionais que concentram o maior estoque de demandas e facilita a definição de focos prioritários de acompanhamento.</p><div class="rank-box">{ranking_html}</div><h2>5.3 Setorização e situação operacional</h2><p>A análise por setor e status complementa a leitura regional, possibilitando identificar em quais etapas ou frentes de trabalho se concentram as demandas.</p><div class="rank-box">{setores_html}</div><div class="rank-box">{status_html}</div><p class="analysis">A permanência prolongada de unidades na mesma situação deve motivar verificação individual dos impedimentos, dos prazos e das providências necessárias à continuidade do atendimento.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">6 Prioridades de acompanhamento</h1><p>A priorização deve considerar simultaneamente a taxa de conclusão, o número absoluto de unidades pendentes, o volume de serviços em andamento, as escolas em rota e os impedimentos registrados.</p><div class="priority"><strong>Prioridade imediata</strong><p>GREs com taxa inferior a 50% e existência de pendências: {lista_html(prioridade_imediata)}</p></div><div class="priority"><strong>Prioridade de conclusão</strong><p>GREs com desempenho intermediário e serviços em andamento, nas quais a finalização das intervenções pode gerar avanço rápido: {lista_html(prioridade_conclusao)}</p></div><div class="priority"><strong>Prioridade de manutenção</strong><p>GREs com taxa igual ou superior a 70%, direcionando o esforço para encerramento das últimas demandas: {lista_html(prioridade_manutencao)}</p></div><h2>6.1 Recomendações gerenciais</h2><p>Recomenda-se acompanhar periodicamente o estágio das unidades em andamento, estabelecer previsão de atendimento para as escolas em rota e registrar de forma padronizada os principais impedimentos. A concentração de esforços nas regionais com maior estoque de pendências tende a produzir impacto mais expressivo no indicador estadual.</p>{footer}</section>
+
+    <section class="page">{header}<h1 class="sec">7 Considerações finais</h1><p>Os resultados demonstram que o programa de climatização escolar apresenta avanços relevantes, mas mantém diferenças importantes entre as Gerências Regionais de Educação. O percentual estadual de conclusão deve ser analisado junto à distribuição territorial e ao estágio das pendências, evitando que o resultado agregado oculte situações regionais críticas.</p><p>A conclusão dos serviços já iniciados representa uma oportunidade de avanço no curto prazo. Paralelamente, as unidades em rota devem receber programação objetiva, com indicação das condições necessárias para início, responsáveis e previsão de atendimento.</p><p>Recomenda-se manter a atualização periódica da base de dados, incluindo a situação de cada unidade, o estágio do serviço, o responsável, o principal impedimento e a previsão de conclusão. A padronização dessas informações fortalece o planejamento, a priorização dos recursos e a transparência do monitoramento.</p><p>Este relatório deverá ser atualizado sempre que ocorrer alteração significativa na base, permitindo comparar a evolução dos indicadores e verificar o cumprimento das prioridades estabelecidas.</p>{footer}</section>
+
+    </main></body></html>'''
+
+
 def renderizar_gerador_relatorio(
     base: pd.DataFrame,
     setor: pd.DataFrame,
@@ -3156,7 +3330,7 @@ def renderizar_gerador_relatorio(
             config=config,
             filtros_label=filtros_label,
         )
-        components.html(html_relatorio, height=4850, scrolling=True)
+        components.html(html_relatorio, height=8200, scrolling=True)
     except Exception as erro:
         st.error("Não foi possível montar a página de relatório com os filtros selecionados.")
         st.exception(erro)
