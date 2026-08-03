@@ -738,20 +738,25 @@ def ler_csv_publicado(url: str, nome_aba: str, tentativas: int = 3) -> pd.DataFr
     ) from ultimo_erro
 
 
-def obter_data_atualizacao_base(acompanhamento: pd.DataFrame, config: dict) -> str:
-    """Retorna a data mais recente registrada na base publicada do Google Sheets."""
-    if isinstance(acompanhamento, pd.DataFrame) and "Data Última Mov." in acompanhamento.columns:
-        serie = acompanhamento["Data Última Mov."].astype(str).str.strip()
-        serie = serie[~serie.isin(["", "nan", "None", "NaT"])]
-        if not serie.empty:
-            datas = pd.to_datetime(serie, dayfirst=True, errors="coerce")
-            datas = datas.dropna()
-            if not datas.empty:
-                return datas.max().strftime("%d/%m/%Y")
+def obter_data_atualizacao_base(config: dict) -> str:
+    """Lê exclusivamente a data informada na aba Configuração do Google Sheets."""
+    chaves_aceitas = [
+        "Data da última atualização",
+        "Data da ultima atualização",
+        "Data de atualização da base",
+        "Data de atualizacao da base",
+        "Última atualização da base",
+        "Ultima atualização da base",
+        "Última atualização oficial",
+        "Ultima atualização oficial",
+    ]
 
-    # Fallback para a aba Configuração, caso a coluna de datas esteja vazia.
-    valor = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
-    return str(valor).strip() if valor else "Não informada"
+    for chave in chaves_aceitas:
+        valor = str(config.get(chave, "")).strip()
+        if valor and valor.lower() not in {"nan", "none", "nat"}:
+            return valor
+
+    return "Não informada"
 
 
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
@@ -762,8 +767,8 @@ def carregar_dados():
     acompanhamento = tratar_acompanhamento(ler_csv_publicado(ACOMPANHAMENTO_URL, "Acompanhamento"))
     config = tratar_config(ler_csv_publicado(CONFIG_URL, "Configuração"))
 
-    # A data mostrada no dashboard passa a vir da própria base de dados publicada.
-    data_base = obter_data_atualizacao_base(acompanhamento, config)
+    # A data exibida vem somente da célula configurada na aba publicada de Configuração.
+    data_base = obter_data_atualizacao_base(config)
     config["Data de atualização da base"] = data_base
     config["Última atualização oficial"] = data_base
 
