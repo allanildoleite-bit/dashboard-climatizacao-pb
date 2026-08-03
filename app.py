@@ -738,6 +738,22 @@ def ler_csv_publicado(url: str, nome_aba: str, tentativas: int = 3) -> pd.DataFr
     ) from ultimo_erro
 
 
+def obter_data_atualizacao_base(acompanhamento: pd.DataFrame, config: dict) -> str:
+    """Retorna a data mais recente registrada na base publicada do Google Sheets."""
+    if isinstance(acompanhamento, pd.DataFrame) and "Data Última Mov." in acompanhamento.columns:
+        serie = acompanhamento["Data Última Mov."].astype(str).str.strip()
+        serie = serie[~serie.isin(["", "nan", "None", "NaT"])]
+        if not serie.empty:
+            datas = pd.to_datetime(serie, dayfirst=True, errors="coerce")
+            datas = datas.dropna()
+            if not datas.empty:
+                return datas.max().strftime("%d/%m/%Y")
+
+    # Fallback para a aba Configuração, caso a coluna de datas esteja vazia.
+    valor = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
+    return str(valor).strip() if valor else "Não informada"
+
+
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
 def carregar_dados():
     base = tratar_base_geral(ler_csv_publicado(BASE_GERAL_URL, "Base Geral"))
@@ -745,6 +761,11 @@ def carregar_dados():
     responsaveis = tratar_responsaveis(ler_csv_publicado(RESPONSAVEIS_URL, "Responsáveis"))
     acompanhamento = tratar_acompanhamento(ler_csv_publicado(ACOMPANHAMENTO_URL, "Acompanhamento"))
     config = tratar_config(ler_csv_publicado(CONFIG_URL, "Configuração"))
+
+    # A data mostrada no dashboard passa a vir da própria base de dados publicada.
+    data_base = obter_data_atualizacao_base(acompanhamento, config)
+    config["Data de atualização da base"] = data_base
+    config["Última atualização oficial"] = data_base
 
     return base, setor, responsaveis, acompanhamento, config
 
@@ -1393,7 +1414,7 @@ def _gerar_relatorio_pdf_legado(
     atualizacao_oficial = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
     nota_final = "Relatório gerado automaticamente a partir das bases publicadas utilizadas pelo dashboard."
     if atualizacao_oficial:
-        nota_final += f" Última atualização oficial informada: {_texto_pdf(atualizacao_oficial)}."
+        nota_final += f" Última atualização da base: {_texto_pdf(atualizacao_oficial)}."
     elementos.append(Paragraph(nota_final, estilos["pequeno"]))
 
     documento.build(
@@ -2179,7 +2200,7 @@ def gerar_relatorio_pdf(
     atualizacao = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
     if atualizacao:
         canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE, 5.8)
-        canvas_pdf.drawString(margem, 1.02 * cm, f"Última atualização oficial: {str(atualizacao)[:100]}")
+        canvas_pdf.drawString(margem, 1.02 * cm, f"Última atualização da base: {str(atualizacao)[:100]}")
 
     canvas_pdf.save()
     buffer.seek(0)
@@ -2927,7 +2948,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <h3>Setorização das pendências</h3>{_relatorio_setores_html(setor, 10)}
   </div>
   <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
-  <div class="print-filter-note"><b>Última atualização oficial:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
+  <div class="print-filter-note"><b>Última atualização da base:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
   <div class="print-footer"><span>GEOBS · Relatório de Climatização Escolar</span><span>Página 4 de 4</span></div>
 </section>
 
@@ -4308,6 +4329,25 @@ body {
     font-weight: 650;
 }
 
+.footer-institucional {
+    border-top: 1px solid #D9E4F2;
+    padding: 16px 12px 4px;
+    line-height: 1.45;
+}
+
+.footer-credit {
+    color: #17365D;
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.footer-meta {
+    margin-top: 4px;
+    color: #60748F;
+    font-size: 11px;
+    font-weight: 700;
+}
+
 @media (max-width: 1200px) {
     .header,
     .filters,
@@ -4698,8 +4738,9 @@ body {
         </div>
     </section>
 
-    <div class="footer">
-        <span id="footerText">Sincronização realizada.</span>
+    <div class="footer footer-institucional">
+        <div class="footer-credit">Dashboard desenvolvido pela Equipe de Engenharia Elétrica da Gerência de Obras – SEE.</div>
+        <div id="footerText" class="footer-meta">Base de dados em atualização.</div>
     </div>
 </div>
 
@@ -5895,12 +5936,10 @@ function renderDashboard() {
     }
     document.getElementById("rankingTitle").textContent = hasGreFilter(f.gre) ? `Pendências — ${greTitle}` : "Ranking de Pendências";
 
-    const atualizacaoOficial = configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "";
-    const fonte = configData["Fonte dos dados"] || "GEOBS / Governo da Paraíba";
+    const dataAtualizacao = configData["Data de atualização da base"] || configData["Última atualização oficial"] || configData["Ultima atualização oficial"] || "Não informada";
+    const fonte = configData["Fonte dos dados"] || "Google Sheets / GEOBS – SEE";
     document.getElementById("footerText").textContent =
-        `Sincronizado: __SYNC_TIME__ · mapa cartográfico v2 · verificação a cada __REFRESH_SECONDS__s` +
-        (atualizacaoOficial ? ` · atualização oficial: ${atualizacaoOficial}` : "") +
-        ` · fonte: ${fonte}`;
+        `Última atualização da base: ${dataAtualizacao} · Fonte: ${fonte} · Atualização automática a cada __REFRESH_SECONDS__ segundos.`;
 }
 
 initializeFilters();
