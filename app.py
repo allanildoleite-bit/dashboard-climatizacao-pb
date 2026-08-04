@@ -25,7 +25,6 @@ import streamlit.components.v1 as components
 try:
     import matplotlib.pyplot as plt
     import numpy as np
-    import cairosvg
     from PIL import Image as PILImage
     from docx import Document
     from docx.enum.section import WD_SECTION_START
@@ -3004,36 +3003,134 @@ def _docx_grafico_climatizadas_gre(dados: pd.DataFrame) -> BytesIO:
     return _docx_salvar_figura_matplotlib(fig)
 
 
+def _svg_path_para_matplotlib(caminho_svg: str):
+    """Converte comandos SVG comuns em matplotlib.path.Path, sem CairoSVG."""
+    from matplotlib.path import Path as MplPath
+
+    tokens = re.findall(r"[A-Za-z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?", caminho_svg or "")
+    vertices, codigos = [], []
+    i = 0
+    comando = None
+    atual_x = atual_y = 0.0
+    inicio_x = inicio_y = 0.0
+
+    quantidade = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "Z": 0}
+
+    def numero(indice):
+        return float(tokens[indice])
+
+    while i < len(tokens):
+        if re.fullmatch(r"[A-Za-z]", tokens[i]):
+            comando = tokens[i]
+            i += 1
+        if not comando:
+            break
+
+        maiusculo = comando.upper()
+        relativo = comando.islower()
+        if maiusculo == "Z":
+            vertices.append((inicio_x, inicio_y))
+            codigos.append(MplPath.CLOSEPOLY)
+            atual_x, atual_y = inicio_x, inicio_y
+            comando = None
+            continue
+
+        n = quantidade.get(maiusculo)
+        if n is None or i + n > len(tokens):
+            break
+        vals = [numero(i + j) for j in range(n)]
+        i += n
+
+        if maiusculo == "M":
+            x, y = vals
+            if relativo:
+                x, y = atual_x + x, atual_y + y
+            atual_x, atual_y = x, y
+            inicio_x, inicio_y = x, y
+            vertices.append((x, y)); codigos.append(MplPath.MOVETO)
+            comando = "l" if relativo else "L"
+        elif maiusculo == "L":
+            x, y = vals
+            if relativo:
+                x, y = atual_x + x, atual_y + y
+            atual_x, atual_y = x, y
+            vertices.append((x, y)); codigos.append(MplPath.LINETO)
+        elif maiusculo == "H":
+            x = atual_x + vals[0] if relativo else vals[0]
+            atual_x = x
+            vertices.append((atual_x, atual_y)); codigos.append(MplPath.LINETO)
+        elif maiusculo == "V":
+            y = atual_y + vals[0] if relativo else vals[0]
+            atual_y = y
+            vertices.append((atual_x, atual_y)); codigos.append(MplPath.LINETO)
+        elif maiusculo == "C":
+            x1,y1,x2,y2,x,y = vals
+            if relativo:
+                x1,y1,x2,y2,x,y = atual_x+x1,atual_y+y1,atual_x+x2,atual_y+y2,atual_x+x,atual_y+y
+            vertices.extend([(x1,y1),(x2,y2),(x,y)])
+            codigos.extend([MplPath.CURVE4,MplPath.CURVE4,MplPath.CURVE4])
+            atual_x, atual_y = x, y
+        elif maiusculo == "Q":
+            x1,y1,x,y = vals
+            if relativo:
+                x1,y1,x,y = atual_x+x1,atual_y+y1,atual_x+x,atual_y+y
+            vertices.extend([(x1,y1),(x,y)])
+            codigos.extend([MplPath.CURVE3,MplPath.CURVE3])
+            atual_x, atual_y = x, y
+        elif maiusculo in {"S", "T"}:
+            # Aproxima comandos suaves por linha até o ponto final.
+            x, y = vals[-2], vals[-1]
+            if relativo:
+                x, y = atual_x + x, atual_y + y
+            atual_x, atual_y = x, y
+            vertices.append((x, y)); codigos.append(MplPath.LINETO)
+
+    return MplPath(vertices, codigos)
+
+
 def _docx_mapa_gre(dados: pd.DataFrame) -> BytesIO:
+    """Gera o mapa do Word apenas com Matplotlib, evitando libCairo no Streamlit Cloud."""
+    from matplotlib.patches import PathPatch
+
     por_numero = {}
     for _, linha in dados.iterrows():
         numero = re.search(r"\d+", str(linha.get("GRE_Label", linha.get("GRE", ""))))
         if numero:
             por_numero[int(numero.group())] = linha
-    regioes, rotulos = [], []
+
+    partes_viewbox = [float(v) for v in str(GRE_MAP_VIEWBOX).split()]
+    vx, vy, vw, vh = partes_viewbox
+    fig, ax = plt.subplots(figsize=(11.0, 6.5), dpi=150)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+
+    estado = PathPatch(_svg_path_para_matplotlib(GRE_STATE_PATH), facecolor="#F4F7FA", edgecolor="#7E8B99", linewidth=1.1, zorder=1)
+    ax.add_patch(estado)
+
     for numero in sorted(GRE_REGION_PATHS):
         linha = por_numero.get(numero)
         total = float(linha.get("Total", 0) or 0) if linha is not None else 0.0
         clim = float(linha.get("Climatizadas", 0) or 0) if linha is not None else 0.0
         pct = clim / total if total else 0.0
         cor = "#AFC1D5" if total <= 0 else "#001F49" if pct >= .70 else "#1F77D0" if pct >= .50 else "#F2A900" if pct >= .30 else "#EF4444"
-        texto = "#FFFFFF" if total > 0 and (pct >= .50 or pct < .30) else "#17365D"
+        cor_texto = "#FFFFFF" if total > 0 and (pct >= .50 or pct < .30) else "#17365D"
+        patch = PathPatch(_svg_path_para_matplotlib(GRE_REGION_PATHS[numero]), facecolor=cor, edgecolor="white", linewidth=.55, zorder=2)
+        ax.add_patch(patch)
         x, y = GRE_LABEL_CENTERS[numero]
-        regioes.append(f'<path d="{GRE_REGION_PATHS[numero]}" fill="{cor}" stroke="#FFFFFF" stroke-width=".7"/>')
-        rotulos.append(f'<text x="{x}" y="{y}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="700" fill="{texto}">{numero}ª</text>')
-    svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="650" viewBox="{GRE_MAP_VIEWBOX}">'
-        '<rect width="100%" height="100%" fill="white"/>'
-        f'<path d="{GRE_STATE_PATH}" fill="#F4F7FA" stroke="#7E8B99" stroke-width="2"/>'
-        + "".join(regioes)
-        + f'<path d="{GRE_MUNICIPAL_PATHS}" fill="none" stroke="rgba(255,255,255,.55)" stroke-width=".38"/>'
-        + "".join(rotulos)
-        + '</svg>'
-    )
-    fluxo = BytesIO()
-    cairosvg.svg2png(bytestring=svg.encode("utf-8"), write_to=fluxo, output_width=1400, output_height=820)
-    fluxo.seek(0)
-    return fluxo
+        ax.text(x, y, f"{numero}ª", ha="center", va="center", fontsize=7.5, fontweight="bold", color=cor_texto, zorder=4)
+
+    try:
+        municipais = PathPatch(_svg_path_para_matplotlib(GRE_MUNICIPAL_PATHS), facecolor="none", edgecolor=(1,1,1,.55), linewidth=.22, zorder=3)
+        ax.add_patch(municipais)
+    except Exception:
+        pass
+
+    ax.set_xlim(vx, vx + vw)
+    ax.set_ylim(vy + vh, vy)
+    ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
+    fig.subplots_adjust(left=.01, right=.99, top=.99, bottom=.01)
+    return _docx_salvar_figura_matplotlib(fig, dpi=180)
 
 
 def _docx_grafico_ranking(dados: pd.DataFrame) -> BytesIO:
@@ -3116,7 +3213,7 @@ def _gerar_relatorio_word_editavel(
 ) -> bytes:
     """Gera o mesmo relatório gerencial em DOCX, com textos, tabelas e figuras editáveis."""
     if not DOCX_DISPONIVEL:
-        raise RuntimeError("Instale python-docx, matplotlib, Pillow e cairosvg para gerar o relatório Word.")
+        raise RuntimeError("Instale python-docx, matplotlib e Pillow para gerar o relatório Word.")
 
     documento = Document()
     _docx_configurar_estilos(documento)
@@ -4023,7 +4120,7 @@ def renderizar_gerador_relatorio(
                     key="baixar_relatorio_word",
                 )
             else:
-                st.warning("Para habilitar o Word, adicione `python-docx`, `matplotlib`, `Pillow` e `cairosvg` ao requirements.txt.")
+                st.warning("Para habilitar o Word, adicione `python-docx`, `matplotlib` e `Pillow` ao requirements.txt.")
     except Exception as erro:
         st.error("Não foi possível montar a página de relatório com os filtros selecionados.")
         st.exception(erro)
