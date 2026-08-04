@@ -3006,7 +3006,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .toc-row span {{ max-width:137mm; }}
 .toc-row i {{ flex:1; border-bottom:1px dotted #91A4B9; transform:translateY(-1.15mm); }}
 .toc-row b {{ min-width:7mm; color:var(--medio); font-size:9.4px; text-align:right; }}
-.print-footer { bottom:8mm !important; }
+.print-footer {{ bottom:8mm !important; }}
 .print-footer::after {{ content:"Página " counter(pagina); margin-left:auto; color:var(--suave); font-weight:850; }}
 .print-header {{ display:grid; grid-template-columns:30mm minmax(0,1fr) 30mm; align-items:center; gap:6mm; border-bottom:1px solid var(--borda); padding-bottom:7mm; margin-bottom:6mm; }}
 .print-header img.gov {{ width:30mm; max-height:16mm; object-fit:contain; justify-self:center; }}
