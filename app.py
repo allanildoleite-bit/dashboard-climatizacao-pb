@@ -2024,6 +2024,148 @@ def _periodo_capa_resumo(periodo: str) -> str:
     return datetime.now().strftime("%m/%Y")
 
 
+
+
+def _avaliacao_conclusao_resumo(percentual: float) -> str:
+    if percentual >= 0.80:
+        return "estágio avançado de execução"
+    if percentual >= 0.60:
+        return "estágio intermediário, com avanço consistente"
+    if percentual >= 0.40:
+        return "estágio intermediário, ainda com volume relevante de intervenções"
+    return "estágio inicial, demandando intensificação do acompanhamento"
+
+
+def _texto_sintese_base_dinamica(insights: dict) -> dict:
+    totais = insights.get("totais", {})
+    total = float(totais.get("total", 0) or 0)
+    clim = float(totais.get("climatizadas", 0) or 0)
+    andamento = float(totais.get("andamento", 0) or 0)
+    rota = float(totais.get("rota", 0) or 0)
+    conclusao = float(totais.get("conclusao", 0) or 0)
+    pend = andamento + rota
+    pend_pct = pend / total if total else 0.0
+    melhor = insights.get("melhor")
+    critica = insights.get("critica")
+
+    objetivo = (
+        "Apresentar, de forma sucinta, os principais indicadores referentes ao processo de "
+        "climatização das unidades escolares da rede estadual de ensino, proporcionando uma "
+        "visão geral da evolução das intervenções e subsidiando o acompanhamento gerencial."
+    )
+
+    apresentacao = (
+        "O presente relatório apresenta uma síntese do acompanhamento das ações de climatização "
+        "executadas nas unidades escolares da rede estadual de ensino. Os indicadores, gráficos e "
+        "análises foram elaborados a partir das informações registradas no Dashboard de Climatização "
+        "e na Planilha Geral da Gerência de Obras (GEOBS), permitindo visualizar o estágio atual das "
+        "intervenções e monitorar sua evolução em todo o Estado."
+    )
+
+    leitura = (
+        f"O recorte analisado contempla {_fmt_num_br(total)} unidades escolares. Desse total, "
+        f"{_fmt_num_br(clim)} encontram-se climatizadas, correspondendo a {_fmt_pct_br(conclusao)} "
+        f"de conclusão. Permanecem {_fmt_num_br(andamento)} unidades com intervenções em andamento "
+        f"e {_fmt_num_br(rota)} em rota de climatização, que juntas representam "
+        f"{_fmt_pct_br(pend_pct)} da base monitorada. O cenário caracteriza-se como "
+        f"{_avaliacao_conclusao_resumo(conclusao)}."
+    )
+    if melhor is not None:
+        leitura += (
+            f" A maior taxa de conclusão foi observada em {melhor.get('GRE_Label', '')}, com "
+            f"{_fmt_pct_br(melhor.get('Conclusao', 0))}."
+        )
+    if critica is not None:
+        leitura += (
+            f" Já {critica.get('GRE_Label', '')} concentra o maior volume de pendências, com "
+            f"{_fmt_num_br(critica.get('Pendencias', 0))} unidades ainda não concluídas."
+        )
+
+    metodologia = (
+        "Os valores apresentados são obtidos a partir das ferramentas oficiais de monitoramento da "
+        "Gerência de Obras (GEOBS), utilizando como base as informações registradas no Dashboard de "
+        "Climatização e na Planilha Geral. Os indicadores são recalculados conforme a base vigente na "
+        "data de emissão do relatório, preservando a correspondência entre os valores exibidos e o "
+        "recorte efetivamente analisado."
+    )
+
+    uso = (
+        "O relatório fornece uma visão consolidada do processo de climatização, apoiando o monitoramento "
+        "das intervenções, a identificação de pontos de atenção, a definição de prioridades e a tomada de "
+        "decisões relacionadas ao planejamento e à execução das obras."
+    )
+    return {"objetivo": objetivo, "apresentacao": apresentacao, "leitura": leitura, "metodologia": metodologia, "uso": uso}
+
+
+def _texto_panorama_gre_dinamico(insights: dict) -> tuple[str, str]:
+    introducao = (
+        "Esta seção apresenta a distribuição das unidades escolares por Gerência Regional de Educação "
+        "(GRE), contemplando o quantitativo total de escolas, as unidades já climatizadas e aquelas que "
+        "ainda possuem pendências, seja com intervenções em andamento ou em rota de climatização."
+    )
+    melhor = insights.get("melhor")
+    critica = insights.get("critica")
+    if melhor is None or critica is None:
+        return introducao, "Não há dados suficientes para comparar o desempenho entre as GREs no recorte selecionado."
+    interpretacao = (
+        f"A análise comparativa indica que {melhor.get('GRE_Label', '')} apresenta o maior percentual de "
+        f"conclusão, com {_fmt_pct_br(melhor.get('Conclusao', 0))} e "
+        f"{_fmt_num_br(melhor.get('Climatizadas', 0))} unidades climatizadas. Em contrapartida, "
+        f"{critica.get('GRE_Label', '')} concentra o maior número de pendências, totalizando "
+        f"{_fmt_num_br(critica.get('Pendencias', 0))} unidades, das quais "
+        f"{_fmt_num_br(critica.get('Em andamento', 0))} estão em andamento e "
+        f"{_fmt_num_br(critica.get('Em rota', 0))} permanecem em rota. Esses resultados permitem "
+        "direcionar o acompanhamento para as regionais com menor avanço proporcional e maior estoque "
+        "de intervenções não concluídas."
+    )
+    return introducao, interpretacao
+
+
+def _texto_prioridades_dinamico(insights: dict, base_filtrada: pd.DataFrame) -> tuple[str, str]:
+    intro = (
+        "A partir da análise apresentada na seção anterior, são identificadas as regiões que demandam "
+        "maior atenção quanto ao andamento das ações de climatização. O monitoramento das pendências "
+        "possibilita direcionar esforços técnicos e administrativos, contribuindo para melhor alocação "
+        "de recursos e maior eficiência na execução das intervenções."
+    )
+    dados = _dados_gre_resumo(base_filtrada)
+    if dados.empty:
+        return intro, "Não há dados suficientes para estabelecer prioridades no recorte selecionado."
+    dados = dados.sort_values(["Pendencias", "Conclusao"], ascending=[False, True])
+    top = dados.head(3)
+    nomes = [str(v) for v in top.get("GRE_Label", top.get("GRE", [])).tolist()]
+    total_pend = float(dados["Pendencias"].sum())
+    top_pend = float(top["Pendencias"].sum())
+    participacao = top_pend / total_pend if total_pend else 0.0
+    lista = ", ".join(nomes[:-1]) + (" e " + nomes[-1] if len(nomes) > 1 else (nomes[0] if nomes else ""))
+    setor_top = insights.get("setor_top")
+    final = (
+        f"As maiores prioridades de acompanhamento concentram-se em {lista}, que em conjunto reúnem "
+        f"{_fmt_num_br(top_pend)} pendências, equivalentes a {_fmt_pct_br(participacao)} do total pendente. "
+        "Recomenda-se acompanhar separadamente as unidades em andamento, com potencial de conclusão no "
+        "curto prazo, e as unidades em rota, que ainda dependem do avanço da programação operacional."
+    )
+    if setor_top:
+        final += f" Na distribuição setorial, {setor_top[0]} apresenta o maior volume registrado, com {_fmt_num_br(setor_top[1])} pendências."
+    final += (
+        " Os resultados consolidados constituem instrumento gerencial para o monitoramento das obras, "
+        "a definição de prioridades e a verificação contínua da execução das intervenções."
+    )
+    return intro, final
+
+
+def _pdf_secao_textual_livre(canvas_pdf, titulo: str, texto: str, x: float, y: float, largura: float,
+                              fonte_titulo: float = 8.0, fonte_texto: float = 7.0, espaco_depois: float = 0.22 * cm) -> float:
+    canvas_pdf.setFillColor(PDF_TEXTO)
+    canvas_pdf.setFont(PDF_FONTE_BOLD, fonte_titulo)
+    canvas_pdf.drawString(x, y, titulo)
+    y -= 0.30 * cm
+    y = _pdf_paragrafo_resumo(
+        canvas_pdf, texto, x, y, largura, fonte=fonte_texto, leading=fonte_texto * 1.42,
+        cor=PDF_TEXTO, alinhamento=TA_JUSTIFY
+    )
+    return y - espaco_depois
+
 def gerar_relatorio_pdf(
     base: pd.DataFrame,
     setor: pd.DataFrame,
@@ -2036,182 +2178,132 @@ def gerar_relatorio_pdf(
     responsavel: str = "Todos",
     incluir_detalhes_operacionais: bool = False,
 ) -> bytes:
-    """Gera um relatório executivo vertical, sempre com exatamente 3 páginas."""
+    """Gera relatório executivo em três páginas, com textos adaptados aos resultados."""
     if not REPORTLAB_DISPONIVEL:
         raise RuntimeError("A biblioteca ReportLab não está instalada.")
 
     _registrar_fontes_dashboard_pdf()
     gres_selecionadas = gres_selecionadas or []
     base_filtrada, resp_filtrados, acomp_filtrado = _filtrar_relatorio(
-        base, responsaveis, acompanhamento, periodo,
-        gres_selecionadas, area, responsavel,
+        base, responsaveis, acompanhamento, periodo, gres_selecionadas, area, responsavel
     )
     totais = _totais_relatorio(base_filtrada)
     insights = _insights_resumo(base_filtrada, totais, setor, acomp_filtrado)
+    textos_sintese = _texto_sintese_base_dinamica(insights)
+    panorama_intro, panorama_interpretacao = _texto_panorama_gre_dinamico(insights)
+    prioridades_intro, prioridades_final = _texto_prioridades_dinamico(insights, base_filtrada)
     periodo_label = _periodo_capa_resumo(periodo)
 
     buffer = BytesIO()
     canvas_pdf = pdfcanvas.Canvas(buffer, pagesize=A4, pageCompression=1)
-    canvas_pdf.setTitle("Relatório Executivo da Climatização Escolar")
+    canvas_pdf.setTitle("Relatório de Climatização Escolar - GEOBS - SEE")
     canvas_pdf.setAuthor("Secretaria de Estado da Educação - GEOBS")
     largura, altura = A4
     margem = 1.05 * cm
     area_largura = largura - 2 * margem
 
-    # PÁGINA 1 - RESUMO EXECUTIVO
+    # PÁGINA 1 — SÍNTESE EXECUTIVA
     y = _pdf_cabecalho_resumo(
-        canvas_pdf, 1,
-        "Relatório Executivo da Climatização Escolar",
-        "Secretaria de Estado da Educação - Gerência de Obras",
-        periodo_label,
+        canvas_pdf, 1, "1. Síntese executiva",
+        "Acompanhamento da climatização das unidades escolares", periodo_label
     )
     y = _pdf_cartoes_kpi_resumo(canvas_pdf, totais, margem, y, area_largura)
-
     gap = 0.32 * cm
     card_w = (area_largura - gap) / 2
-    card_h = 5.25 * cm
+    card_h = 4.70 * cm
     _pdf_donut_resumo(canvas_pdf, totais, margem, y - card_h, card_w, card_h)
     _pdf_progresso_resumo(canvas_pdf, totais, margem + card_w + gap, y - card_h, card_w, card_h)
-    y = y - card_h - 0.48 * cm
+    y = y - card_h - 0.42 * cm
 
-    y = _pdf_titulo_bloco(canvas_pdf, "Leitura executiva", margem, y, area_largura)
-    texto_executivo = _texto_executivo_resumo(insights)
-    _pdf_caixa_texto_dinamico(canvas_pdf, margem, y - 3.20 * cm, area_largura, 3.20 * cm, "Síntese automática dos resultados", texto_executivo)
-
-    # Textos-base compactos: dão contexto sem transformar o resumo em relatório longo.
-    y_base = y - 3.78 * cm
-    y_base = _pdf_titulo_bloco(canvas_pdf, "Escopo e método", margem, y_base, area_largura)
-    gap_base = 0.26 * cm
-    card_base_w = (area_largura - 2 * gap_base) / 3
-    card_base_h = 4.55 * cm
-    textos_base = [
-        ("Objetivo", "Apresentar uma síntese gerencial do avanço da climatização escolar, destacando resultados consolidados, diferenças territoriais e pontos que exigem acompanhamento."),
-        ("Metodologia", "Os indicadores e gráficos são recalculados a partir das mesmas bases e dos mesmos filtros do dashboard. O PDF não utiliza imagens fixas nem valores digitados manualmente."),
-        ("Estrutura", "A primeira página resume o cenário geral; a segunda compara as GREs; e a terceira reúne pendências, setorização e próximos focos."),
-    ]
-    for i, (titulo_base, texto_base) in enumerate(textos_base):
-        _pdf_caixa_texto_dinamico(
-            canvas_pdf,
-            margem + i * (card_base_w + gap_base),
-            y_base - card_base_h,
-            card_base_w,
-            card_base_h,
-            titulo_base,
-            texto_base,
-        )
-
-    # filtros e fonte em um quadro final discreto
-    filtro_gre = "Todas as GREs" if not gres_selecionadas else f"{len(gres_selecionadas)} GRE(s) selecionada(s)"
-    filtros_texto = (
-        f"Recorte utilizado: {periodo or 'Todo o período'}; {filtro_gre}; "
-        f"área técnica: {area or 'Todas'}; responsável: {responsavel or 'Todos'}. "
-        f"Fonte: {config.get('Fonte dos dados', 'GEOBS / Governo da Paraíba')}."
-    )
-    _pdf_caixa_texto_dinamico(
-        canvas_pdf, margem, 1.35 * cm, area_largura, 3.00 * cm,
-        "Recorte e fonte dos dados", filtros_texto,
-    )
+    # Texto corrido, sem caixas, mantendo a estrutura fornecida pelo usuário.
+    y = _pdf_secao_textual_livre(canvas_pdf, "1.1 Objetivo", textos_sintese["objetivo"], margem, y, area_largura, fonte_texto=6.65)
+    y = _pdf_secao_textual_livre(canvas_pdf, "1.2 Apresentação", textos_sintese["apresentacao"], margem, y, area_largura, fonte_texto=6.65)
+    y = _pdf_secao_textual_livre(canvas_pdf, "1.3 Leitura dos resultados", textos_sintese["leitura"], margem, y, area_largura, fonte_texto=6.65)
+    y = _pdf_secao_textual_livre(canvas_pdf, "1.4 Metodologia", textos_sintese["metodologia"], margem, y, area_largura, fonte_texto=6.65)
+    _pdf_secao_textual_livre(canvas_pdf, "1.5 Uso gerencial", textos_sintese["uso"], margem, y, area_largura, fonte_texto=6.65)
     canvas_pdf.showPage()
 
-    # PÁGINA 2 - PANORAMA POR GRE
+    # PÁGINA 2 — PANORAMA POR GRE
     y = _pdf_cabecalho_resumo(
-        canvas_pdf, 2,
-        "Panorama por GRE",
-        "Distribuição das escolas por estágio de climatização",
-        periodo_label,
+        canvas_pdf, 2, "2. Panorama por GRE",
+        "Distribuição das escolas por estágio de climatização", periodo_label
     )
-    y = _pdf_titulo_bloco(canvas_pdf, "Composição por Gerência Regional de Educação", margem, y, area_largura)
-    chart_h = 14.10 * cm
+    y = _pdf_secao_textual_livre(canvas_pdf, "2.1 Apresentação", panorama_intro, margem, y, area_largura, fonte_texto=7.0)
+    y = _pdf_titulo_bloco(canvas_pdf, "Gráfico de área — panorama por GRE", margem, y, area_largura)
+    chart_h = 13.10 * cm
     _pdf_grafico_gre_resumo(canvas_pdf, base_filtrada, margem, y - chart_h, area_largura, chart_h)
-    y = y - chart_h - 0.58 * cm
+    y = y - chart_h - 0.25 * cm
+    _pdf_paragrafo_resumo(
+        canvas_pdf,
+        "Fonte: Dashboard de Climatização e Planilha Geral da Gerência de Obras (GEOBS).",
+        margem, y, area_largura, fonte=5.8, leading=7.0, cor=PDF_TEXTO_SUAVE
+    )
 
     melhor = insights.get("melhor")
     critica = insights.get("critica")
     if melhor is not None and critica is not None:
-        analise_gre = (
-            f"{melhor.get('GRE_Label', '')} apresenta o maior percentual de conclusão, com "
-            f"{_fmt_pct_br(melhor.get('Conclusao', 0))}. Em sentido oposto, "
-            f"{critica.get('GRE_Label', '')} reúne {_fmt_num_br(critica.get('Pendencias', 0))} pendências, "
-            f"sendo {_fmt_num_br(critica.get('Em andamento', 0))} em andamento e "
-            f"{_fmt_num_br(critica.get('Em rota', 0))} em rota."
-        )
-
         destaque_gap = 0.30 * cm
         destaque_w = (area_largura - destaque_gap) / 2
-        destaque_h = 3.55 * cm
-        # melhor desempenho
+        destaque_h = 2.75 * cm
+        y_cards = 5.10 * cm
         canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
-        canvas_pdf.roundRect(margem, 6.25 * cm, destaque_w, destaque_h, 8, stroke=1, fill=1)
-        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.rect(margem, 6.25 * cm, 0.13 * cm, destaque_h, stroke=0, fill=1)
-        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.8)
-        canvas_pdf.drawString(margem + 0.38 * cm, 9.18 * cm, "MAIOR PERCENTUAL DE CONCLUSÃO")
-        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 21)
-        canvas_pdf.drawString(margem + 0.38 * cm, 7.95 * cm, _fmt_pct_br(melhor.get('Conclusao', 0)))
-        _pdf_paragrafo_resumo(canvas_pdf, str(melhor.get('GRE_Label', '')), margem + 3.4 * cm, 8.18 * cm, destaque_w - 3.75 * cm, fonte=7.1, leading=8.7, cor=PDF_TEXTO, negrito=True)
-        _pdf_paragrafo_resumo(canvas_pdf, f"{_fmt_num_br(melhor.get('Climatizadas', 0))} escolas climatizadas no recorte.", margem + 0.38 * cm, 7.25 * cm, destaque_w - 0.76 * cm, fonte=6.4, leading=8.0, cor=PDF_TEXTO_SUAVE)
+        canvas_pdf.roundRect(margem, y_cards, destaque_w, destaque_h, 8, stroke=1, fill=1)
+        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.rect(margem, y_cards, 0.13 * cm, destaque_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.4)
+        canvas_pdf.drawString(margem + 0.35 * cm, y_cards + 2.15 * cm, "MAIOR PERCENTUAL DE CONCLUSÃO")
+        canvas_pdf.setFillColor(PDF_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 18)
+        canvas_pdf.drawString(margem + 0.35 * cm, y_cards + 1.10 * cm, _fmt_pct_br(melhor.get("Conclusao", 0)))
+        _pdf_paragrafo_resumo(canvas_pdf, str(melhor.get("GRE_Label", "")), margem + 3.0 * cm, y_cards + 1.48 * cm, destaque_w - 3.35 * cm, fonte=6.8, negrito=True)
 
-        # maior desafio
-        x_crit = margem + destaque_w + destaque_gap
+        x2 = margem + destaque_w + destaque_gap
         canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
-        canvas_pdf.roundRect(x_crit, 6.25 * cm, destaque_w, destaque_h, 8, stroke=1, fill=1)
-        canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(x_crit, 6.25 * cm, 0.13 * cm, destaque_h, stroke=0, fill=1)
-        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.8)
-        canvas_pdf.drawString(x_crit + 0.38 * cm, 9.18 * cm, "MAIOR VOLUME DE PENDÊNCIAS")
-        canvas_pdf.setFillColor(PDF_VERMELHO_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 21)
-        canvas_pdf.drawString(x_crit + 0.38 * cm, 7.95 * cm, _fmt_num_br(critica.get('Pendencias', 0)))
-        _pdf_paragrafo_resumo(canvas_pdf, str(critica.get('GRE_Label', '')), x_crit + 2.7 * cm, 8.18 * cm, destaque_w - 3.05 * cm, fonte=7.1, leading=8.7, cor=PDF_TEXTO, negrito=True)
-        _pdf_paragrafo_resumo(canvas_pdf, f"{_fmt_num_br(critica.get('Em andamento', 0))} em andamento e {_fmt_num_br(critica.get('Em rota', 0))} em rota.", x_crit + 0.38 * cm, 7.25 * cm, destaque_w - 0.76 * cm, fonte=6.4, leading=8.0, cor=PDF_TEXTO_SUAVE)
-    else:
-        analise_gre = "Não há dados suficientes para comparar o desempenho entre as GREs no recorte selecionado."
+        canvas_pdf.roundRect(x2, y_cards, destaque_w, destaque_h, 8, stroke=1, fill=1)
+        canvas_pdf.setFillColor(PDF_VERMELHO); canvas_pdf.rect(x2, y_cards, 0.13 * cm, destaque_h, stroke=0, fill=1)
+        canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE_BOLD, 6.4)
+        canvas_pdf.drawString(x2 + 0.35 * cm, y_cards + 2.15 * cm, "MAIOR VOLUME DE PENDÊNCIAS")
+        canvas_pdf.setFillColor(PDF_VERMELHO_ESCURO); canvas_pdf.setFont(PDF_FONTE_BOLD, 18)
+        canvas_pdf.drawString(x2 + 0.35 * cm, y_cards + 1.10 * cm, _fmt_num_br(critica.get("Pendencias", 0)))
+        _pdf_paragrafo_resumo(canvas_pdf, str(critica.get("GRE_Label", "")), x2 + 2.6 * cm, y_cards + 1.48 * cm, destaque_w - 2.95 * cm, fonte=6.8, negrito=True)
 
-    _pdf_caixa_texto_dinamico(canvas_pdf, margem, 1.25 * cm, area_largura, 4.35 * cm, "Interpretação do gráfico", analise_gre, alerta=True)
+    _pdf_secao_textual_livre(
+        canvas_pdf, "2.2 Interpretação", panorama_interpretacao,
+        margem, 4.55 * cm, area_largura, fonte_texto=6.8
+    )
     canvas_pdf.showPage()
 
-    # PÁGINA 3 - PENDÊNCIAS E ACOMPANHAMENTO
+    # PÁGINA 3 — PRIORIDADES DE ACOMPANHAMENTO
     y = _pdf_cabecalho_resumo(
-        canvas_pdf, 3,
-        "Pendências e acompanhamento",
-        "Prioridades territoriais e setorização das pendências",
-        periodo_label,
+        canvas_pdf, 3, "3. Prioridades de acompanhamento",
+        "Pendências territoriais e setorização das intervenções", periodo_label
     )
-
+    y = _pdf_secao_textual_livre(canvas_pdf, "3.1 Direcionamento gerencial", prioridades_intro, margem, y, area_largura, fonte_texto=6.9)
     y = _pdf_titulo_bloco(canvas_pdf, "Ranking de pendências por GRE", margem, y, area_largura)
-    ranking_h = 6.45 * cm
+    ranking_h = 5.65 * cm
     canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
     canvas_pdf.roundRect(margem, y - ranking_h, area_largura, ranking_h, 8, stroke=1, fill=1)
-    _pdf_ranking_pendencias_resumo(canvas_pdf, base_filtrada, margem + 0.42 * cm, y - ranking_h + 0.52 * cm, area_largura - 0.84 * cm, ranking_h - 1.00 * cm, limite=6)
-    y = y - ranking_h - 0.52 * cm
+    _pdf_ranking_pendencias_resumo(canvas_pdf, base_filtrada, margem + 0.42 * cm, y - ranking_h + 0.48 * cm, area_largura - 0.84 * cm, ranking_h - 0.90 * cm, limite=6)
+    y = y - ranking_h - 0.40 * cm
 
-    bloco_h = 6.30 * cm
+    y = _pdf_titulo_bloco(canvas_pdf, "Setorização das pendências", margem, y, area_largura)
+    bloco_h = 5.30 * cm
     canvas_pdf.setFillColor(PDF_BRANCO); canvas_pdf.setStrokeColor(PDF_BORDA)
     canvas_pdf.roundRect(margem, y - bloco_h, area_largura, bloco_h, 8, stroke=1, fill=1)
-    canvas_pdf.setFillColor(PDF_TEXTO); canvas_pdf.setFont(PDF_FONTE_BOLD, 8.5)
-    canvas_pdf.drawString(margem + 0.35 * cm, y - 0.52 * cm, "Setorização das pendências")
-    _pdf_setorizacao_resumo(
-        canvas_pdf,
-        setor,
-        margem + 0.35 * cm,
-        y - bloco_h + 0.48 * cm,
-        area_largura - 0.70 * cm,
-        bloco_h - 1.25 * cm,
-        limite=10,
-    )
-    y = y - bloco_h - 0.48 * cm
+    _pdf_setorizacao_resumo(canvas_pdf, setor, margem + 0.35 * cm, y - bloco_h + 0.42 * cm, area_largura - 0.70 * cm, bloco_h - 0.82 * cm, limite=8)
+    y = y - bloco_h - 0.35 * cm
 
-    foco = "O principal foco gerencial deve permanecer nas GREs com maior estoque de pendências, articulando a conclusão das adequações e a programação das instalações."
-    if insights.get("setor_top"):
-        foco += f" Na setorização, {insights['setor_top'][0]} apresenta o maior volume registrado ({_fmt_num_br(insights['setor_top'][1])})."
-    _pdf_caixa_texto_dinamico(canvas_pdf, margem, max(1.20 * cm, y - 3.10 * cm), area_largura, 3.10 * cm, "Conclusão e próximos focos", foco)
+    _pdf_secao_textual_livre(
+        canvas_pdf, "3.2 Considerações finais", prioridades_final,
+        margem, y, area_largura, fonte_texto=6.85
+    )
 
     atualizacao = config.get("Última atualização oficial", config.get("Ultima atualização oficial", ""))
     if atualizacao:
         canvas_pdf.setFillColor(PDF_TEXTO_SUAVE); canvas_pdf.setFont(PDF_FONTE, 5.8)
-        canvas_pdf.drawString(margem, 1.02 * cm, f"Última atualização da base: {str(atualizacao)[:100]}")
+        canvas_pdf.drawString(margem, 1.00 * cm, f"Última atualização da base: {str(atualizacao)[:100]}")
 
     canvas_pdf.save()
     buffer.seek(0)
     return buffer.getvalue()
-
 
 def _preview_barras_gre(base_filtrada: pd.DataFrame, limite: int = 10) -> str:
     dados = _dados_gre_resumo(base_filtrada)
@@ -2730,26 +2822,79 @@ def _montar_html_relatorio_impressao(
     critica_valor = _fmt_num_br(critica.get('Pendencias', 0)) if critica is not None else '—'
     critica_nome = escape(str(critica.get('GRE_Label', 'Sem dados'))) if critica is not None else 'Sem dados para comparação.'
 
-    # Sumário dinâmico: capa e sumário ocupam as páginas 1 e 2.
-    pagina_atual = 3
+    # Indicadores dinâmicos utilizados na narrativa técnica do relatório.
+    resumo_gre = _dados_gre_resumo(base_filtrada)
+    if not resumo_gre.empty:
+        resumo_gre = resumo_gre.copy()
+        resumo_gre["Conclusao"] = pd.to_numeric(resumo_gre.get("Conclusao", 0), errors="coerce").fillna(0)
+        resumo_gre["Pendências"] = pd.to_numeric(resumo_gre.get("Pendências", 0), errors="coerce").fillna(0)
+        resumo_gre["Climatizadas"] = pd.to_numeric(resumo_gre.get("Climatizadas", 0), errors="coerce").fillna(0)
+        resumo_gre["Em andamento"] = pd.to_numeric(resumo_gre.get("Em andamento", 0), errors="coerce").fillna(0)
+        resumo_gre["Em rota"] = pd.to_numeric(resumo_gre.get("Em rota", 0), errors="coerce").fillna(0)
+        top_clim = resumo_gre.sort_values("Climatizadas", ascending=False).head(3)
+        top_pend = resumo_gre.sort_values("Pendências", ascending=False).head(3)
+        top_clim_txt = ", ".join(escape(str(v)) for v in top_clim.get("GRE_Label", pd.Series(dtype=str)).tolist()) or "as GREs com maior rede atendida"
+        top_pend_txt = ", ".join(escape(str(v)) for v in top_pend.get("GRE_Label", pd.Series(dtype=str)).tolist()) or "as GREs com maior demanda remanescente"
+        total_pend = max(float(resumo_gre["Pendências"].sum()), 1.0)
+        top_pend_share = float(top_pend["Pendências"].sum()) / total_pend
+        prioridade_imediata = resumo_gre[(resumo_gre["Conclusao"] < .50) & (resumo_gre["Pendências"] > 0)].sort_values("Pendências", ascending=False)
+        prioridade_conclusao = resumo_gre[(resumo_gre["Conclusao"] >= .50) & (resumo_gre["Conclusao"] < .70) & (resumo_gre["Em andamento"] > 0)].sort_values("Em andamento", ascending=False)
+        prioridade_manutencao = resumo_gre[resumo_gre["Conclusao"] >= .70].sort_values("Conclusao", ascending=False)
+    else:
+        top_clim_txt = "sem dados suficientes"
+        top_pend_txt = "sem dados suficientes"
+        top_pend_share = 0.0
+        prioridade_imediata = pd.DataFrame()
+        prioridade_conclusao = pd.DataFrame()
+        prioridade_manutencao = pd.DataFrame()
+
+    def _lista_prioridade(df: pd.DataFrame, limite: int = 6) -> str:
+        if df is None or df.empty:
+            return "Nenhuma GRE classificada neste grupo para o recorte analisado."
+        itens = []
+        for _, linha in df.head(limite).iterrows():
+            nome = escape(str(linha.get("GRE_Label", linha.get("GRE", "GRE"))))
+            taxa = _fmt_pct_br(float(linha.get("Conclusao", 0) or 0))
+            pend = _fmt_num_br(float(linha.get("Pendências", 0) or 0))
+            itens.append(f"{nome} ({taxa}; {pend} pendências)")
+        return "; ".join(itens) + "."
+
+    total_real = float(totais.get("total", 0) or 0)
+    climatizadas_real = float(totais.get("climatizadas", 0) or 0)
+    andamento_real = float(totais.get("andamento", 0) or 0)
+    rota_real = float(totais.get("rota", 0) or 0)
+    pendencias_real = float(totais.get("pendencias", andamento_real + rota_real) or 0)
+    avaliacao_geral = (
+        "elevado" if conclusao >= .70 else
+        "intermediário" if conclusao >= .50 else
+        "baixo" if conclusao >= .30 else
+        "crítico"
+    )
+
+    # Sumário detalhado, mantendo a estrutura visual da versão aprovada.
     sumario_html = "".join([
-        '<div class="toc-row toc-main"><span>1. Síntese executiva</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.1 Apresentação e objetivo do relatório</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.2 Indicadores gerais de climatização</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.3 Distribuição dos estágios operacionais</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-main"><span>1. Apresentação e síntese executiva</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.1 Objetivo e abrangência do relatório</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.2 Indicadores gerais da climatização</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.3 Distribuição por estágio operacional</span><i></i><b>3</b></div>',
         '<div class="toc-row toc-sub"><span>1.4 Leitura executiva dos resultados</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-main"><span>2. Panorama gráfico por Gerência Regional</span><i></i><b>4</b></div>',
+        '<div class="toc-row toc-main"><span>2. Panorama por Gerência Regional</span><i></i><b>4</b></div>',
         '<div class="toc-row toc-sub"><span>2.1 Total, climatizadas e pendências por GRE</span><i></i><b>4</b></div>',
-        '<div class="toc-row toc-sub"><span>2.2 Quantitativo de escolas climatizadas por GRE</span><i></i><b>4</b></div>',
-        '<div class="toc-row toc-main"><span>3. Desempenho territorial da climatização</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-sub"><span>3.1 Mapa das 16 Gerências Regionais de Educação</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-sub"><span>3.2 Classes de prioridade e taxas de conclusão</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-sub"><span>3.3 Destaques regionais</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-main"><span>4. Prioridades de acompanhamento</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>4.1 Ranking de pendências por GRE</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>4.2 Setorização das pendências</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>4.3 Recomendações para acompanhamento gerencial</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-sub"><span>2.2 Quantidade de unidades climatizadas</span><i></i><b>4</b></div>',
+        '<div class="toc-row toc-sub"><span>2.3 Interpretação dos resultados regionais</span><i></i><b>4</b></div>',
+        '<div class="toc-row toc-main"><span>3. Distribuição espacial dos resultados</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>3.1 Classificação territorial das 16 GREs</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>3.2 Regiões de desempenho alto, médio, baixo e crítico</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>3.3 Destaques e desigualdades territoriais</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-main"><span>4. Análise das pendências</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-sub"><span>4.1 Pendências por GRE e estágio operacional</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-sub"><span>4.2 Setorização das demandas</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-sub"><span>4.3 Critérios e grupos de prioridade</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-main"><span>5. Considerações finais e recomendações</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>5.1 Síntese dos avanços e gargalos</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>5.2 Recomendações para acompanhamento gerencial</span><i></i><b>7</b></div>',
     ])
+
 
     return f'''<!DOCTYPE html>
 <html lang="pt-BR">
@@ -2874,6 +3019,14 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-mini-track {{ height:4.5mm; }} .print-status-fill {{ height:100%; background:linear-gradient(90deg,var(--noite),var(--medio)); border-radius:1.2mm; }}
 .print-footer {{ position:absolute; left:15mm; right:15mm; bottom:7mm; border-top:1px solid var(--borda); padding-top:2.5mm; display:flex; justify-content:space-between; color:var(--suave); font-size:6.7px; font-weight:700; }}
 .print-empty {{ color:var(--suave); font-size:9px; padding:8mm; text-align:center; }}
+.print-narrative {{ margin:0 0 4mm; color:#25364F; font-family:"Times New Roman",Times,serif; font-size:10.5pt; line-height:1.5; text-align:justify; text-indent:1.25cm; }}
+.print-narrative.no-indent {{ text-indent:0; }}
+.print-subsection-title {{ margin:4mm 0 2.5mm; color:var(--escuro); font-family:"Times New Roman",Times,serif; font-size:12pt; font-weight:700; text-align:left; }}
+.print-figure-title {{ margin:0 0 2mm; color:#18365C; font-family:"Times New Roman",Times,serif; font-size:9pt; font-weight:700; text-align:center; }}
+.print-figure-source {{ margin:1.5mm 0 3mm; color:#4C5F75; font-family:"Times New Roman",Times,serif; font-size:8pt; text-align:center; }}
+.print-priority-list {{ margin:2mm 0 4mm 7mm; padding:0; color:#25364F; font-family:"Times New Roman",Times,serif; font-size:9.6pt; line-height:1.45; }}
+.print-priority-list li {{ margin-bottom:1.8mm; }}
+.print-section-divider {{ border:0; border-top:1px solid var(--borda); margin:4mm 0; }}
 @page {{ size:A4 portrait; margin:0; }}
 @media print {{
   html,body {{ background:#fff; }}
@@ -2951,112 +3104,137 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <h2 class="print-section-title">1. Síntese executiva</h2>
-  <div class="print-intro">
-    O presente relatório apresenta uma síntese do acompanhamento das ações de climatização das escolas da rede estadual da Paraíba. Os indicadores e gráficos foram organizados a partir das mesmas bases e critérios utilizados no dashboard da GEOBS, permitindo visualizar o estágio atual das intervenções, o nível de conclusão e os principais pontos que demandam acompanhamento gerencial.
-  </div>
+  <h2 class="print-section-title">1. Apresentação e síntese executiva</h2>
+  <h3 class="print-subsection-title">1.1 Objetivo e abrangência do relatório</h3>
+  <p class="print-narrative">Este relatório apresenta o panorama do processo de climatização das unidades escolares vinculadas à Secretaria de Estado da Educação da Paraíba, com base nos dados consolidados e acompanhados pela Gerência de Obras. O documento tem como finalidade sistematizar os resultados alcançados, identificar diferenças entre as Gerências Regionais de Educação e orientar as ações necessárias à continuidade do programa.</p>
+  <p class="print-narrative">A análise considera o quantitativo total de unidades escolares, as escolas já climatizadas, os serviços em andamento e as unidades inseridas em rota de climatização. Os resultados representam a situação registrada na data de atualização informada na base e devem ser interpretados como um retrato do acompanhamento no momento da emissão.</p>
+  <h3 class="print-subsection-title">1.2 Indicadores gerais da climatização</h3>
   <div class="print-kpis">
-    <div class="print-kpi"><small>Total de escolas</small><b>{_fmt_num_br(totais.get('total',0))}</b></div>
-    <div class="print-kpi"><small>Climatizadas</small><b>{_fmt_num_br(totais.get('climatizadas',0))}</b></div>
-    <div class="print-kpi" style="--accent:var(--claro)"><small>Em andamento</small><b>{_fmt_num_br(totais.get('andamento',0))}</b></div>
-    <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em rota</small><b>{_fmt_num_br(totais.get('rota',0))}</b></div>
+    <div class="print-kpi"><small>Total de escolas</small><b>{_fmt_num_br(total_real)}</b></div>
+    <div class="print-kpi"><small>Climatizadas</small><b>{_fmt_num_br(climatizadas_real)}</b></div>
+    <div class="print-kpi" style="--accent:var(--claro)"><small>Em andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
+    <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em rota</small><b>{_fmt_num_br(rota_real)}</b></div>
     <div class="print-kpi" style="--accent:var(--medio)"><small>Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
   </div>
+  <p class="print-narrative">A rede analisada reúne <b>{_fmt_num_br(total_real)}</b> unidades escolares, das quais <b>{_fmt_num_br(climatizadas_real)}</b> encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b> do total. Permanecem <b>{_fmt_num_br(andamento_real)}</b> unidades com serviços em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. O desempenho geral é classificado como <b>{avaliacao_geral}</b>, considerando a proporção de escolas atendidas.</p>
+  <h3 class="print-subsection-title">1.3 Distribuição por estágio operacional</h3>
   <div class="print-two">
     <div class="print-card">
-      <h3>Distribuição geral por situação</h3>
+      <div class="print-figure-title">Figura 1 – Distribuição geral da situação das unidades escolares</div>
       <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
-      <div class="print-legend">
-        <span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span>
-        <span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span>
-        <span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span>
-      </div>
+      <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
     </div>
     <div class="print-card">
-      <h3>Progresso geral da climatização</h3>
+      <div class="print-figure-title">Indicador geral de conclusão</div>
       <div class="print-progress-number">{_fmt_pct_br(conclusao)}</div>
       <div class="print-progress-track"><div class="print-progress-fill"></div></div>
-      <p class="print-subtitle">{_fmt_num_br(totais.get('climatizadas',0))} escolas climatizadas e {_fmt_num_br(totais.get('pendencias',0))} pendências no recorte selecionado.</p>
-      <div class="print-text-box"><b>Leitura dos resultados.</b> {texto_executivo}</div>
+      <p class="print-subtitle">{_fmt_num_br(climatizadas_real)} escolas climatizadas e {_fmt_num_br(pendencias_real)} pendências.</p>
     </div>
   </div>
-  <div class="print-method">
-    <div><b>Objetivo</b>Apresentar, em formato sintético, os resultados consolidados e os pontos que exigem acompanhamento.</div>
-    <div><b>Metodologia</b>Os valores são recalculados conforme os filtros aplicados, utilizando as mesmas bases do painel.</div>
-    <div><b>Uso gerencial</b>O relatório apoia a priorização das adequações, liberações e instalações nas unidades escolares.</div>
-  </div>
+  <h3 class="print-subsection-title">1.4 Leitura executiva dos resultados</h3>
+  <p class="print-narrative">A composição apresentada na Figura 1 evidencia o peso relativo das unidades já atendidas e das demandas remanescentes. A soma das escolas em andamento e em rota corresponde a <b>{_fmt_pct_br(pendencias_real/max(total_real,1))}</b> da rede analisada. {texto_executivo}</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
 <section class="print-sheet page-graficos">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Visualizações por Gerência Regional</h1><p>Total, climatizadas e pendências por GRE</p></div>
+    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Panorama por Gerência Regional</h1><p>Resultados absolutos e comparação regional</p></div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <h2 class="print-section-title">2. Panorama gráfico por GRE</h2>
+  <h2 class="print-section-title">2. Panorama por Gerência Regional</h2>
+  <h3 class="print-subsection-title">2.1 Total, climatizadas e pendências por GRE</h3>
+  <p class="print-narrative">As Gerências Regionais de Educação possuem redes escolares de dimensões distintas. Por esse motivo, a leitura dos resultados deve combinar os valores absolutos de atendimento com a proporção de unidades climatizadas. Uma GRE pode apresentar elevado número de escolas atendidas e, simultaneamente, manter quantidade expressiva de pendências em razão do tamanho de sua rede.</p>
   <div class="print-new-chart-grid {classe_grade_graficos}">
     <div class="print-new-chart-card item-area">
-      <h3>Gráfico de área — panorama por GRE</h3>
-      <p>Total, escolas climatizadas e pendências.</p>
+      <div class="print-figure-title">Figura 2 – Total, escolas climatizadas e pendências por GRE</div>
       {_relatorio_area_svg(base_filtrada)}
       <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
     </div>
     <div class="print-new-chart-card item-barras">
-      <h3>Climatização por GRE</h3>
-      <p>Quantidade de escolas climatizadas.</p>
+      <div class="print-figure-title">Figura 3 – Quantidade de unidades escolares climatizadas por GRE</div>
       {_relatorio_barras_verticais_svg(base_filtrada)}
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
     </div>
   </div>
+  <h3 class="print-subsection-title">2.2 Interpretação dos resultados regionais</h3>
+  <p class="print-narrative">Os maiores quantitativos absolutos de unidades climatizadas concentram-se em <b>{top_clim_txt}</b>. Esse resultado deve ser confrontado com o número total de escolas de cada regional, pois valores absolutos elevados não significam, necessariamente, maior taxa de conclusão. As diferenças observadas orientam tanto a avaliação do volume já executado quanto a identificação das regionais que ainda possuem demanda remanescente significativa.</p>
+  <p class="print-narrative">As três GREs com maior volume de pendências são <b>{top_pend_txt}</b>. Em conjunto, elas representam <b>{_fmt_pct_br(top_pend_share)}</b> das pendências registradas, indicando que a concentração de esforços nessas regionais pode produzir impacto relevante no indicador estadual.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
 <section class="print-sheet page-mapa">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Mapa por Gerência Regional</h1><p>Climatizadas em relação ao total de escolas</p></div>
+    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Distribuição espacial dos resultados</h1><p>Classificação territorial das 16 GREs</p></div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <h2 class="print-section-title">3. Desempenho e resultados da climatização</h2>
-  <p class="print-subtitle">O mapa geográfico apresenta a classificação das GREs conforme o percentual de escolas climatizadas em relação ao total. Os valores internos mostram a razão climatizadas/total.</p>
+  <h2 class="print-section-title">3. Distribuição espacial dos resultados</h2>
+  <p class="print-narrative">A espacialização permite visualizar como o processo de climatização se distribui no território paraibano. O mapa agrupa os municípios de acordo com as 16 Gerências Regionais de Educação e classifica cada regional conforme o percentual de unidades climatizadas.</p>
   <div class="print-map-card">
+    <div class="print-figure-title">Figura 4 – Classificação territorial do desempenho da climatização escolar por GRE</div>
     {_relatorio_mapa_gre_html(base_filtrada)}
-    <div class="print-map-legend">
-      <span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span>
-      <span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span>
-      <span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span>
-      <span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-    </div>
+    <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
+    <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
   </div>
   <div class="print-highlight-grid">
     <div class="print-highlight" style="--accent:var(--escuro)"><small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p></div>
     <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
   </div>
-  <div class="print-text-box"><b>Interpretação.</b> {escape(leitura_gre)}</div>
+  <h3 class="print-subsection-title">3.1 Interpretação territorial</h3>
+  <p class="print-narrative">A Figura 4 demonstra que o avanço da climatização não ocorre de maneira homogênea. As áreas classificadas como baixo ou crítico desempenho devem ser analisadas considerando o quantitativo de escolas pendentes, o estágio dos processos, as condições de contratação, a disponibilidade de equipes e as dificuldades logísticas. {escape(leitura_gre)}</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
 <section class="print-sheet page-prioridades">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Pendências e Setorização</h1><p>Prioridades territoriais e distribuição das pendências</p></div>
+    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Análise das pendências</h1><p>Distribuição regional, estágio operacional e prioridades</p></div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <h2 class="print-section-title">4. Prioridades de acompanhamento</h2>
-  <p class="print-subtitle">A leitura das pendências permite direcionar o acompanhamento para as GREs e setores com maior volume de unidades ainda não concluídas. As barras combinam escolas em andamento e em rota de climatização.</p>
+  <h2 class="print-section-title">4. Análise das pendências</h2>
+  <h3 class="print-subsection-title">4.1 Situação geral e distribuição por GRE</h3>
+  <p class="print-narrative">Foram identificadas <b>{_fmt_num_br(pendencias_real)}</b> unidades pendentes, sendo <b>{_fmt_num_br(andamento_real)}</b> em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. As unidades em andamento apresentam maior possibilidade de conclusão no curto ou médio prazo, desde que não existam impedimentos técnicos, administrativos ou logísticos. As unidades em rota exigem atenção à programação, à disponibilidade de equipamentos e às condições necessárias para o início do atendimento.</p>
   <div class="print-chart-card item-ranking">
-    <h3 style="margin:0 0 2mm;color:var(--escuro);font-size:11px">Ranking de pendências por GRE</h3>
+    <div class="print-figure-title">Figura 5 – Ranking de pendências por GRE</div>
     <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
     {_relatorio_ranking_html(base_filtrada, 6)}
+    <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
   </div>
-  <div class="print-card item-setorizacao" style="margin-top:4mm;min-height:72mm;">
-    <h3>Setorização das pendências</h3>{_relatorio_setores_html(setor, 10)}
+  <h3 class="print-subsection-title">4.2 Setorização das pendências</h3>
+  <div class="print-card item-setorizacao" style="min-height:58mm;">
+    {_relatorio_setores_html(setor, 10)}
   </div>
-  <div class="print-text-box"><b>Considerações finais.</b> {escape(conclusao_texto)}</div>
-  <div class="print-filter-note"><b>Última atualização da base:</b> {atualizacao} · <b>Emissão:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</div>
+  <p class="print-narrative">A análise por setor complementa a leitura regional e permite localizar as etapas ou frentes de trabalho em que as demandas estão concentradas. A permanência prolongada de unidades na mesma situação deve motivar a verificação individual dos impedimentos, dos prazos e das providências necessárias à continuidade do atendimento.</p>
+  <h3 class="print-subsection-title">4.3 Grupos de prioridade</h3>
+  <ul class="print-priority-list">
+    <li><b>Prioridade imediata:</b> {_lista_prioridade(prioridade_imediata)}</li>
+    <li><b>Prioridade de conclusão:</b> {_lista_prioridade(prioridade_conclusao)}</li>
+    <li><b>Prioridade de manutenção:</b> {_lista_prioridade(prioridade_manutencao)}</li>
+  </ul>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
+<section class="print-sheet page-conclusao">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Considerações finais e recomendações</h1><p>Síntese dos avanços, gargalos e ações de acompanhamento</p></div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">5. Considerações finais e recomendações</h2>
+  <h3 class="print-subsection-title">5.1 Síntese dos avanços e gargalos</h3>
+  <p class="print-narrative">Os resultados demonstram que o programa de climatização escolar apresenta avanços relevantes, mas mantém diferenças importantes entre as Gerências Regionais de Educação. O percentual estadual de conclusão deve ser analisado em conjunto com a distribuição territorial e com o estágio das pendências, evitando que o resultado agregado oculte situações regionais mais críticas.</p>
+  <p class="print-narrative">A conclusão dos serviços já iniciados representa uma oportunidade de avanço no curto prazo. Paralelamente, as unidades em rota devem receber programação objetiva, com indicação das condições necessárias para início, responsáveis e previsão de atendimento. A concentração das pendências em <b>{top_pend_txt}</b> reforça a importância de direcionar o acompanhamento para as regionais que podem produzir maior impacto no indicador estadual.</p>
+  <h3 class="print-subsection-title">5.2 Recomendações para acompanhamento gerencial</h3>
+  <p class="print-narrative">Recomenda-se acompanhar periodicamente o estágio das unidades em andamento, estabelecer previsão de atendimento para as escolas em rota e registrar de forma padronizada os principais impedimentos. A base deve conter, sempre que disponível, a situação de cada unidade, o estágio do serviço, o responsável, o impedimento principal e a previsão de conclusão.</p>
+  <p class="print-narrative">A definição das prioridades deve considerar simultaneamente a taxa de conclusão, o número absoluto de unidades pendentes, o volume de serviços em andamento, as escolas em rota e o tempo de permanência em cada situação. Esse procedimento permite diferenciar demandas que necessitam de intervenção imediata das regionais próximas da conclusão integral.</p>
+  <p class="print-narrative">{escape(conclusao_texto)}</p>
+  <hr class="print-section-divider">
+  <p class="print-narrative no-indent"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 </div>
 </body>
 </html>'''
