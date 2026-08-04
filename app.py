@@ -2877,22 +2877,22 @@ def _montar_html_relatorio_impressao(
         '<div class="toc-row toc-sub"><span>1.1 Objetivo e abrangência do relatório</span><i></i><b>3</b></div>',
         '<div class="toc-row toc-sub"><span>1.2 Indicadores gerais da climatização</span><i></i><b>3</b></div>',
         '<div class="toc-row toc-sub"><span>1.3 Distribuição por estágio operacional</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.4 Leitura executiva dos resultados</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-main"><span>2. Panorama por Gerência Regional</span><i></i><b>4</b></div>',
-        '<div class="toc-row toc-sub"><span>2.1 Total, climatizadas e pendências por GRE</span><i></i><b>4</b></div>',
-        '<div class="toc-row toc-sub"><span>2.2 Quantidade de unidades climatizadas</span><i></i><b>4</b></div>',
-        '<div class="toc-row toc-sub"><span>2.3 Interpretação dos resultados regionais</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-main"><span>3. Distribuição espacial dos resultados</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>3.1 Classificação territorial das 16 GREs</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>3.2 Regiões de desempenho alto, médio, baixo e crítico</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-sub"><span>3.3 Destaques e desigualdades territoriais</span><i></i><b>6</b></div>',
-        '<div class="toc-row toc-main"><span>4. Prioridades de acompanhamento</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>4.1 Pendências por GRE e estágio operacional</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>4.2 Setorização das demandas</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>4.3 Critérios e grupos de prioridade</span><i></i><b>8</b></div>',
-        '<div class="toc-row toc-main"><span>5. Considerações finais</span><i></i><b>9</b></div>',
-        '<div class="toc-row toc-sub"><span>5.1 Síntese dos avanços e gargalos</span><i></i><b>9</b></div>',
-        '<div class="toc-row toc-sub"><span>5.2 Recomendações para acompanhamento gerencial</span><i></i><b>9</b></div>',
+        '<div class="toc-row toc-sub"><span>1.4 Metodologia e uso gerencial</span><i></i><b>4</b></div>',
+        '<div class="toc-row toc-main"><span>2. Panorama por Gerência Regional</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>2.1 Total, climatizadas e pendências por GRE</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>2.2 Quantidade de unidades climatizadas</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>2.3 Interpretação dos resultados regionais</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-main"><span>3. Distribuição espacial dos resultados</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>3.1 Classificação territorial das 16 GREs</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>3.2 Regiões de desempenho alto, médio, baixo e crítico</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>3.3 Destaques e desigualdades territoriais</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-main"><span>4. Prioridades de acompanhamento</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.1 Pendências por GRE e estágio operacional</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.2 Setorização das demandas</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.3 Critérios e grupos de prioridade</span><i></i><b>9</b></div>',
+        '<div class="toc-row toc-main"><span>5. Considerações finais</span><i></i><b>10</b></div>',
+        '<div class="toc-row toc-sub"><span>5.1 Síntese dos avanços e gargalos</span><i></i><b>10</b></div>',
+        '<div class="toc-row toc-sub"><span>5.2 Recomendações para acompanhamento gerencial</span><i></i><b>10</b></div>',
     ])
 
 
@@ -2919,7 +2919,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-document {{ padding:22px 0 36px; display:flex; flex-direction:column; align-items:center; gap:20px; counter-reset:pagina; }}
 .print-sheet {{
   width:210mm; height:297mm; background:#fff; position:relative; overflow:hidden;
-  padding:16mm 15mm 19mm; box-shadow:0 12px 34px rgba(0,31,73,.18); counter-increment:pagina;
+  padding:16mm 15mm 23mm; box-shadow:0 12px 34px rgba(0,31,73,.18); counter-increment:pagina;
 }}
 .print-sheet::before {{
   content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
@@ -2944,7 +2944,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .cover-meta b {{ display:block; margin-top:1.4mm; color:var(--escuro); font-size:11px; line-height:1.35; }}
 .cover-institution {{ margin-top:auto; text-align:center; color:var(--suave); font-size:8.4px; font-weight:750; line-height:1.45; }}
 .toc-page {{ padding-top:18mm; }}
-.toc-header {{ display:grid; grid-template-columns:34mm 1fr 34mm; align-items:center; gap:6mm; padding-bottom:7mm; border-bottom:1px solid var(--borda); }}
+.toc-header {{ display:grid; grid-template-columns:34mm 1fr 34mm; align-items:center; gap:6mm; padding-bottom:6mm; border-bottom:1px solid var(--borda); }}
 .toc-header img {{ width:100%; height:17mm; object-fit:contain; }}
 .toc-header h1 {{ margin:0; text-align:center; color:var(--noite); font-size:25px; font-weight:950; }}
 .toc-intro {{ margin:8mm 0 5mm; color:var(--suave); font-size:10.5px; line-height:1.5; text-align:center; }}
@@ -3132,8 +3132,24 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
       <p class="print-subtitle">{_fmt_num_br(climatizadas_real)} escolas climatizadas e {_fmt_num_br(pendencias_real)} pendências.</p>
     </div>
   </div>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
+
+<section class="print-sheet page-metodologia">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">1. Síntese executiva</h2>
   <h3 class="print-subsection-title">1.4 Metodologia e uso gerencial</h3>
-  <p class="print-narrative">Os valores apresentados são obtidos a partir das ferramentas oficiais de monitoramento da Gerência de Obras (GEOBS) e atualizados conforme a base vigente na data de emissão. A composição apresentada na Figura 1 evidencia o peso relativo das unidades já atendidas e das demandas remanescentes. A soma das escolas em andamento e em rota corresponde a <b>{_fmt_pct_br(pendencias_real/max(total_real,1))}</b> da rede analisada. {texto_executivo} Essas informações apoiam o monitoramento das intervenções, a definição de prioridades e a tomada de decisões relacionadas ao planejamento e à execução das ações de climatização.</p>
+  <p class="print-narrative">Os valores apresentados são obtidos a partir das ferramentas oficiais de monitoramento da Gerência de Obras (GEOBS) e atualizados conforme a base vigente na data de emissão. A composição apresentada na Figura 1 evidencia o peso relativo das unidades já atendidas e das demandas remanescentes.</p>
+  <p class="print-narrative">A soma das escolas em andamento e em rota corresponde a <b>{_fmt_pct_br(pendencias_real/max(total_real,1))}</b> da rede analisada. {texto_executivo}</p>
+  <p class="print-narrative">As informações consolidadas apoiam o monitoramento das intervenções, a definição de prioridades e a tomada de decisões relacionadas ao planejamento e à execução das ações de climatização. A leitura deve ser atualizada sempre que houver alteração na base de dados, de modo que o relatório represente o estágio mais recente das unidades escolares acompanhadas.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
