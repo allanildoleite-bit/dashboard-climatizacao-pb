@@ -3209,7 +3209,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-graficos">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Análise Regional da Climatização</h1><p>Resultados absolutos e comparação regional</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2. Análise Regional da Climatização</h2>
@@ -3234,7 +3238,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-interpretacao-regional">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Análise Regional da Climatização</h1><p>Interpretação dos resultados apresentados</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2.2 Desempenho das Gerências Regionais</h2>
@@ -3248,7 +3256,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-mapa">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Análise Territorial</h1><p>Classificação territorial das 16 GREs</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">3. Análise Territorial</h2>
@@ -3271,7 +3283,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-prioridades">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Gestão das Pendências</h1><p>Distribuição regional, estágio operacional e prioridades</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">4. Gestão das Pendências</h2>
@@ -3296,7 +3312,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-grupos-prioridade">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Acompanhamento gerencial</div><h1>Gestão das Pendências</h1><p>Critérios e grupos de atuação</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">4.3 Matriz de Priorização</h2>
@@ -3315,7 +3335,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <section class="print-sheet page-conclusao">
   <div class="print-header">
     <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center"><div class="eyebrow">Relatório de Climatização Escolar – GEOBS – SEE</div><h1>Conclusões e Recomendações</h1><p>Síntese dos avanços, gargalos e ações de acompanhamento</p></div>
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">5. Conclusões e Recomendações</h2>
