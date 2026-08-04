@@ -2871,24 +2871,21 @@ def _montar_html_relatorio_impressao(
         "crítico"
     )
 
-    # Sumário detalhado, mantendo a estrutura visual da versão aprovada.
+    # Sumário espelhado nos títulos efetivamente apresentados no relatório.
     sumario_html = "".join([
-        '<div class="toc-row toc-main"><span>1. Apresentação e síntese executiva</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.1 Objetivo e abrangência do relatório</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.2 Indicadores gerais da climatização</span><i></i><b>3</b></div>',
-        '<div class="toc-row toc-sub"><span>1.3 Distribuição por estágio operacional</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-main"><span>1. Síntese executiva</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.1 Objetivo</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.2 Leitura dos resultados</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.3 Indicadores gerais e estágio operacional</span><i></i><b>3</b></div>',
         '<div class="toc-row toc-sub"><span>1.4 Metodologia e uso gerencial</span><i></i><b>4</b></div>',
         '<div class="toc-row toc-main"><span>2. Panorama por Gerência Regional</span><i></i><b>5</b></div>',
         '<div class="toc-row toc-sub"><span>2.1 Total, climatizadas e pendências por GRE</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-sub"><span>2.2 Quantidade de unidades climatizadas</span><i></i><b>5</b></div>',
-        '<div class="toc-row toc-sub"><span>2.3 Interpretação dos resultados regionais</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-sub"><span>2.2 Interpretação dos resultados regionais</span><i></i><b>6</b></div>',
         '<div class="toc-row toc-main"><span>3. Distribuição espacial dos resultados</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>3.1 Classificação territorial das 16 GREs</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>3.2 Regiões de desempenho alto, médio, baixo e crítico</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>3.3 Destaques e desigualdades territoriais</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-sub"><span>3.1 Interpretação territorial</span><i></i><b>7</b></div>',
         '<div class="toc-row toc-main"><span>4. Prioridades de acompanhamento</span><i></i><b>8</b></div>',
-        '<div class="toc-row toc-sub"><span>4.1 Pendências por GRE e estágio operacional</span><i></i><b>8</b></div>',
-        '<div class="toc-row toc-sub"><span>4.2 Setorização das demandas</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.1 Situação geral e distribuição por GRE</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.2 Setorização das pendências</span><i></i><b>8</b></div>',
         '<div class="toc-row toc-sub"><span>4.3 Critérios e grupos de prioridade</span><i></i><b>9</b></div>',
         '<div class="toc-row toc-main"><span>5. Considerações finais</span><i></i><b>10</b></div>',
         '<div class="toc-row toc-sub"><span>5.1 Síntese dos avanços e gargalos</span><i></i><b>10</b></div>',
@@ -3290,16 +3287,25 @@ def renderizar_gerador_relatorio(
     st.markdown(
         """
         <style>
-        div[data-testid="stTabs"] button {font-size:1rem;font-weight:800;}
+        /* Cabeçalho compacto da área do gerador. */
+        .report-generator-heading {
+            margin:-0.35rem 0 0.25rem;
+            color:#001F49;
+            font-size:1.45rem;
+            line-height:1.15;
+            font-weight:850;
+        }
+        .report-generator-note {
+            margin:0 0 0.65rem;
+            color:#5E6B7C;
+            font-size:0.86rem;
+            line-height:1.3;
+        }
         </style>
+        <div class="report-generator-heading">🖨️ Relatório para impressão</div>
+        <div class="report-generator-note">Selecione o recorte e use o botão “Imprimir / Salvar como PDF” no documento.</div>
         """,
         unsafe_allow_html=True,
-    )
-
-    st.markdown("## 🖨️ Relatório para impressão")
-    st.caption(
-        "A aba abaixo funciona como um documento vertical. Ela reúne textos-base, indicadores e os principais "
-        "gráficos do dashboard. Use o botão “Imprimir / Salvar como PDF” dentro do documento."
     )
 
     periodos_encontrados = []
@@ -6299,6 +6305,49 @@ def renderizar():
     try:
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
+
+        st.markdown(
+            """
+            <style>
+            /* Mantém a navegação Dashboard/Relatório sempre visível e legível. */
+            .block-container { padding-top:0.45rem !important; }
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+                position:sticky;
+                top:0;
+                z-index:999;
+                min-height:48px;
+                padding:4px 8px 0;
+                margin:0 0 0.45rem;
+                background:#FFFFFF !important;
+                border-bottom:1px solid #D9E4F2;
+                box-shadow:0 3px 10px rgba(0,31,73,.08);
+                visibility:visible !important;
+                opacity:1 !important;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] {
+                min-height:42px;
+                padding:0 18px;
+                color:#53657A !important;
+                background:transparent !important;
+                font-size:0.98rem !important;
+                font-weight:800 !important;
+                opacity:1 !important;
+                visibility:visible !important;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+                color:#003B73 !important;
+                background:#EAF4FF !important;
+                border-radius:9px 9px 0 0;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] p,
+            div[data-testid="stTabs"] button[data-baseweb="tab"] span {
+                color:inherit !important;
+                opacity:1 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         aba_dashboard, aba_relatorio = st.tabs([
             "📊 Dashboard",
