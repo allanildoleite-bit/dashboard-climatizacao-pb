@@ -1,4 +1,8 @@
 streamlit
 pandas
 reportlab
-pypdf
+python-docx
+matplotlib
+numpy
+Pillow
+CairoSVG
