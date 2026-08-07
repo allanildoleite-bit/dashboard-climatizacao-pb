@@ -2942,11 +2942,20 @@ def _montar_html_relatorio_impressao(
     </div>""")
 
     blocos.append(f"""<div class="report-block figure-block">
-      <div class="print-card">
-        <div class="print-figure-title">Figura {fig_panorama} – Panorama Geral da Climatização Escolar</div>
-        <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
-        <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
-        <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+      <div class="print-two">
+        <div class="print-card">
+          <div class="print-figure-title">Figura {fig_panorama} – Panorama Geral da Climatização Escolar</div>
+          <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
+          <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
+          <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+        </div>
+        <div class="print-card">
+          <div class="print-figure-title">Indicador Geral de Conclusão</div>
+          <div class="print-progress-number">{_fmt_pct_br(conclusao)}</div>
+          <div class="print-progress-track"><div class="print-progress-fill"></div></div>
+          <p class="print-subtitle"><b>{_fmt_num_br(climatizadas_real)}</b> unidades climatizadas de <b>{_fmt_num_br(total_real)}</b> acompanhadas.</p>
+          <p class="print-subtitle"><b>{_fmt_num_br(pendencias_real)}</b> unidades permanecem com ações ainda não concluídas.</p>
+        </div>
       </div>
       <p class="print-narrative">A Figura {fig_panorama} apresenta a composição das ações de climatização. As unidades climatizadas representam <b>{_fmt_pct_br(conclusao)}</b> da base, enquanto as ações ainda não concluídas correspondem a <b>{_fmt_pct_br(pct_pendencias)}</b>. {leitura_pendencias}</p>
       <div class="report-inline-note">Os dados refletem a situação registrada na base vigente em <b>{atualizacao}</b>. Fonte consolidada: {fonte}.</div>
@@ -2966,28 +2975,59 @@ def _montar_html_relatorio_impressao(
               </div>
             </div>""")
         else:
-            blocos.append("""<div class="report-block compact" data-section-start="sec2">
+            blocos.append("""<div class="report-block compact" data-section-start="sec2" data-keep-with-next="true">
               <h2 class="print-section-title">2. Análise da Climatização</h2>
               <p class="print-narrative">A análise regional compara o total de unidades, as escolas climatizadas e as ações ainda não concluídas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
             blocos.append(f"""<div class="report-block figure-block">
-              <div class="print-new-chart-grid">
-                <div class="print-new-chart-card item-area">
-                  <div class="print-figure-title">Figura {fig_area} – Comparativo da Climatização por GRE</div>
-                  {_relatorio_area_svg(base_filtrada)}
-                  <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
-                  <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-                </div>
-                <div class="print-new-chart-card item-barras">
-                  <div class="print-figure-title">Figura {fig_barras} – Unidades Escolares Climatizadas por GRE</div>
-                  {_relatorio_barras_verticais_svg(base_filtrada)}
-                  <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-                </div>
+              <div class="print-new-chart-card item-area">
+                <div class="print-figure-title">Figura {fig_area} – Comparativo da Climatização por GRE</div>
+                {_relatorio_area_svg(base_filtrada)}
+                <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
+                <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+              </div>
+            </div>""")
+            blocos.append(f"""<div class="report-block figure-block">
+              <div class="print-new-chart-card item-barras">
+                <div class="print-figure-title">Figura {fig_barras} – Unidades Escolares Climatizadas por GRE</div>
+                {_relatorio_barras_verticais_svg(base_filtrada)}
+                <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
               </div>
               <p class="print-narrative">{texto_comparativo}</p>
             </div>""")
 
         texto_mapa_bloco = texto_mapa if comparacao_gre else f"A representação territorial corresponde exclusivamente à {nome_gre} e apresenta a situação da regional no recorte selecionado."
+        if comparacao_gre:
+            destaques_mapa = f"""
+            <div class="print-highlight-grid">
+              <div class="print-highlight" style="--accent:var(--escuro)">
+                <small>Maior percentual de conclusão</small>
+                <b>{melhor_pct}</b>
+                <p>{melhor_nome}</p>
+              </div>
+              <div class="print-highlight" style="--accent:var(--vermelho)">
+                <small>Maior volume de pendências</small>
+                <b>{critica_valor}</b>
+                <p>{critica_nome}</p>
+              </div>
+            </div>
+            """
+        else:
+            destaques_mapa = f"""
+            <div class="print-highlight-grid">
+              <div class="print-highlight" style="--accent:var(--escuro)">
+                <small>Taxa de conclusão</small>
+                <b>{_fmt_pct_br(taxa_gre)}</b>
+                <p>{nome_gre}</p>
+              </div>
+              <div class="print-highlight" style="--accent:var(--vermelho)">
+                <small>Ações ainda não concluídas</small>
+                <b>{_fmt_num_br(pend_gre)}</b>
+                <p>{nome_gre}</p>
+              </div>
+            </div>
+            """
+
         blocos.append(f"""<div class="report-block figure-block">
           <div class="print-map-card">
             <div class="print-figure-title">Figura {fig_mapa} – Distribuição Territorial da Climatização por GRE</div>
@@ -2995,6 +3035,7 @@ def _montar_html_relatorio_impressao(
             <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
           </div>
+          {destaques_mapa}
           <p class="print-narrative">{texto_mapa_bloco}</p>
         </div>""")
     else:
@@ -3004,9 +3045,15 @@ def _montar_html_relatorio_impressao(
         </div>""")
 
     # Seção 3: pendências. Ranking só existe com duas ou mais GREs.
-    blocos.append(f"""<div class="report-block compact" data-section-start="sec3">
+    blocos.append(f"""<div class="report-block compact" data-section-start="sec3" data-keep-with-next="true">
       <h2 class="print-section-title">3. Pendências e Responsabilidades</h2>
       <p class="print-narrative">No recorte analisado, existem <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. {leitura_pendencias}</p>
+      <div class="report-single-gre">
+        <div><small>Total de pendências</small><b>{_fmt_num_br(pendencias_real)}</b></div>
+        <div><small>Em andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
+        <div><small>Em rota</small><b>{_fmt_num_br(rota_real)}</b></div>
+        <div><small>Participação na base</small><b>{_fmt_pct_br(pct_pendencias)}</b></div>
+      </div>
     </div>""")
 
     if comparacao_gre and pendencias_real > 0:
@@ -3210,9 +3257,9 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 
 
 /* Paginação adaptativa: os blocos são distribuídos por JavaScript nas folhas A4. */
-.generated-page .page-body {{ height:216mm; overflow:hidden; }}
+.generated-page .page-body {{ height:220mm; overflow:hidden; }}
 .report-flow {{ display:none !important; }}
-.report-block {{ margin:0 0 5mm; break-inside:avoid; page-break-inside:avoid; }}
+.report-block {{ margin:0 0 4.2mm; break-inside:avoid; page-break-inside:avoid; }}
 .report-block.compact {{ margin-bottom:3.8mm; }}
 .report-block .print-section-title {{ margin-bottom:3.5mm; }}
 .report-block .print-narrative {{ margin-bottom:3.6mm; }}
@@ -3221,8 +3268,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-block .print-card,
 .report-block .print-chart-card,
 .report-block .print-map-card,
-.report-block .print-new-chart-card {{ margin-top:2.5mm; margin-bottom:3.5mm; }}
+.report-block .print-new-chart-card {{ margin-top:2.5mm; margin-bottom:3mm; }}
 .report-block .print-new-chart-grid {{ margin-top:2.5mm; margin-bottom:3.5mm; }}
+.print-highlight-grid + .print-narrative {{ margin-top:5mm; }}
+.print-two + .print-narrative {{ margin-top:5mm; }}
+.report-single-gre + .print-narrative {{ margin-top:4mm; }}
 .report-inline-note {{ margin:2mm 0 0; padding:3.2mm 4mm; border-left:1.2mm solid var(--medio); background:#F5F9FD; color:#334B66; font-size:8.6pt; line-height:1.42; border-radius:2mm; }}
 .report-single-gre {{ display:grid; grid-template-columns:repeat(4,1fr); gap:2.5mm; margin:3mm 0 4mm; }}
 .report-single-gre div {{ border:1px solid var(--borda); border-radius:2.7mm; padding:3mm; background:#F8FBFF; }}
@@ -3231,7 +3281,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-spacer {{ height:2mm; }}
 @media print {{
   .report-flow {{ display:none !important; }}
-  .generated-page .page-body {{ height:216mm; }}
+  .generated-page .page-body {{ height:220mm; }}
 }}
 """
 
@@ -3299,19 +3349,48 @@ async function paginateReport() {{
   let page = newPage();
   let body = page.querySelector('.page-body');
 
-  for (const sourceBlock of blocks) {{
+  for (let i = 0; i < blocks.length; i++) {{
+    const sourceBlock = blocks[i];
     const block = sourceBlock.cloneNode(true);
+
+    // Se o bloco abre uma seção, verifica se há espaço também para o
+    // primeiro conteúdo subsequente. Isso evita páginas quase vazias.
+    if (sourceBlock.dataset.keepWithNext === 'true' && i + 1 < blocks.length) {{
+      const probeCurrent = block.cloneNode(true);
+      const probeNext = blocks[i + 1].cloneNode(true);
+      body.appendChild(probeCurrent);
+      body.appendChild(probeNext);
+      const pairOverflows = body.scrollHeight > body.clientHeight + 2;
+      body.removeChild(probeNext);
+      body.removeChild(probeCurrent);
+
+      if (pairOverflows && body.children.length > 0) {{
+        page = newPage();
+        body = page.querySelector('.page-body');
+      }}
+    }}
+
     body.appendChild(block);
     const overflowing = body.scrollHeight > body.clientHeight + 2;
+
     if (overflowing && body.children.length > 1) {{
       body.removeChild(block);
       page = newPage();
       body = page.querySelector('.page-body');
       body.appendChild(block);
     }}
+
     const section = block.dataset.sectionStart;
-    if (section && !(section in sectionPages)) sectionPages[section] = Number(page.dataset.pageNumber);
+    if (section && !(section in sectionPages)) {{
+      sectionPages[section] = Number(page.dataset.pageNumber);
+    }}
   }}
+
+  // Remove qualquer página gerada que tenha ficado sem conteúdo real.
+  Array.from(generated.querySelectorAll('.generated-page')).forEach(pg => {{
+    const pgBody = pg.querySelector('.page-body');
+    if (pgBody && pgBody.children.length === 0) pg.remove();
+  }});
 
   document.querySelectorAll('[data-target]').forEach(el => {{
     const target = el.dataset.target;
