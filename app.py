@@ -2433,6 +2433,7 @@ def _relatorio_gre_barras_html(base_filtrada: pd.DataFrame) -> str:
     return "".join(linhas)
 
 
+
 def _relatorio_ranking_html(base_filtrada: pd.DataFrame, limite: int = 6) -> str:
     dados = _dados_gre_resumo(base_filtrada)
     if dados.empty:
@@ -2444,6 +2445,8 @@ def _relatorio_ranking_html(base_filtrada: pd.DataFrame, limite: int = 6) -> str
         andamento = float(linha.get("Em andamento", 0) or 0)
         rota = float(linha.get("Em rota", 0) or 0)
         pendencias = float(linha.get("Pendencias", 0) or 0)
+        total_gre = float(linha.get("Total", 0) or 0)
+        pct_pend = pendencias / total_gre if total_gre > 0 else 0.0
         label = escape(str(linha.get("GRE_Label", linha.get("GRE", ""))))
         w_and = andamento / maximo * 100
         w_rota = rota / maximo * 100
@@ -2454,16 +2457,17 @@ def _relatorio_ranking_html(base_filtrada: pd.DataFrame, limite: int = 6) -> str
                     <span class="print-seg andamento" style="width:{w_and:.4f}%"></span>
                     <span class="print-seg rota" style="width:{w_rota:.4f}%"></span>
                 </div>
-                <div class="print-rank-value">{_fmt_num_br(pendencias)}</div>
+                <div class="print-rank-value"><b>{_fmt_num_br(pendencias)}</b><small>{_fmt_pct_br(pct_pend)}</small></div>
             </div>'''
         )
     return "".join(linhas)
 
 
+
+
 def _relatorio_setores_html(setor: pd.DataFrame, limite: int = 6) -> str:
     if setor.empty:
         return '<div class="print-empty">Sem dados de setorização.</div>'
-
     dados = setor.copy()
     colunas = list(dados.columns)
     col_nome = next((c for c in colunas if "setor" in str(c).lower()), colunas[0] if colunas else None)
@@ -2471,19 +2475,19 @@ def _relatorio_setores_html(setor: pd.DataFrame, limite: int = 6) -> str:
     col_rota = next((c for c in colunas if "rota" in str(c).lower()), None)
     if col_nome is None or (col_and is None and col_rota is None):
         return '<div class="print-empty">A estrutura da planilha de setorização não foi reconhecida.</div>'
-
     dados["_and"] = pd.to_numeric(dados[col_and], errors="coerce").fillna(0) if col_and else 0
     dados["_rota"] = pd.to_numeric(dados[col_rota], errors="coerce").fillna(0) if col_rota else 0
     dados["_total"] = dados["_and"] + dados["_rota"]
     dados = dados.sort_values("_total", ascending=False).head(limite)
     maximo = max(float(dados["_total"].max()), 1.0)
-
+    total_consolidado = max(float(dados["_total"].sum()), 1.0)
     linhas = []
     for _, linha in dados.iterrows():
         nome = escape(str(linha.get(col_nome, "")))
         andamento = float(linha.get("_and", 0) or 0)
         rota = float(linha.get("_rota", 0) or 0)
         total = float(linha.get("_total", 0) or 0)
+        pct_setor = total / total_consolidado if total_consolidado > 0 else 0.0
         linhas.append(
             f'''<div class="print-mini-row">
                 <div class="print-mini-name" title="{nome}">{nome}</div>
@@ -2491,30 +2495,33 @@ def _relatorio_setores_html(setor: pd.DataFrame, limite: int = 6) -> str:
                     <span class="print-seg andamento" style="width:{andamento/maximo*100:.4f}%"></span>
                     <span class="print-seg rota" style="width:{rota/maximo*100:.4f}%"></span>
                 </div>
-                <div class="print-mini-value">{_fmt_num_br(total)}</div>
+                <div class="print-mini-value"><b>{_fmt_num_br(total)}</b><small>{_fmt_pct_br(pct_setor)}</small></div>
             </div>'''
         )
     return "".join(linhas)
 
 
+
+
 def _relatorio_status_html(acompanhamento: pd.DataFrame, limite: int = 6) -> str:
     if acompanhamento.empty or "Status" not in acompanhamento.columns:
         return '<div class="print-empty">Sem registros operacionais.</div>'
-
     contagens = acompanhamento["Status"].fillna("(SEM STATUS)").astype(str).value_counts().head(limite)
     if contagens.empty:
         return '<div class="print-empty">Sem registros operacionais.</div>'
     maximo = max(float(contagens.max()), 1.0)
+    total_status = max(float(contagens.sum()), 1.0)
     linhas = []
     for status, quantidade in contagens.items():
         nome = escape(str(status))
+        pct_status = float(quantidade) / total_status if total_status > 0 else 0.0
         linhas.append(
             f'''<div class="print-mini-row">
                 <div class="print-mini-name" title="{nome}">{nome}</div>
                 <div class="print-mini-track">
                     <span class="print-status-fill" style="width:{float(quantidade)/maximo*100:.4f}%"></span>
                 </div>
-                <div class="print-mini-value">{_fmt_num_br(quantidade)}</div>
+                <div class="print-mini-value"><b>{_fmt_num_br(quantidade)}</b><small>{_fmt_pct_br(pct_status)}</small></div>
             </div>'''
         )
     return "".join(linhas)
@@ -2588,41 +2595,41 @@ def _relatorio_area_svg(base_filtrada: pd.DataFrame) -> str:
     )
 
 
+
 def _relatorio_barras_verticais_svg(base_filtrada: pd.DataFrame) -> str:
-    # Gráfico vertical de climatizadas por GRE para impressão.
     dados = _dados_gre_resumo(base_filtrada)
     if dados.empty:
         return '<div class="print-empty">Sem dados para os filtros selecionados.</div>'
     dados = dados.sort_values("Ordem") if "Ordem" in dados.columns else dados
-
     largura, altura = 760, 220
-    margem = {"esq": 40, "dir": 16, "top": 18, "base": 43}
+    margem = {"esq": 40, "dir": 16, "top": 27, "base": 43}
     w = largura - margem["esq"] - margem["dir"]
     h = altura - margem["top"] - margem["base"]
     n = max(len(dados), 1)
     maximo = max(float(pd.to_numeric(dados["Climatizadas"], errors="coerce").fillna(0).max()), 1.0)
     passo = w / n
     barra = min(25.0, passo * 0.58)
-
     grade = []
     for i in range(4):
         y = margem["top"] + h - h * i / 3
         grade.append(f'<line x1="{margem["esq"]}" y1="{y:.1f}" x2="{largura-margem["dir"]}" y2="{y:.1f}" stroke="#E1E8F0" stroke-width="1"/>')
-
     barras = []
     for i, (_, linha) in enumerate(dados.iterrows()):
         valor = float(linha.get("Climatizadas", 0) or 0)
+        total = float(linha.get("Total", 0) or 0)
+        pct = valor / total if total > 0 else 0.0
         bh = max(1.5, valor / maximo * h)
         x = margem["esq"] + passo * i + (passo - barra) / 2
         y = margem["top"] + h - bh
         numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
         rotulo = f'{numero.group()}ª' if numero else str(linha.get("GRE", ""))[:5]
+        label_y = max(10.0, y - 10.0)
         barras.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{barra:.1f}" height="{bh:.1f}" rx="3" fill="#003B73"/>'
-            f'<text x="{x+barra/2:.1f}" y="{max(10,y-4):.1f}" text-anchor="middle" font-size="7.5" font-weight="900" fill="#001F49">{_fmt_num_br(valor)}</text>'
+            f'<text x="{x+barra/2:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="7.5" font-weight="900" fill="#001F49">{_fmt_num_br(valor)}</text>'
+            f'<text x="{x+barra/2:.1f}" y="{label_y+7.2:.1f}" text-anchor="middle" font-size="6.1" font-weight="800" fill="#637083">{_fmt_pct_br(pct)}</text>'
             f'<text x="{x+barra/2:.1f}" y="{altura-19}" text-anchor="middle" font-size="7.2" font-weight="800" fill="#17365D">{escape(rotulo)}</text>'
         )
-
     return (
         f'<svg class="print-svg-chart" viewBox="0 0 {largura} {altura}" role="img" aria-label="Gráfico de barras verticais por GRE">'
         + ''.join(grade)
@@ -2631,46 +2638,6 @@ def _relatorio_barras_verticais_svg(base_filtrada: pd.DataFrame) -> str:
         + '</svg>'
     )
 
-
-_GRE_MAP_LAYOUT_PRINT = [
-    (8,"120,74 205,56 258,95 245,170 150,177 114,150",180,112,135,156),
-    (4,"392,76 462,98 468,179 390,158 330,122",404,122,145,166),
-    (2,"462,98 556,92 610,145 585,214 476,180 468,179",540,150,173,194),
-    (14,"556,92 650,104 700,172 672,247 585,214 610,145",644,165,188,209),
-    (9,"106,149 151,178 244,170 266,242 177,263 104,227",170,208,231,252),
-    (7,"244,170 330,122 390,158 384,238 272,238 266,242",330,202,225,246),
-    (3,"384,238 476,180 585,214 588,294 470,325 392,310",486,259,282,303),
-    (15,"588,294 585,214 672,247 700,336 650,372 588,324",647,282,305,326),
-    (1,"672,247 745,217 784,260 772,366 700,336",741,279,302,323),
-    (10,"104,227 177,263 272,260 260,336 165,354 98,312",170,286,309,330),
-    (13,"272,238 384,238 400,327 332,384 260,336 272,260",336,277,300,321),
-    (6,"332,384 400,327 474,341 476,434 418,463 304,443",394,393,416,437),
-    (12,"474,341 588,294 650,336 640,434 574,428 476,434",560,366,389,410),
-    (16,"650,336 700,336 772,366 768,428 694,438 640,434",705,382,405,426),
-    (11,"165,354 260,336 304,443 252,445 174,452 130,410",214,403,426,447),
-    (5,"476,434 574,428 612,511 552,553 440,548 418,463",508,475,498,519),
-]
-
-
-_GRE_MAP_LAYOUT = [
-    (9,  "95,220 130,205 175,210 205,250 202,300 175,345 120,370 85,340 70,290 72,245", 135, 280, 305, 328),
-    (10, "205,230 255,212 320,220 340,280 325,340 250,355 202,300", 265, 280, 305, 328),
-    (8,  "310,170 360,130 435,120 490,150 505,215 455,250 395,260 340,280 320,220", 405, 182, 207, 230),
-    (7,  "120,370 175,345 250,355 285,405 280,470 220,510 140,525 90,505 70,450 85,400", 185, 438, 463, 486),
-    (11, "220,510 280,470 340,485 370,530 330,575 255,598 205,575 195,535", 285, 540, 565, 588),
-    (13, "395,260 455,250 520,275 545,335 500,365 430,370 380,345 340,280", 448, 302, 327, 350),
-    (6,  "520,275 590,270 650,300 675,360 650,420 600,448 540,440 500,365 545,335", 590, 345, 370, 393),
-    (5,  "540,440 600,448 650,420 700,465 730,530 710,600 630,635 565,615 500,575 470,505", 615, 528, 553, 576),
-    (4,  "650,155 710,130 780,138 820,175 825,235 780,260 725,285 650,300 590,270 600,215", 715, 192, 217, 240),
-    (3,  "650,300 725,285 780,320 805,380 770,440 700,465 650,420 675,360", 728, 357, 382, 405),
-    (15, "770,440 820,425 880,445 905,500 875,560 805,590 735,565 700,465", 812, 500, 525, 548),
-    (2,  "820,175 885,170 950,195 980,245 965,305 910,330 850,320 780,260 825,235", 895, 242, 267, 290),
-    (14, "980,245 1035,235 1085,260 1110,315 1095,370 1045,395 990,380 965,305", 1040, 305, 330, 353),
-    (12, "880,445 935,430 985,450 1015,495 1000,555 955,590 905,500", 948, 500, 525, 548),
-    (16, "1045,395 1095,370 1115,390 1110,430 1090,430 1093,463 1065,485 1028,480 1000,430", 1060, 425, 450, 473),
-    (1,  "1090,430 1120,420 1140,442 1138,470 1115,482 1093,463", 1118, 443, 466, 486),
-]
-GRE_STATE_OUTLINE = "70,290 72,245 95,220 130,205 175,210 255,212 310,170 360,130 435,120 490,150 650,155 710,130 780,138 885,170 950,195 1035,235 1085,260 1110,315 1115,390 1140,442 1138,470 1115,482 1093,463 1065,485 1000,555 955,590 875,560 805,590 730,530 710,600 630,635 565,615 500,575 330,575 255,598 205,575 140,525 90,505 70,450 85,400 70,340"
 
 
 def _map_status(total: float, clim: float) -> tuple[str, str, str]:
@@ -2715,15 +2682,14 @@ def _smooth_svg_path_from_points(points_str: str) -> str:
     return " ".join(parts)
 
 
+
 def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
-    """Mapa geográfico real das 16 GREs, derivado da malha municipal do IBGE."""
     dados = _dados_gre_resumo(base_filtrada)
     por_numero = {}
     for _, linha in dados.iterrows():
         numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
         if numero:
             por_numero[int(numero.group())] = linha
-
     regioes = []
     rotulos = []
     for numero in sorted(GRE_REGION_PATHS):
@@ -2731,20 +2697,27 @@ def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
         total = float(linha.get("Total", 0) or 0) if linha is not None else 0.0
         clim = float(linha.get("Climatizadas", 0) or 0) if linha is not None else 0.0
         pct = clim / total if total > 0 else 0.0
-        if total <= 0: classe, cor, texto = "no-data", "#AFC1D5", "#17365D"
-        elif pct >= .70: classe, cor, texto = "high", "#001F49", "#FFFFFF"
-        elif pct >= .50: classe, cor, texto = "medium", "#1F77D0", "#FFFFFF"
-        elif pct >= .30: classe, cor, texto = "low", "#F2A900", "#17365D"
-        else: classe, cor, texto = "critical", "#EF4444", "#FFFFFF"
+        if total <= 0:
+            classe, cor, texto_cor = "no-data", "#AFC1D5", "#17365D"
+        elif pct >= .70:
+            classe, cor, texto_cor = "high", "#001F49", "#FFFFFF"
+        elif pct >= .50:
+            classe, cor, texto_cor = "medium", "#1F77D0", "#FFFFFF"
+        elif pct >= .30:
+            classe, cor, texto_cor = "low", "#F2A900", "#17365D"
+        else:
+            classe, cor, texto_cor = "critical", "#EF4444", "#FFFFFF"
         valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
+        pct_txt = _fmt_pct_br(pct) if total > 0 else "—"
         x, y = GRE_LABEL_CENTERS[numero]
         sede = escape(GRE_SEDES.get(numero, ""))
         regioes.append(f'<path d="{GRE_REGION_PATHS[numero]}" fill="{cor}" class="print-gre-region {classe}"/>')
         rotulos.append(
-            f'<g class="print-gre-label" fill="{texto}">'
-            f'<text x="{x}" y="{y-12}" text-anchor="middle" font-size="11.8" font-weight="900">{numero}ª GRE</text>'
-            f'<text x="{x}" y="{y+2}" text-anchor="middle" font-size="8.6" font-weight="800">{sede}</text>'
-            f'<text x="{x}" y="{y+17}" text-anchor="middle" font-size="10.2" font-weight="950">{valor}</text>'
+            f'<g class="print-gre-label" fill="{texto_cor}">'
+            f'<text x="{x}" y="{y-15}" text-anchor="middle" font-size="11.8" font-weight="900">{numero}ª GRE</text>'
+            f'<text x="{x}" y="{y-1}" text-anchor="middle" font-size="8.6" font-weight="800">{sede}</text>'
+            f'<text x="{x}" y="{y+14}" text-anchor="middle" font-size="10.2" font-weight="950">{valor}</text>'
+            f'<text x="{x}" y="{y+26}" text-anchor="middle" font-size="8.3" font-weight="900">{pct_txt}</text>'
             f'</g>'
         )
     return (
@@ -2755,6 +2728,7 @@ def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
         + ''.join(rotulos)
         + '</svg>'
     )
+
 
 
 def _montar_html_relatorio_impressao(
@@ -3249,12 +3223,12 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-highlight small {{ color:var(--suave); font-size:7.2px; font-weight:900; text-transform:uppercase; }}
 .print-highlight b {{ display:block; color:var(--accent); font-size:22px; line-height:1; margin:2.5mm 0 1mm; }}
 .print-highlight p {{ margin:0; color:var(--texto); font-size:8.4px; line-height:1.35; }}
-.print-rank-row {{ display:grid; grid-template-columns:40mm 1fr 10mm; align-items:center; gap:2mm; margin:3.2mm 0; }}
+.print-rank-row {{ display:grid; grid-template-columns:40mm 1fr 15mm; align-items:center; gap:2mm; margin:3.2mm 0; }}
 .print-rank-name, .print-mini-name {{ color:#18365C; font-size:7.3px; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.print-rank-name {{ text-align:right; }} .print-rank-value {{ color:var(--vermelho-escuro); font-size:8px; font-weight:950; text-align:right; }}
+.print-rank-name {{ text-align:right; }} .print-rank-value {{ color:var(--vermelho-escuro); font-size:8px; font-weight:950; text-align:right; line-height:1.05; }} .print-rank-value b{{display:block;}} .print-rank-value small{{display:block;margin-top:.8mm;color:var(--suave);font-size:6.5px;font-weight:800;}}
 .print-bottom-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:4mm; }}
-.print-mini-row {{ display:grid; grid-template-columns:31mm 1fr 8mm; align-items:center; gap:1.5mm; margin:3.1mm 0; }}
-.print-mini-name {{ font-size:6.8px; text-align:right; }} .print-mini-value {{ font-size:7px; font-weight:900; text-align:right; }}
+.print-mini-row {{ display:grid; grid-template-columns:31mm 1fr 14mm; align-items:center; gap:1.5mm; margin:3.1mm 0; }}
+.print-mini-name {{ font-size:6.8px; text-align:right; }} .print-mini-value {{ font-size:7px; font-weight:900; text-align:right; line-height:1.05; }} .print-mini-value b{{display:block;}} .print-mini-value small{{display:block;margin-top:.7mm;color:var(--suave);font-size:6.2px;font-weight:800;}}
 .print-mini-track {{ height:4.5mm; }} .print-status-fill {{ height:100%; background:linear-gradient(90deg,var(--noite),var(--medio)); border-radius:1.2mm; }}
 .print-footer {{ position:absolute; left:15mm; right:15mm; bottom:6mm; border-top:1px solid var(--borda); padding-top:2.2mm; display:flex; justify-content:space-between; color:var(--suave); font-size:6.6px; font-weight:700; }}
 .print-empty {{ color:var(--suave); font-size:9px; padding:8mm; text-align:center; }}
@@ -3302,11 +3276,11 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-block {{ margin:0 0 4.2mm; break-inside:avoid; page-break-inside:avoid; }}
 .report-block.compact {{ margin-bottom:3.2mm; }}
 .report-block.analysis-block {{ margin-bottom:2.6mm; }}
-.report-block.figure-intro-block {{ margin-bottom:6mm; }}
+.report-block.figure-intro-block {{ margin-bottom:3.2mm; }}
 .report-block.figure-intro-block .print-narrative {{ margin-bottom:0; line-height:1.5; }}
 .report-block.figure-block {{ margin-top:0; }}
 /* Ajuste fino utilizado somente quando um gráfico quase cabe no espaço restante. */
-.report-block.smart-compact .print-svg-chart {{ height:54mm; }}
+.report-block.smart-compact .print-svg-chart {{ height:48mm; }}
 .report-block.smart-compact .print-new-chart-card {{ padding-top:2mm; padding-bottom:2mm; }}
 .report-block.smart-compact .print-figure-source {{ margin-top:1.6mm; margin-bottom:2.2mm; }}
 .report-block.smart-compact .print-figure-title {{ margin-bottom:1.8mm; }}
@@ -3425,7 +3399,7 @@ async function paginateReport() {{
 
       // Quando o próximo bloco é um gráfico e falta pouco espaço,
       // testa uma compactação discreta antes de mudar de página.
-      if (pairOverflows && overflowPx <= 85 && probeNext.classList.contains('figure-block')) {{
+      if (pairOverflows && overflowPx <= 190 && probeNext.classList.contains('figure-block')) {{
         probeNext.classList.add('smart-compact');
         overflowPx = body.scrollHeight - body.clientHeight;
         pairOverflows = overflowPx > 2;
@@ -3446,7 +3420,15 @@ async function paginateReport() {{
     }}
 
     body.appendChild(block);
-    const overflowing = body.scrollHeight > body.clientHeight + 2;
+    let overflowing = body.scrollHeight > body.clientHeight + 2;
+
+    if (overflowing && block.classList.contains('figure-block')) {{
+      const overflowPx = body.scrollHeight - body.clientHeight;
+      if (overflowPx <= 190) {{
+        block.classList.add('smart-compact');
+        overflowing = body.scrollHeight > body.clientHeight + 2;
+      }}
+    }}
 
     if (overflowing && body.children.length > 1) {{
       body.removeChild(block);
@@ -3475,11 +3457,20 @@ async function paginateReport() {{
 
       const candidate = nextBody.firstElementChild;
       currentBody.appendChild(candidate);
-      const fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
+      let fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
+
+      if (!fits && candidate.classList.contains('figure-block')) {{
+        const overflowPx = currentBody.scrollHeight - currentBody.clientHeight;
+        if (overflowPx <= 190) {{
+          candidate.classList.add('smart-compact');
+          fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
+        }}
+      }}
 
       if (fits) {{
         changed = true;
       }} else {{
+        candidate.classList.remove('smart-compact');
         nextBody.insertBefore(candidate, nextBody.firstElementChild);
       }}
     }}
