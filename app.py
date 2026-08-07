@@ -3014,11 +3014,29 @@ def _montar_html_relatorio_impressao(
       <h2 class="print-section-title">1. Panorama Geral da Climatização</h2>
       <p class="print-narrative">Este relatório apresenta o panorama atualizado das ações de climatização das unidades escolares da rede estadual de ensino da Paraíba, reunindo os principais indicadores utilizados no acompanhamento realizado pela Gerência de Obras. As informações correspondem ao recorte definido pelos filtros selecionados e refletem a situação registrada na base na data de atualização indicada no documento.</p>
       <div class="print-kpis">
-        <div class="print-kpi"><small>Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
-        <div class="print-kpi"><small>Escolas Climatizadas</small><b>{_fmt_num_br(climatizadas_real)}</b></div>
-        <div class="print-kpi" style="--accent:var(--claro)"><small>Em Andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
-        <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em Rota</small><b>{_fmt_num_br(rota_real)}</b></div>
-        <div class="print-kpi" style="--accent:var(--medio)"><small>Taxa de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
+        <div class="print-kpi">
+          <small>Total de Escolas</small>
+          <b>{_fmt_num_br(total_real)}</b>
+        </div>
+        <div class="print-kpi">
+          <small>Escolas Climatizadas</small>
+          <b>{_fmt_num_br(climatizadas_real)}</b>
+          <span class="print-kpi-pct">{_fmt_pct_br(conclusao)}</span>
+        </div>
+        <div class="print-kpi" style="--accent:var(--claro)">
+          <small>Em Andamento</small>
+          <b>{_fmt_num_br(andamento_real)}</b>
+          <span class="print-kpi-pct">{_fmt_pct_br(pct_andamento)}</span>
+        </div>
+        <div class="print-kpi" style="--accent:var(--vermelho)">
+          <small>Em Rota</small>
+          <b>{_fmt_num_br(rota_real)}</b>
+          <span class="print-kpi-pct">{_fmt_pct_br(pct_rota)}</span>
+        </div>
+        <div class="print-kpi" style="--accent:var(--medio)">
+          <small>Taxa de Conclusão</small>
+          <b>{_fmt_pct_br(conclusao)}</b>
+        </div>
       </div>
       <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b>. As intervenções em andamento representam <b>{_fmt_pct_br(pct_andamento)}</b> da base, enquanto as unidades em rota de climatização correspondem a <b>{_fmt_pct_br(pct_rota)}</b>.</p>
     </div>""")
@@ -3281,7 +3299,15 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-kpi {{ min-height:24mm; background:#fff; border:1px solid var(--borda); border-radius:3mm; padding:3.4mm; position:relative; overflow:hidden; box-shadow:0 2mm 5mm rgba(10,40,80,.06); }}
 .print-kpi::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:1.3mm; background:var(--accent,var(--escuro)); }}
 .print-kpi small {{ display:block; color:var(--suave); font-size:7px; font-weight:900; text-transform:uppercase; line-height:1.15; }}
-.print-kpi b {{ display:block; margin-top:3mm; color:var(--accent,var(--escuro)); font-size:22px; line-height:1; letter-spacing:-.6px; }}
+.print-kpi b {{ display:block; margin-top:2.2mm; color:var(--accent,var(--escuro)); font-size:22px; line-height:1; letter-spacing:-.6px; }}
+.print-kpi-pct {{
+  display:block;
+  margin-top:1.2mm;
+  color:var(--accent,var(--escuro));
+  font-size:8.5px;
+  line-height:1;
+  font-weight:900;
+}}
 .print-two {{ display:grid; grid-template-columns:.92fr 1.08fr; gap:4mm; }}
 .print-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:4.5mm; box-shadow:0 2mm 5mm rgba(10,40,80,.055); }}
 .print-card h3 {{ margin:0 0 3mm; color:var(--escuro); font-size:12px; }}
@@ -4085,8 +4111,7 @@ body {
     margin: 9px 0 0 8px;
     color: var(--texto-suave);
     font-size: 15px;
-    font-weight: 800;
-    line-height: 1.25;
+    font-weight: 750;
 }
 
 .grid-main {
@@ -5260,17 +5285,17 @@ body {
         </div>
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
             <div class="kpi-title">Climatizadas</div>
-            <div class="kpi-value kpi-value-with-pct"><span id="kpiClimatizadas">0</span><small id="kpiClimatizadasPct">0,0%</small></div>
+            <div class="kpi-value" id="kpiClimatizadas">0</div>
             <div class="kpi-sub" id="subClimatizadas">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--azul-claro);--wash:#EDF6FF;">
             <div class="kpi-title">Em Andamento</div>
-            <div class="kpi-value kpi-value-with-pct"><span id="kpiAndamento">0</span><small id="kpiAndamentoPct">0,0%</small></div>
+            <div class="kpi-value" id="kpiAndamento">0</div>
             <div class="kpi-sub" id="subAndamento">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--vermelho);--wash:#FFF1F1;">
             <div class="kpi-title">Em Rota</div>
-            <div class="kpi-value kpi-value-with-pct"><span id="kpiRota">0</span><small id="kpiRotaPct">0,0%</small></div>
+            <div class="kpi-value" id="kpiRota">0</div>
             <div class="kpi-sub" id="subRota">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
@@ -5937,14 +5962,11 @@ function renderKpis(totals) {
     document.getElementById("kpiClimatizadas").textContent = fmtNum(totals.climatizadas);
     document.getElementById("kpiAndamento").textContent = fmtNum(totals.andamento);
     document.getElementById("kpiRota").textContent = fmtNum(totals.rota);
-    document.getElementById("kpiClimatizadasPct").textContent = fmtPct(pctClim);
-    document.getElementById("kpiAndamentoPct").textContent = fmtPct(pctAnd);
-    document.getElementById("kpiRotaPct").textContent = fmtPct(pctRota);
     document.getElementById("kpiConclusao").textContent = fmtPct(pctClim);
 
-    document.getElementById("subClimatizadas").textContent = fmtPct(pctClim) + " do total monitorado";
-    document.getElementById("subAndamento").textContent = fmtPct(pctAnd) + " do total monitorado";
-    document.getElementById("subRota").textContent = fmtPct(pctRota) + " do total monitorado";
+    document.getElementById("subClimatizadas").textContent = fmtPct(pctClim) + " do total";
+    document.getElementById("subAndamento").textContent = fmtPct(pctAnd) + " do total";
+    document.getElementById("subRota").textContent = fmtPct(pctRota) + " do total";
 
     const donut = document.getElementById("donut");
     const degClim = pctClim * 360;
@@ -5966,11 +5988,7 @@ function renderKpis(totals) {
     document.getElementById("progressPct").textContent = fmtPct(pctClim);
     document.getElementById("progressFill").style.width = Math.max(0, Math.min(100, pctClim * 100)) + "%";
     document.getElementById("progressInfo").innerHTML =
-        `<strong>${fmtNum(totals.climatizadas)}</strong> unidades já foram climatizadas (<strong>${fmtPct(pctClim)}</strong>). ` +
-        `Permanecem <strong>${fmtNum(totals.andamento)}</strong> em andamento (<strong>${fmtPct(pctAnd)}</strong>) ` +
-        `e <strong>${fmtNum(totals.rota)}</strong> em rota de climatização (<strong>${fmtPct(pctRota)}</strong>), ` +
-        `totalizando <strong>${fmtNum(totals.pendencias)}</strong> ações ainda não concluídas ` +
-        `(<strong>${fmtPct(pctAnd + pctRota)}</strong>).`;
+        `<strong>${fmtNum(totals.climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>${fmtNum(totals.pendencias)}</strong> em andamento ou em rota de climatização.`;
 }
 
 function renderPanorama(rows) {
