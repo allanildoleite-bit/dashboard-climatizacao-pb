@@ -3316,26 +3316,33 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   margin:0 15mm; min-height:14mm; padding:2.4mm 0 5.5mm; border-top:1px solid var(--borda);
   display:flex; justify-content:space-between; align-items:flex-start; color:var(--suave); font-size:6.6px; font-weight:700; background:#fff;
 }}
-.flow-page-number::after {{ content:"Página " counter(page); font-weight:850; }}
-.flow-cell {{ padding:4mm 15mm 3mm; background:#fff; }}
-.flow-row.section-start .flow-cell {{ padding-top:5mm; }}
-.flow-row.compact .flow-cell {{ padding-top:1.5mm; padding-bottom:1.5mm; }}
+.flow-page-number::after {{ content:""; }}
+.flow-cell {{ padding:3.5mm 15mm 3.5mm; background:#fff; }}
+.flow-row.section-start .flow-cell {{ padding-top:7mm; }}
+.flow-row.compact .flow-cell {{ padding-top:2.5mm; padding-bottom:3mm; }}
 .flow-row.keep, .flow-row.figure-row {{ page-break-inside:avoid; break-inside:avoid-page; }}
 .flow-row.section-start {{ page-break-after:avoid; break-after:avoid-page; }}
-.flow-section-title {{ margin:0 0 3mm; color:var(--noite); font-size:18px; line-height:1.1; font-weight:950; }}
+.flow-section-title {{ margin:0 0 4mm; color:var(--noite); font-size:18px; line-height:1.1; font-weight:950; }}
 .flow-section-title::after {{ content:""; display:block; width:18mm; height:1.2mm; margin-top:2.2mm; background:var(--medio); border-radius:99px; }}
 .flow-narrative {{ margin:0; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.5pt; line-height:1.47; text-align:justify; text-indent:1.05cm; orphans:3; widows:3; }}
 .flow-narrative.no-indent {{ text-indent:0; }}
 .flow-note {{ color:var(--suave); font-size:8.1pt; line-height:1.4; margin:0; }}
-.flow-figure-wrap {{ page-break-inside:avoid; break-inside:avoid-page; }}
+.flow-figure-wrap {{ page-break-inside:avoid; break-inside:avoid-page; margin:1mm 0 2mm; }}
 .flow-figure-wrap .print-new-chart-card, .flow-figure-wrap .print-map-card, .flow-figure-wrap .print-chart-card, .flow-figure-wrap .print-card {{ margin:0; }}
 .flow-analysis {{ margin-top:0; }}
 .flow-kpis {{ margin:0; }}
+
+.flow-figure-analysis {{ page-break-inside:avoid; break-inside:avoid-page; }}
+.flow-figure-analysis .flow-narrative {{ margin-top:4mm; }}
+.flow-conclusion-block {{ page-break-inside:avoid; break-inside:avoid-page; min-height:52mm; padding-top:2mm; }}
+.flow-conclusion-block .flow-section-title {{ margin-top:0; }}
+.flow-section-spacer {{ height:2mm; }}
 @media screen {{
   .flow-report {{ min-height:297mm; }}
 }}
 @media print {{
   .flow-report {{ width:210mm; margin:0; box-shadow:none; page-break-before:always; break-before:page; }}
+  .flow-cell {{ padding-left:16mm; padding-right:16mm; }}
   .flow-table {{ width:210mm; }}
   .flow-header {{ margin:0 15mm; }}
   .flow-footer {{ margin:0 15mm; }}
@@ -3404,7 +3411,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
       <tr><td>
         <div class="flow-footer">
           <span>Relatório de Climatização Escolar · GEOBS – SEE</span>
-          <span class="flow-page-number"></span>
+          <span>Documento gerado em {datetime.now().strftime('%d/%m/%Y')}</span>
         </div>
       </td></tr>
     </tfoot>
@@ -3500,38 +3507,35 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
       </td></tr>
 
       <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-chart-card">
-          <div class="print-figure-title">Figura 5 – Ranking de Pendências por GRE</div>
-          <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
-          {_relatorio_ranking_html(base_filtrada, 6)}
-          <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+        <div class="flow-figure-analysis">
+          <div class="flow-figure-wrap print-chart-card">
+            <div class="print-figure-title">Figura 5 – Ranking de Pendências por GRE</div>
+            <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
+            {_relatorio_ranking_html(base_filtrada, 6)}
+            <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+          </div>
+          <p class="flow-narrative flow-analysis">{analise_fig5}</p>
         </div>
-      </td></tr>
-
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative flow-analysis">{analise_fig5}</p>
       </td></tr>
 
       <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-card" style="min-height:54mm;">
-          <div class="print-figure-title">Figura 6 – Distribuição das Pendências por Setor Responsável</div>
-          {_relatorio_setores_html(setor, 10)}
-          <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+        <div class="flow-figure-analysis">
+          <div class="flow-figure-wrap print-card" style="min-height:50mm;">
+            <div class="print-figure-title">Figura 6 – Distribuição das Pendências por Setor Responsável</div>
+            {_relatorio_setores_html(setor, 10)}
+            <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+          </div>
+          <p class="flow-narrative flow-analysis">{analise_fig6}</p>
         </div>
       </td></tr>
 
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative flow-analysis">{analise_fig6}</p>
-      </td></tr>
-
-      <tr class="flow-row section-start"><td class="flow-cell">
-        <h2 class="flow-section-title">4. Considerações Finais</h2>
-        <p class="flow-narrative">Os resultados apresentados sintetizam a situação das ações de climatização no recorte analisado, considerando o quantitativo de unidades atendidas, as ações ainda não concluídas e sua distribuição regional e setorial.</p>
-      </td></tr>
-
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative">As informações refletem a situação registrada na base na data de atualização indicada no relatório e servem de apoio ao acompanhamento das intervenções pela Gerência de Obras.</p>
-        <p class="flow-note" style="margin-top:3mm;"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
+      <tr class="flow-row section-start keep"><td class="flow-cell">
+        <div class="flow-conclusion-block">
+          <h2 class="flow-section-title">4. Considerações Finais</h2>
+          <p class="flow-narrative">Os resultados apresentados sintetizam a situação das ações de climatização no recorte analisado, considerando o quantitativo de unidades atendidas, as ações ainda não concluídas e sua distribuição regional e setorial.</p>
+          <p class="flow-narrative" style="margin-top:3mm;">As informações refletem a situação registrada na base na data de atualização indicada no relatório e servem de apoio ao acompanhamento das intervenções pela Gerência de Obras.</p>
+          <p class="flow-note" style="margin-top:4mm;"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
+        </div>
       </td></tr>
 
     </tbody>
