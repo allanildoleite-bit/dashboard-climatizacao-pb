@@ -5260,17 +5260,17 @@ body {
         </div>
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
             <div class="kpi-title">Climatizadas</div>
-            <div class="kpi-value" id="kpiClimatizadas">0</div>
+            <div class="kpi-value kpi-value-with-pct"><span id="kpiClimatizadas">0</span><small id="kpiClimatizadasPct">0,0%</small></div>
             <div class="kpi-sub" id="subClimatizadas">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--azul-claro);--wash:#EDF6FF;">
             <div class="kpi-title">Em Andamento</div>
-            <div class="kpi-value" id="kpiAndamento">0</div>
+            <div class="kpi-value kpi-value-with-pct"><span id="kpiAndamento">0</span><small id="kpiAndamentoPct">0,0%</small></div>
             <div class="kpi-sub" id="subAndamento">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--vermelho);--wash:#FFF1F1;">
             <div class="kpi-title">Em Rota</div>
-            <div class="kpi-value" id="kpiRota">0</div>
+            <div class="kpi-value kpi-value-with-pct"><span id="kpiRota">0</span><small id="kpiRotaPct">0,0%</small></div>
             <div class="kpi-sub" id="subRota">0,0% do total</div>
         </div>
         <div class="kpi" style="--accent:var(--azul-escuro);--wash:var(--azul-gelo);">
@@ -5937,6 +5937,9 @@ function renderKpis(totals) {
     document.getElementById("kpiClimatizadas").textContent = fmtNum(totals.climatizadas);
     document.getElementById("kpiAndamento").textContent = fmtNum(totals.andamento);
     document.getElementById("kpiRota").textContent = fmtNum(totals.rota);
+    document.getElementById("kpiClimatizadasPct").textContent = fmtPct(pctClim);
+    document.getElementById("kpiAndamentoPct").textContent = fmtPct(pctAnd);
+    document.getElementById("kpiRotaPct").textContent = fmtPct(pctRota);
     document.getElementById("kpiConclusao").textContent = fmtPct(pctClim);
 
     document.getElementById("subClimatizadas").textContent = fmtPct(pctClim) + " do total monitorado";
