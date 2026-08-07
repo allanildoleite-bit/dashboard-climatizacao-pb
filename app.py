@@ -2956,7 +2956,7 @@ def _montar_html_relatorio_impressao(
       <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas. As ações ainda não concluídas totalizam <b>{_fmt_num_br(pendencias_real)}</b> unidades.</p>
     </div>""")
 
-    blocos.append(f"""<div class="report-block compact figure-intro-block">
+    blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
       <p class="print-narrative">A Figura {fig_panorama} apresenta a composição das ações de climatização. As unidades climatizadas representam <b>{_fmt_pct_br(conclusao)}</b> da base, enquanto as ações ainda não concluídas correspondem a <b>{_fmt_pct_br(pct_pendencias)}</b>. {leitura_pendencias}</p>
     </div>""")
 
@@ -2997,7 +2997,7 @@ def _montar_html_relatorio_impressao(
               <h2 class="print-section-title">2. Análise Regional e Territorial</h2>
               <p class="print-narrative">A análise regional compara o total de unidades, as escolas climatizadas e as ações ainda não concluídas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
-            blocos.append(f"""<div class="report-block compact figure-intro-block">
+            blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
               <p class="print-narrative">A Figura {fig_area} apresenta o comparativo entre o total de unidades escolares, as escolas climatizadas e as ações ainda não concluídas nas Gerências Regionais selecionadas.</p>
             </div>""")
             blocos.append(f"""<div class="report-block figure-block">
@@ -3008,7 +3008,7 @@ def _montar_html_relatorio_impressao(
                 <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
               </div>
             </div>""")
-            blocos.append(f"""<div class="report-block compact figure-intro-block">
+            blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
               <p class="print-narrative">A Figura {fig_barras} apresenta a distribuição das unidades escolares climatizadas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
             blocos.append(f"""<div class="report-block figure-block">
@@ -3054,7 +3054,7 @@ def _montar_html_relatorio_impressao(
             </div>
             """
 
-        blocos.append(f"""<div class="report-block compact figure-intro-block">
+        blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
           <p class="print-narrative">A Figura {fig_mapa} apresenta a distribuição territorial do percentual de conclusão das ações de climatização entre as Gerências Regionais consideradas no recorte.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
@@ -3088,7 +3088,7 @@ def _montar_html_relatorio_impressao(
     </div>""")
 
     if comparacao_gre and pendencias_real > 0:
-        blocos.append(f"""<div class="report-block compact figure-intro-block">
+        blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
           <p class="print-narrative">A Figura {fig_ranking} apresenta o ranking das ações ainda não concluídas entre as Gerências Regionais selecionadas.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
@@ -3108,7 +3108,7 @@ def _montar_html_relatorio_impressao(
         </div>""")
 
     if mostrar_grafico_setor:
-        blocos.append(f"""<div class="report-block compact figure-intro-block">
+        blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
           <p class="print-narrative">A distribuição por setor responsável complementa a leitura das demandas remanescentes. A Figura {fig_setor} apresenta a participação dos setores responsáveis no conjunto das pendências registradas.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
@@ -3305,6 +3305,12 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-block.figure-intro-block {{ margin-bottom:6mm; }}
 .report-block.figure-intro-block .print-narrative {{ margin-bottom:0; line-height:1.5; }}
 .report-block.figure-block {{ margin-top:0; }}
+/* Ajuste fino utilizado somente quando um gráfico quase cabe no espaço restante. */
+.report-block.smart-compact .print-svg-chart {{ height:54mm; }}
+.report-block.smart-compact .print-new-chart-card {{ padding-top:2mm; padding-bottom:2mm; }}
+.report-block.smart-compact .print-figure-source {{ margin-top:1.6mm; margin-bottom:2.2mm; }}
+.report-block.smart-compact .print-figure-title {{ margin-bottom:1.8mm; }}
+
 
 .report-block.analysis-block .print-narrative {{ margin-bottom:2.4mm; }}
 .report-block.conclusions-block {{ break-inside:avoid; page-break-inside:avoid; margin-bottom:0; }}
@@ -3401,15 +3407,35 @@ async function paginateReport() {{
   for (let i = 0; i < blocks.length; i++) {{
     const sourceBlock = blocks[i];
     const block = sourceBlock.cloneNode(true);
+    if (sourceBlock.dataset.smartCompact === 'true') {{
+      block.classList.add('smart-compact');
+    }}
 
     // Se o bloco abre uma seção, verifica se há espaço também para o
     // primeiro conteúdo subsequente. Isso evita páginas quase vazias.
     if (sourceBlock.dataset.keepWithNext === 'true' && i + 1 < blocks.length) {{
       const probeCurrent = block.cloneNode(true);
       const probeNext = blocks[i + 1].cloneNode(true);
+
       body.appendChild(probeCurrent);
       body.appendChild(probeNext);
-      const pairOverflows = body.scrollHeight > body.clientHeight + 2;
+
+      let overflowPx = body.scrollHeight - body.clientHeight;
+      let pairOverflows = overflowPx > 2;
+
+      // Quando o próximo bloco é um gráfico e falta pouco espaço,
+      // testa uma compactação discreta antes de mudar de página.
+      if (pairOverflows && overflowPx <= 85 && probeNext.classList.contains('figure-block')) {{
+        probeNext.classList.add('smart-compact');
+        overflowPx = body.scrollHeight - body.clientHeight;
+        pairOverflows = overflowPx > 2;
+
+        // Guarda a decisão para o bloco real que será inserido na sequência.
+        if (!pairOverflows) {{
+          blocks[i + 1].dataset.smartCompact = 'true';
+        }}
+      }}
+
       body.removeChild(probeNext);
       body.removeChild(probeCurrent);
 
@@ -3456,6 +3482,27 @@ async function paginateReport() {{
       }} else {{
         nextBody.insertBefore(candidate, nextBody.firstElementChild);
       }}
+    }}
+  }}
+
+  // Corrige introduções de figura que eventualmente tenham ficado
+  // isoladas no final de uma página.
+  const orphanPages = Array.from(generated.querySelectorAll('.generated-page'));
+  for (let p = 0; p < orphanPages.length - 1; p++) {{
+    const currentBody = orphanPages[p].querySelector('.page-body');
+    const nextBody = orphanPages[p + 1].querySelector('.page-body');
+    if (!currentBody || !nextBody) continue;
+
+    const last = currentBody.lastElementChild;
+    const firstNext = nextBody.firstElementChild;
+
+    if (
+      last &&
+      firstNext &&
+      last.classList.contains('figure-intro-block') &&
+      firstNext.classList.contains('figure-block')
+    ) {{
+      nextBody.insertBefore(last, firstNext);
     }}
   }}
 
@@ -4186,6 +4233,23 @@ body {
     font-weight: 900;
 }
 
+.gre-metrics {
+    grid-column: 2 / 4;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px 14px;
+    margin-top: -3px;
+    color: #617187;
+    font-size: 10px;
+    font-weight: 750;
+    line-height: 1.2;
+}
+.gre-metrics b { color:#203A5E; }
+.gre-metrics .metric-clim b { color:var(--azul-escuro); }
+.gre-metrics .metric-and b { color:var(--azul-medio); }
+.gre-metrics .metric-rota b { color:var(--vermelho); }
+
 .legend-top {
     display: flex;
     justify-content: center;
@@ -4197,7 +4261,7 @@ body {
 
 .rank-row {
     display: grid;
-    grid-template-columns: 120px 1fr 48px;
+    grid-template-columns: 120px 1fr 66px;
     align-items: center;
     gap: 12px;
     margin: 14px 0;
@@ -4251,8 +4315,14 @@ body {
 
 .rank-value {
     color: var(--vermelho);
-    font-size: 15px;
+    font-size: 14px;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    line-height:1.05;
 }
+.rank-value b { font-size:15px; }
+.rank-value span { margin-top:3px; color:#617187; font-size:10px; font-weight:800; }
 
 .alert {
     margin-top: 18px;
@@ -4317,6 +4387,7 @@ body {
 .sector-line b { color: var(--azul-escuro); }
 .sector-line b.blue { color: var(--azul-medio); }
 .sector-line b.red { color: var(--vermelho); }
+.sector-line b small { font-size:10px; color:#617187; font-weight:800; }
 
 .sector-bar {
     height: 24px;
@@ -4485,7 +4556,7 @@ body {
 
 .status-row {
     display:grid;
-    grid-template-columns: 230px 1fr 50px;
+    grid-template-columns: 230px 1fr 66px;
     gap:12px;
     align-items:center;
     margin:10px 0;
@@ -4506,6 +4577,14 @@ body {
     background:linear-gradient(90deg, var(--azul-noite), var(--azul-medio));
     border-radius:6px;
 }
+.status-value {
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    line-height:1.05;
+}
+.status-value b { color:#17365C; font-size:13px; }
+.status-value span { color:#617187; font-size:10px; margin-top:3px; }
 
 .badge {
     display:inline-block;
@@ -4605,6 +4684,7 @@ body {
 .gre-map-label .gre-num { font-size:13.2px; font-weight:950; }
 .gre-map-label .gre-city { font-size:8.9px; font-weight:850; }
 .gre-map-label .gre-value { font-size:11.0px; font-weight:950; }
+.gre-map-label .gre-pct { font-weight:900; opacity:.96; }
 .gre-region.is-muted,.gre-map-label.is-muted { opacity:.17; }
 .gre-region.is-selected { opacity:1; filter:drop-shadow(0 0 7px rgba(0,31,73,.55)); }
 .gre-map-label.is-selected { opacity:1; }
@@ -5797,10 +5877,15 @@ function renderKpis(totals) {
     donut.style.setProperty("--deg-and", degAnd + "deg");
 
     document.getElementById("donutCenter").innerHTML = fmtPct(pctClim) + "<span>Conclusão</span>";
-    document.getElementById("legClim").textContent = fmtNum(totals.climatizadas);
-    document.getElementById("legAnd").textContent = fmtNum(totals.andamento);
-    document.getElementById("legRota").textContent = fmtNum(totals.rota);
+    document.getElementById("legClim").textContent = `${fmtNum(totals.climatizadas)} (${fmtPct(pctClim)})`;
+    document.getElementById("legAnd").textContent = `${fmtNum(totals.andamento)} (${fmtPct(pctAnd)})`;
+    document.getElementById("legRota").textContent = `${fmtNum(totals.rota)} (${fmtPct(pctRota)})`;
     document.getElementById("legTotal").textContent = fmtNum(totals.total);
+
+    donut.title =
+        `Climatizadas: ${fmtNum(totals.climatizadas)} (${fmtPct(pctClim)}) | ` +
+        `Em andamento: ${fmtNum(totals.andamento)} (${fmtPct(pctAnd)}) | ` +
+        `Em rota: ${fmtNum(totals.rota)} (${fmtPct(pctRota)})`;
 
     document.getElementById("progressPct").textContent = fmtPct(pctClim);
     document.getElementById("progressFill").style.width = Math.max(0, Math.min(100, pctClim * 100)) + "%";
@@ -5864,14 +5949,22 @@ function renderPanorama(rows) {
         const wAnd = Math.max(3, (Number(d["Em andamento"] || 0) / total) * 100);
         const wRota = Math.max(3, (Number(d["Em rota"] || 0) / total) * 100);
 
-        const climLabel = Number(d.Climatizadas || 0) >= 4 ? fmtNum(d.Climatizadas) : "";
-        const andLabel = Number(d["Em andamento"] || 0) >= 4 ? fmtNum(d["Em andamento"]) : "";
-        const rotaLabel = Number(d["Em rota"] || 0) >= 4 ? fmtNum(d["Em rota"]) : "";
+        const clim = Number(d.Climatizadas || 0);
+        const andamento = Number(d["Em andamento"] || 0);
+        const rota = Number(d["Em rota"] || 0);
+        const pctClim = total ? clim / total : 0;
+        const pctAnd = total ? andamento / total : 0;
+        const pctRota = total ? rota / total : 0;
+
+        const climLabel = clim >= 4 ? fmtNum(clim) : "";
+        const andLabel = andamento >= 4 ? fmtNum(andamento) : "";
+        const rotaLabel = rota >= 4 ? fmtNum(rota) : "";
 
         html += `
             <div class="gre-row">
                 <div class="gre-name">${escapeHtml(greLabel(d))}</div>
-                <div class="gre-track">
+                <div class="gre-track"
+                     title="Climatizadas: ${fmtNum(clim)} (${fmtPct(pctClim)}) | Em andamento: ${fmtNum(andamento)} (${fmtPct(pctAnd)}) | Em rota: ${fmtNum(rota)} (${fmtPct(pctRota)})">
                     <div class="gre-stack" style="width:${widthTotal}%;">
                         <div class="gre-seg gre-clim" style="width:${wClim}%;">${climLabel}</div>
                         <div class="gre-seg gre-and" style="width:${wAnd}%;">${andLabel}</div>
@@ -5879,6 +5972,11 @@ function renderPanorama(rows) {
                     </div>
                 </div>
                 <div class="gre-total">${fmtNum(d.Total)}</div>
+                <div class="gre-metrics">
+                    <span class="metric-clim">Climatizadas: <b>${fmtNum(clim)}</b> (${fmtPct(pctClim)})</span>
+                    <span class="metric-and">Em andamento: <b>${fmtNum(andamento)}</b> (${fmtPct(pctAnd)})</span>
+                    <span class="metric-rota">Em rota: <b>${fmtNum(rota)}</b> (${fmtPct(pctRota)})</span>
+                </div>
             </div>`;
     });
 
@@ -6050,13 +6148,15 @@ function renderGrePerformance(rows, selectedGres = []) {
         const selected=selectedSet.has(greValue);
         const stateClass=hasSelection?(selected?'is-selected':'is-muted'):'';
         const value=total>0?`${fmtNum(clim)}/${fmtNum(total)}`:'—';
+        const pctValue=total>0?fmtPct(clim/total):'—';
         const [x,y]=GRE_LABEL_CENTERS[numTxt];
         const cfg=GRE_LABEL_CUSTOM[numTxt]||{};
         const lx=x, ly=y;
         const fsNum=cfg.num||13.2, fsCity=cfg.city||8.9, fsValue=cfg.value||11.0;
+        const fsPct=Math.max(7.2, fsValue-2.2);
         const tone=(perf.key==='low'||perf.key==='no-data')?'dark':'light';
-        regions.push(`<path class="gre-region ${perf.key} ${stateClass}" data-gre="${num}" d="${GRE_REGION_PATHS[numTxt]}"><title>${num}ª GRE — ${GRE_SEDES[numTxt]}: ${value}</title></path>`);
-        labels.push(`<g class="gre-map-label ${tone} ${stateClass}"><text class="gre-num" x="${lx}" y="${ly-9}" text-anchor="middle" style="font-size:${fsNum}px">${num}ª GRE</text><text class="gre-city" x="${lx}" y="${ly+1}" text-anchor="middle" style="font-size:${fsCity}px">${escapeHtml(GRE_SEDES[numTxt]||'')}</text><text class="gre-value" x="${lx}" y="${ly+13}" text-anchor="middle" style="font-size:${fsValue}px">${value}</text></g>`);
+        regions.push(`<path class="gre-region ${perf.key} ${stateClass}" data-gre="${num}" d="${GRE_REGION_PATHS[numTxt]}"><title>${num}ª GRE — ${GRE_SEDES[numTxt]}: ${value} (${pctValue})</title></path>`);
+        labels.push(`<g class="gre-map-label ${tone} ${stateClass}"><text class="gre-num" x="${lx}" y="${ly-11}" text-anchor="middle" style="font-size:${fsNum}px">${num}ª GRE</text><text class="gre-city" x="${lx}" y="${ly-1}" text-anchor="middle" style="font-size:${fsCity}px">${escapeHtml(GRE_SEDES[numTxt]||'')}</text><text class="gre-value" x="${lx}" y="${ly+11}" text-anchor="middle" style="font-size:${fsValue}px">${value}</text><text class="gre-pct" x="${lx}" y="${ly+21}" text-anchor="middle" style="font-size:${fsPct}px">${pctValue}</text></g>`);
     });
     target.innerHTML=`<svg class="gre-real-svg" viewBox="${GRE_MAP_VIEWBOX}" role="img" aria-label="Mapa geográfico real das GREs da Paraíba"><path d="${GRE_STATE_PATH}" fill="#F4F7FA" stroke="#7E8B99" stroke-width="1.8"/>${regions.join('')}<path class="gre-municipal-lines" d="${GRE_MUNICIPAL_PATHS}"/>${labels.join('')}</svg>`;
 }
@@ -6090,11 +6190,14 @@ function renderRanking(targetId, rows, metric, className = "", maxRows = 8) {
                 </div>`;
         }
 
+        const totalGre = Number(d.Total || 0);
+        const pctMetric = totalGre > 0 ? value / totalGre : 0;
+
         html += `
             <div class="rank-row">
                 <div class="rank-label">${escapeHtml(greLabel(d))}</div>
                 <div class="rank-track">${barHtml}</div>
-                <div class="rank-value">${fmtNum(value)}</div>
+                <div class="rank-value"><b>${fmtNum(value)}</b><span>${fmtPct(pctMetric)}</span></div>
             </div>`;
     });
 
@@ -6103,23 +6206,33 @@ function renderRanking(targetId, rows, metric, className = "", maxRows = 8) {
 
 function renderSetores() {
     let html = "";
+    const totalConsolidado = setorData.reduce((sum, s) => {
+        const andamento = Number(s["Em andamento"] || 0);
+        const rota = Number(s["Rota de climatização"] || 0);
+        return sum + andamento + rota;
+    }, 0);
+
     setorData.forEach(s => {
         const andamento = Number(s["Em andamento"] || 0);
         const rota = Number(s["Rota de climatização"] || 0);
-        const totalGrafico = Math.max(andamento + rota, 1);
-        const wAndamento = (andamento / totalGrafico) * 100;
-        const wRota = (rota / totalGrafico) * 100;
+        const totalSetor = andamento + rota;
+        const totalGrafico = Math.max(totalSetor, 1);
+        const pctAndamento = totalSetor > 0 ? andamento / totalSetor : 0;
+        const pctRota = totalSetor > 0 ? rota / totalSetor : 0;
+        const pctSetor = totalConsolidado > 0 ? totalSetor / totalConsolidado : 0;
+        const wAndamento = pctAndamento * 100;
+        const wRota = pctRota * 100;
 
         html += `
             <div class="sector-card">
                 <div class="sector-head">${escapeHtml(s.Setor)}</div>
-                <div class="sector-bar" title="Em andamento: ${fmtNum(andamento)} | Em rota: ${fmtNum(rota)}">
+                <div class="sector-bar" title="Em andamento: ${fmtNum(andamento)} (${fmtPct(pctAndamento)}) | Em rota: ${fmtNum(rota)} (${fmtPct(pctRota)})">
                     <div class="sector-bar-andamento" style="width:${wAndamento}%;"></div>
                     <div class="sector-bar-rota" style="width:${wRota}%;"></div>
                 </div>
-                <div class="sector-line"><span>Em andamento</span><b class="blue">${fmtNum(andamento)}</b></div>
-                <div class="sector-line"><span>Rota de climatização</span><b class="red">${fmtNum(rota)}</b></div>
-                <div class="sector-line"><span>Total</span><b>${fmtNum(s.Total)}</b></div>
+                <div class="sector-line"><span>Em andamento</span><b class="blue">${fmtNum(andamento)} <small>(${fmtPct(pctAndamento)})</small></b></div>
+                <div class="sector-line"><span>Rota de climatização</span><b class="red">${fmtNum(rota)} <small>(${fmtPct(pctRota)})</small></b></div>
+                <div class="sector-line"><span>Total</span><b>${fmtNum(totalSetor)} <small>(${fmtPct(pctSetor)} do consolidado)</small></b></div>
             </div>`;
     });
 
@@ -6343,11 +6456,12 @@ function renderAcompanhamento(rows) {
 
     statusSorted.forEach(([status, qtd]) => {
         const width = Math.max(3, (qtd / maxStatus) * 100);
+        const pctStatus = opTotal > 0 ? qtd / opTotal : 0;
         statusHtml += `
             <div class="status-row">
                 <div>${escapeHtml(status)}</div>
                 <div class="status-track"><div class="status-fill" style="width:${width}%;"></div></div>
-                <div>${fmtNum(qtd)}</div>
+                <div class="status-value"><b>${fmtNum(qtd)}</b><span>${fmtPct(pctStatus)}</span></div>
             </div>`;
     });
 
@@ -6364,11 +6478,12 @@ function renderAcompanhamento(rows) {
     let greHtml = "";
     greRows.forEach(([gre, qtd]) => {
         const width = Math.max(3, (qtd / maxGre) * 100);
+        const pctGre = opTotal > 0 ? qtd / opTotal : 0;
         greHtml += `
             <div class="rank-row">
                 <div class="rank-label">${escapeHtml(gre)}</div>
                 <div class="rank-track"><div class="rank-fill" style="width:${width}%;"></div></div>
-                <div class="rank-value">${fmtNum(qtd)}</div>
+                <div class="rank-value"><b>${fmtNum(qtd)}</b><span>${fmtPct(pctGre)}</span></div>
             </div>`;
     });
     document.getElementById("opGreRanking").innerHTML = greHtml || "<div class='info-box'>Nenhum registro operacional encontrado.</div>";
