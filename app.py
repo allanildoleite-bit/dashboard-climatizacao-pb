@@ -2972,11 +2972,16 @@ def _montar_html_relatorio_impressao(
     qtd_setores = len(setor_norm) if recorte_setorizacao_compativel else 0
     mostrar_grafico_setor = recorte_setorizacao_compativel and qtd_setores >= 2
     mostrar_texto_setor_unico = recorte_setorizacao_compativel and qtd_setores == 1
+    total_setorizacao = float(setor_norm["Pendencias"].sum()) if not setor_norm.empty else 0.0
+
     if mostrar_texto_setor_unico:
         linha_setor = setor_norm.iloc[0]
+        qtd_setor_unico = float(linha_setor.get("Pendencias", 0) or 0)
+        pct_setor_unico = qtd_setor_unico / total_setorizacao if total_setorizacao > 0 else 0.0
         texto_setor_unico = (
             f"As pendências consolidadas estão concentradas em <b>{escape(str(linha_setor.get('Setor','')))}</b>, "
-            f"com <b>{_fmt_num_br(float(linha_setor.get('Pendencias',0) or 0))}</b> registros."
+            f"com <b>{_fmt_num_br(qtd_setor_unico)}</b> registros, correspondendo a "
+            f"<b>{_fmt_pct_br(pct_setor_unico)}</b> das pendências setorizadas."
         )
     else:
         texto_setor_unico = ""
@@ -2984,10 +2989,17 @@ def _montar_html_relatorio_impressao(
     if mostrar_grafico_setor:
         partes = []
         for _, linha in setor_norm.head(3).iterrows():
+            qtd_setor = float(linha.get("Pendencias", 0) or 0)
+            pct_setor = qtd_setor / total_setorizacao if total_setorizacao > 0 else 0.0
             partes.append(
-                f"<b>{escape(str(linha.get('Setor','')))}</b>, com <b>{_fmt_num_br(float(linha.get('Pendencias',0) or 0))}</b> registros"
+                f"<b>{escape(str(linha.get('Setor','')))}</b>, com "
+                f"<b>{_fmt_num_br(qtd_setor)}</b> registros "
+                f"(<b>{_fmt_pct_br(pct_setor)}</b>)"
             )
-        texto_setores = partes[0] if len(partes) == 1 else (f"{partes[0]} e {partes[1]}" if len(partes) == 2 else f"{', '.join(partes[:-1])} e {partes[-1]}")
+        texto_setores = partes[0] if len(partes) == 1 else (
+            f"{partes[0]} e {partes[1]}" if len(partes) == 2
+            else f"{', '.join(partes[:-1])} e {partes[-1]}"
+        )
     else:
         texto_setores = ""
 
@@ -3169,10 +3181,25 @@ def _montar_html_relatorio_impressao(
       <h2 class="print-section-title">3. Acompanhamento das Pendências</h2>
       <p class="print-narrative">No recorte analisado, existem <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. {leitura_pendencias}</p>
       <div class="report-single-gre">
-        <div><small>Total de pendências</small><b>{_fmt_num_br(pendencias_real)}</b></div>
-        <div><small>Em andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
-        <div><small>Em rota</small><b>{_fmt_num_br(rota_real)}</b></div>
-        <div><small>Participação na base</small><b>{_fmt_pct_br(pct_pendencias)}</b></div>
+        <div>
+          <small>Total de pendências</small>
+          <b>{_fmt_num_br(pendencias_real)}</b>
+          <span class="report-card-pct">{_fmt_pct_br(pct_pendencias)}</span>
+        </div>
+        <div>
+          <small>Em andamento</small>
+          <b>{_fmt_num_br(andamento_real)}</b>
+          <span class="report-card-pct">{_fmt_pct_br(pct_andamento)}</span>
+        </div>
+        <div>
+          <small>Em rota</small>
+          <b>{_fmt_num_br(rota_real)}</b>
+          <span class="report-card-pct">{_fmt_pct_br(pct_rota)}</span>
+        </div>
+        <div>
+          <small>Participação na base</small>
+          <b>{_fmt_pct_br(pct_pendencias)}</b>
+        </div>
       </div>
     </div>""")
 
@@ -3201,7 +3228,7 @@ def _montar_html_relatorio_impressao(
           <p class="print-narrative">A distribuição por setor responsável complementa a leitura das demandas remanescentes. A Figura {fig_setor} apresenta a participação dos setores responsáveis no conjunto das pendências registradas.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
-          <div class="print-card item-setorizacao" style="min-height:50mm;">
+          <div class="print-card item-setorizacao" style="min-height:44mm;">
             <div class="print-figure-title">Figura {fig_setor} – Distribuição das Pendências por Setor Responsável</div>
             {_relatorio_setores_html(setor, 10)}
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
@@ -3214,7 +3241,7 @@ def _montar_html_relatorio_impressao(
         blocos.append(f"""<div class="report-block compact"><p class="print-narrative">{texto_setor_unico}</p></div>""")
 
     # Considerações finais adaptativas em dois parágrafos.
-    blocos.append(f"""<div class="report-block conclusions-block" data-section-start="sec4">
+    blocos.append(f"""<div class="report-block conclusions-block" data-section-start="sec4" data-force-new-page="true">
       <h2 class="print-section-title">4. Considerações Finais</h2>
       <p class="print-narrative">No recorte analisado, <b>{_fmt_pct_br(conclusao)}</b> das unidades escolares encontram-se climatizadas, enquanto <b>{_fmt_pct_br(pct_pendencias)}</b> permanecem com ações ainda não concluídas. {leitura_estagio_final} {leitura_status_final}</p>
       <p class="print-narrative">{leitura_regional_final} Os resultados consolidados constituem suporte ao acompanhamento técnico e gerencial das intervenções, permitindo direcionar a atenção para as regionais com menor desempenho proporcional ou maior concentração de pendências e acompanhar a manutenção dos resultados nas áreas com maior nível de conclusão.</p>
@@ -3469,6 +3496,18 @@ html.printing-report .print-sheet {{
 .report-block.smart-compact .print-new-chart-card {{ padding-top:2mm; padding-bottom:2mm; }}
 .report-block.smart-compact .print-figure-source {{ margin-top:1.6mm; margin-bottom:2.2mm; }}
 .report-block.smart-compact .print-figure-title {{ margin-bottom:1.8mm; }}
+.report-block.smart-compact .item-setorizacao {{
+  min-height:38mm !important;
+  padding:2.4mm !important;
+}}
+.report-block.smart-compact .item-setorizacao .print-mini-row {{
+  margin:1.2mm 0 !important;
+}}
+.report-block.smart-compact .item-setorizacao .print-figure-source {{
+  margin-top:1.5mm !important;
+  margin-bottom:1mm !important;
+}}
+
 
 
 .report-block.analysis-block .print-narrative {{ margin-bottom:2.4mm; }}
@@ -3492,6 +3531,14 @@ html.printing-report .print-sheet {{
 .report-single-gre div {{ border:1px solid var(--borda); border-radius:2.7mm; padding:3mm; background:#F8FBFF; }}
 .report-single-gre small {{ display:block; color:var(--suave); font-size:7pt; font-weight:800; text-transform:uppercase; }}
 .report-single-gre b {{ display:block; margin-top:1.5mm; color:var(--escuro); font-size:16pt; }}
+.report-card-pct {{
+  display:block;
+  margin-top:1mm;
+  color:var(--suave);
+  font-size:7.5pt;
+  font-weight:900;
+  line-height:1;
+}}
 .report-spacer {{ height:2mm; }}
 @media print {{
   .report-flow {{ display:none !important; }}
@@ -3575,6 +3622,14 @@ async function paginateReport() {{
 
   for (let i = 0; i < blocks.length; i++) {{
     const sourceBlock = blocks[i];
+
+    // Blocos marcados para nova página começam obrigatoriamente em uma folha limpa.
+    // Usado nas Considerações Finais para mantê-las isoladas na última página.
+    if (sourceBlock.dataset.forceNewPage === 'true' && body.children.length > 0) {{
+      page = newPage();
+      body = page.querySelector('.page-body');
+    }}
+
     const block = sourceBlock.cloneNode(true);
     if (sourceBlock.dataset.smartCompact === 'true') {{
       block.classList.add('smart-compact');
@@ -3619,7 +3674,7 @@ async function paginateReport() {{
 
     if (overflowing && block.classList.contains('figure-block')) {{
       const overflowPx = body.scrollHeight - body.clientHeight;
-      if (overflowPx <= 190) {{
+      if (overflowPx <= 240) {{
         block.classList.add('smart-compact');
         overflowing = body.scrollHeight > body.clientHeight + 2;
       }}
@@ -3651,12 +3706,16 @@ async function paginateReport() {{
       if (!currentBody || !nextBody || !nextBody.firstElementChild) continue;
 
       const candidate = nextBody.firstElementChild;
+
+      // Não mover para trás blocos que devem iniciar em uma nova página.
+      if (candidate.dataset.forceNewPage === 'true') continue;
+
       currentBody.appendChild(candidate);
       let fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
 
       if (!fits && candidate.classList.contains('figure-block')) {{
         const overflowPx = currentBody.scrollHeight - currentBody.clientHeight;
-        if (overflowPx <= 190) {{
+        if (overflowPx <= 240) {{
           candidate.classList.add('smart-compact');
           fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
         }}
