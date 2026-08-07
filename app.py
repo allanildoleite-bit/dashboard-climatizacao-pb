@@ -2852,8 +2852,23 @@ def _montar_html_relatorio_impressao(
 
         top_clim_txt = _lista_top(top_clim, "Climatizadas")
         top_pend_txt = _lista_top(top_pend, "Pendências")
+
+        # Para a redação comparativa, aplica a preposição "na" a cada GRE.
+        partes_clim = []
+        for _, linha in top_clim.iterrows():
+            partes_clim.append(
+                f"na <b>{_nome_narrativo(linha.get('GRE_Label', linha.get('GRE','GRE')))}</b>, com "
+                f"<b>{_fmt_num_br(float(linha.get('Climatizadas',0) or 0))}</b> unidades"
+            )
+        if len(partes_clim) == 1:
+            top_clim_com_preposicao = partes_clim[0]
+        elif len(partes_clim) == 2:
+            top_clim_com_preposicao = f"{partes_clim[0]} e {partes_clim[1]}"
+        else:
+            top_clim_com_preposicao = f"{', '.join(partes_clim[:-1])} e {partes_clim[-1]}"
+
         texto_comparativo = (
-            f"Os maiores quantitativos absolutos de unidades climatizadas são observados em {top_clim_txt}. "
+            f"Os maiores quantitativos absolutos de unidades climatizadas são observados {top_clim_com_preposicao}. "
             "A leitura deve considerar o número total de unidades de cada regional, evitando interpretar o desempenho apenas pelos valores absolutos."
         )
         texto_mapa = (
@@ -2930,7 +2945,7 @@ def _montar_html_relatorio_impressao(
     blocos = []
     blocos.append(f"""<div class="report-block" data-section-start="sec1">
       <h2 class="print-section-title">1. Panorama Geral da Climatização</h2>
-      <p class="print-narrative">O presente relatório consolida os principais indicadores do processo de climatização das unidades escolares da rede estadual de ensino da Paraíba, com base nas informações de acompanhamento da Gerência de Obras. O conteúdo corresponde ao recorte definido pelos filtros aplicados no momento da emissão.</p>
+      <p class="print-narrative">Este relatório apresenta o panorama atualizado das ações de climatização das unidades escolares da rede estadual de ensino da Paraíba, reunindo os principais indicadores utilizados no acompanhamento realizado pela Gerência de Obras. As informações correspondem ao recorte definido pelos filtros selecionados e refletem a situação registrada na base na data de atualização indicada no documento.</p>
       <div class="print-kpis">
         <div class="print-kpi"><small>Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
         <div class="print-kpi"><small>Escolas Climatizadas</small><b>{_fmt_num_br(climatizadas_real)}</b></div>
@@ -2939,6 +2954,10 @@ def _montar_html_relatorio_impressao(
         <div class="print-kpi" style="--accent:var(--medio)"><small>Taxa de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
       </div>
       <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas. As ações ainda não concluídas totalizam <b>{_fmt_num_br(pendencias_real)}</b> unidades.</p>
+    </div>""")
+
+    blocos.append(f"""<div class="report-block compact figure-intro-block">
+      <p class="print-narrative">A Figura {fig_panorama} apresenta a composição das ações de climatização. As unidades climatizadas representam <b>{_fmt_pct_br(conclusao)}</b> da base, enquanto as ações ainda não concluídas correspondem a <b>{_fmt_pct_br(pct_pendencias)}</b>. {leitura_pendencias}</p>
     </div>""")
 
     blocos.append(f"""<div class="report-block figure-block">
@@ -2957,7 +2976,6 @@ def _montar_html_relatorio_impressao(
           <p class="print-subtitle"><b>{_fmt_num_br(pendencias_real)}</b> unidades permanecem com ações ainda não concluídas.</p>
         </div>
       </div>
-      <p class="print-narrative">A Figura {fig_panorama} apresenta a composição das ações de climatização. As unidades climatizadas representam <b>{_fmt_pct_br(conclusao)}</b> da base, enquanto as ações ainda não concluídas correspondem a <b>{_fmt_pct_br(pct_pendencias)}</b>. {leitura_pendencias}</p>
       <div class="report-inline-note">Os dados refletem a situação registrada na base vigente em <b>{atualizacao}</b>. Fonte consolidada: {fonte}.</div>
     </div>""")
 
@@ -2979,6 +2997,9 @@ def _montar_html_relatorio_impressao(
               <h2 class="print-section-title">2. Análise Regional e Territorial</h2>
               <p class="print-narrative">A análise regional compara o total de unidades, as escolas climatizadas e as ações ainda não concluídas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
+            blocos.append(f"""<div class="report-block compact figure-intro-block">
+              <p class="print-narrative">A Figura {fig_area} apresenta o comparativo entre o total de unidades escolares, as escolas climatizadas e as ações ainda não concluídas nas Gerências Regionais selecionadas.</p>
+            </div>""")
             blocos.append(f"""<div class="report-block figure-block">
               <div class="print-new-chart-card item-area">
                 <div class="print-figure-title">Figura {fig_area} – Comparativo da Climatização por GRE</div>
@@ -2986,6 +3007,9 @@ def _montar_html_relatorio_impressao(
                 <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
                 <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
               </div>
+            </div>""")
+            blocos.append(f"""<div class="report-block compact figure-intro-block">
+              <p class="print-narrative">A Figura {fig_barras} apresenta a distribuição das unidades escolares climatizadas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
             blocos.append(f"""<div class="report-block figure-block">
               <div class="print-new-chart-card item-barras">
@@ -3030,6 +3054,9 @@ def _montar_html_relatorio_impressao(
             </div>
             """
 
+        blocos.append(f"""<div class="report-block compact figure-intro-block">
+          <p class="print-narrative">A Figura {fig_mapa} apresenta a distribuição territorial do percentual de conclusão das ações de climatização entre as Gerências Regionais consideradas no recorte.</p>
+        </div>""")
         blocos.append(f"""<div class="report-block figure-block">
           <div class="print-map-card">
             <div class="print-figure-title">Figura {fig_mapa} – Distribuição Territorial da Climatização por GRE</div>
@@ -3061,6 +3088,9 @@ def _montar_html_relatorio_impressao(
     </div>""")
 
     if comparacao_gre and pendencias_real > 0:
+        blocos.append(f"""<div class="report-block compact figure-intro-block">
+          <p class="print-narrative">A Figura {fig_ranking} apresenta o ranking das ações ainda não concluídas entre as Gerências Regionais selecionadas.</p>
+        </div>""")
         blocos.append(f"""<div class="report-block figure-block">
           <div class="print-chart-card item-ranking">
             <div class="print-figure-title">Figura {fig_ranking} – Ranking de Pendências por GRE</div>
@@ -3078,8 +3108,8 @@ def _montar_html_relatorio_impressao(
         </div>""")
 
     if mostrar_grafico_setor:
-        blocos.append("""<div class="report-block compact analysis-block">
-          <p class="print-narrative">A distribuição por setor responsável complementa a leitura das demandas remanescentes no consolidado geral.</p>
+        blocos.append(f"""<div class="report-block compact figure-intro-block">
+          <p class="print-narrative">A distribuição por setor responsável complementa a leitura das demandas remanescentes. A Figura {fig_setor} apresenta a participação dos setores responsáveis no conjunto das pendências registradas.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
           <div class="print-card item-setorizacao" style="min-height:50mm;">
@@ -3230,7 +3260,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-empty {{ color:var(--suave); font-size:9px; padding:8mm; text-align:center; }}
 .print-card, .print-new-chart-card, .print-map-card, .print-chart-card, .print-highlight-grid, .print-priority-list, .print-kpis, .print-two {{ page-break-inside:avoid; break-inside:avoid; }}
 .print-map-card, .print-chart-card, .print-new-chart-grid {{ margin-bottom:3mm; }}
-.print-narrative {{ margin:0 0 3.2mm; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.7pt; line-height:1.48; text-align:justify; text-indent:1.1cm; page-break-inside:avoid; break-inside:avoid; orphans:3; widows:3; }}
+.print-narrative {{ margin:0 0 3.2mm; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.7pt; line-height:1.5; text-align:justify; text-indent:1.1cm; page-break-inside:avoid; break-inside:avoid; orphans:3; widows:3; }}
 .print-narrative.no-indent {{ text-indent:0; }}
 .print-subsection-title {{ margin:4mm 0 2.5mm; color:var(--escuro); font-family:"Segoe UI",Arial,sans-serif; font-size:11.5pt; font-weight:750; text-align:left; }}
 .print-analysis-divider {{ height:1px; background:var(--borda); margin:4mm 0 4mm; }}
@@ -3272,6 +3302,10 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-block {{ margin:0 0 4.2mm; break-inside:avoid; page-break-inside:avoid; }}
 .report-block.compact {{ margin-bottom:3.2mm; }}
 .report-block.analysis-block {{ margin-bottom:2.6mm; }}
+.report-block.figure-intro-block {{ margin-bottom:6mm; }}
+.report-block.figure-intro-block .print-narrative {{ margin-bottom:0; line-height:1.5; }}
+.report-block.figure-block {{ margin-top:0; }}
+
 .report-block.analysis-block .print-narrative {{ margin-bottom:2.4mm; }}
 .report-block.conclusions-block {{ break-inside:avoid; page-break-inside:avoid; margin-bottom:0; }}
 .report-block.conclusions-block .print-narrative {{ margin-bottom:3mm; }}
