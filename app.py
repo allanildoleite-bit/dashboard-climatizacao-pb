@@ -2204,7 +2204,7 @@ def gerar_relatorio_pdf(
 
     # PÁGINA 1 — SÍNTESE EXECUTIVA
     y = _pdf_cabecalho_resumo(
-        canvas_pdf, 1, "1. Síntese Executiva",
+        canvas_pdf, 1, "1. Panorama Geral da Climatização",
         "Acompanhamento da climatização das unidades escolares", periodo_label
     )
     y = _pdf_cartoes_kpi_resumo(canvas_pdf, totais, margem, y, area_largura)
@@ -2929,7 +2929,7 @@ def _montar_html_relatorio_impressao(
     # Blocos da seção 1.
     blocos = []
     blocos.append(f"""<div class="report-block" data-section-start="sec1">
-      <h2 class="print-section-title">1. Síntese Executiva</h2>
+      <h2 class="print-section-title">1. Panorama Geral da Climatização</h2>
       <p class="print-narrative">O presente relatório consolida os principais indicadores do processo de climatização das unidades escolares da rede estadual de ensino da Paraíba, com base nas informações de acompanhamento da Gerência de Obras. O conteúdo corresponde ao recorte definido pelos filtros aplicados no momento da emissão.</p>
       <div class="print-kpis">
         <div class="print-kpi"><small>Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
@@ -2965,7 +2965,7 @@ def _montar_html_relatorio_impressao(
     if qtd_gres > 0:
         if gre_unica:
             blocos.append(f"""<div class="report-block" data-section-start="sec2">
-              <h2 class="print-section-title">2. Análise da Climatização</h2>
+              <h2 class="print-section-title">2. Análise Regional e Territorial</h2>
               <p class="print-narrative">{texto_gre_unica}</p>
               <div class="report-single-gre">
                 <div><small>Total</small><b>{_fmt_num_br(total_gre)}</b></div>
@@ -2976,7 +2976,7 @@ def _montar_html_relatorio_impressao(
             </div>""")
         else:
             blocos.append("""<div class="report-block compact" data-section-start="sec2" data-keep-with-next="true">
-              <h2 class="print-section-title">2. Análise da Climatização</h2>
+              <h2 class="print-section-title">2. Análise Regional e Territorial</h2>
               <p class="print-narrative">A análise regional compara o total de unidades, as escolas climatizadas e as ações ainda não concluídas entre as Gerências Regionais contempladas no recorte.</p>
             </div>""")
             blocos.append(f"""<div class="report-block figure-block">
@@ -3044,13 +3044,13 @@ def _montar_html_relatorio_impressao(
         </div>""")
     else:
         blocos.append("""<div class="report-block" data-section-start="sec2">
-          <h2 class="print-section-title">2. Análise da Climatização</h2>
+          <h2 class="print-section-title">2. Análise Regional e Territorial</h2>
           <p class="print-narrative">O recorte selecionado não possui dados suficientes para análise regional ou territorial.</p>
         </div>""")
 
     # Seção 3: pendências. Ranking só existe com duas ou mais GREs.
     blocos.append(f"""<div class="report-block compact" data-section-start="sec3" data-keep-with-next="true">
-      <h2 class="print-section-title">3. Pendências e Responsabilidades</h2>
+      <h2 class="print-section-title">3. Acompanhamento das Pendências</h2>
       <p class="print-narrative">No recorte analisado, existem <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. {leitura_pendencias}</p>
       <div class="report-single-gre">
         <div><small>Total de pendências</small><b>{_fmt_num_br(pendencias_real)}</b></div>
@@ -3105,9 +3105,9 @@ def _montar_html_relatorio_impressao(
     flow_html = "".join(blocos)
 
     sumario_html = "".join([
-        '<div class="toc-row toc-main"><span>1. Síntese Executiva</span><i></i><b data-target="sec1">3</b></div>',
-        '<div class="toc-row toc-main"><span>2. Análise da Climatização</span><i></i><b data-target="sec2">3</b></div>',
-        '<div class="toc-row toc-main"><span>3. Pendências e Responsabilidades</span><i></i><b data-target="sec3">3</b></div>',
+        '<div class="toc-row toc-main"><span>1. Panorama Geral da Climatização</span><i></i><b data-target="sec1">3</b></div>',
+        '<div class="toc-row toc-main"><span>2. Análise Regional e Territorial</span><i></i><b data-target="sec2">3</b></div>',
+        '<div class="toc-row toc-main"><span>3. Acompanhamento das Pendências</span><i></i><b data-target="sec3">3</b></div>',
         '<div class="toc-row toc-main"><span>4. Considerações Finais</span><i></i><b data-target="sec4">3</b></div>',
     ])
 
