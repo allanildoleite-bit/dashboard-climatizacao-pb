@@ -4085,7 +4085,8 @@ body {
     margin: 9px 0 0 8px;
     color: var(--texto-suave);
     font-size: 15px;
-    font-weight: 750;
+    font-weight: 800;
+    line-height: 1.25;
 }
 
 .grid-main {
@@ -5938,9 +5939,9 @@ function renderKpis(totals) {
     document.getElementById("kpiRota").textContent = fmtNum(totals.rota);
     document.getElementById("kpiConclusao").textContent = fmtPct(pctClim);
 
-    document.getElementById("subClimatizadas").textContent = fmtPct(pctClim) + " do total";
-    document.getElementById("subAndamento").textContent = fmtPct(pctAnd) + " do total";
-    document.getElementById("subRota").textContent = fmtPct(pctRota) + " do total";
+    document.getElementById("subClimatizadas").textContent = fmtPct(pctClim) + " do total monitorado";
+    document.getElementById("subAndamento").textContent = fmtPct(pctAnd) + " do total monitorado";
+    document.getElementById("subRota").textContent = fmtPct(pctRota) + " do total monitorado";
 
     const donut = document.getElementById("donut");
     const degClim = pctClim * 360;
@@ -5962,7 +5963,11 @@ function renderKpis(totals) {
     document.getElementById("progressPct").textContent = fmtPct(pctClim);
     document.getElementById("progressFill").style.width = Math.max(0, Math.min(100, pctClim * 100)) + "%";
     document.getElementById("progressInfo").innerHTML =
-        `<strong>${fmtNum(totals.climatizadas)}</strong> escolas já foram climatizadas. Restam <strong>${fmtNum(totals.pendencias)}</strong> em andamento ou em rota de climatização.`;
+        `<strong>${fmtNum(totals.climatizadas)}</strong> unidades já foram climatizadas (<strong>${fmtPct(pctClim)}</strong>). ` +
+        `Permanecem <strong>${fmtNum(totals.andamento)}</strong> em andamento (<strong>${fmtPct(pctAnd)}</strong>) ` +
+        `e <strong>${fmtNum(totals.rota)}</strong> em rota de climatização (<strong>${fmtPct(pctRota)}</strong>), ` +
+        `totalizando <strong>${fmtNum(totals.pendencias)}</strong> ações ainda não concluídas ` +
+        `(<strong>${fmtPct(pctAnd + pctRota)}</strong>).`;
 }
 
 function renderPanorama(rows) {
