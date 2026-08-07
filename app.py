@@ -3161,7 +3161,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-document {{ padding:22px 0 36px; display:flex; flex-direction:column; align-items:center; gap:20px; counter-reset:pagina; }}
 .print-sheet {{
   width:210mm; height:297mm; background:#fff; position:relative; overflow:hidden;
-  padding:16mm 15mm 27mm; box-shadow:0 12px 34px rgba(0,31,73,.18); counter-increment:pagina;
+  padding:15mm 15mm 31mm; box-shadow:0 12px 34px rgba(0,31,73,.18); counter-increment:pagina;
 }}
 .print-sheet::before {{
   content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
@@ -3232,7 +3232,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-method b {{ color:var(--escuro); display:block; margin-bottom:1.5mm; font-size:9.5px; }}
 .print-filter-note {{ margin-top:3mm; color:var(--suave); font-size:7.7px; line-height:1.35; }}
 .print-chart-card {{ background:#fff; border:1px solid var(--borda); border-radius:3.5mm; padding:4mm 4.5mm; }}
-.print-chart-legend {{ text-align:center; color:var(--suave); font-size:7.5px; font-weight:800; margin-bottom:3mm; }}
+.print-chart-legend {{ text-align:center; color:var(--suave); font-size:7.5px; font-weight:800; margin:1mm 0 2.5mm; }}
 .print-new-chart-grid {{ display:grid; grid-template-columns:1fr; gap:3mm; }}
 .print-new-chart-card {{ background:#fff; border:1px solid var(--borda); border-radius:3mm; padding:2.5mm 3mm; }}
 .print-new-chart-card h3 {{ margin:0 0 1mm; color:var(--escuro); font-size:10px; }}
@@ -3260,13 +3260,15 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-mini-row {{ display:grid; grid-template-columns:31mm 1fr 8mm; align-items:center; gap:1.5mm; margin:3.1mm 0; }}
 .print-mini-name {{ font-size:6.8px; text-align:right; }} .print-mini-value {{ font-size:7px; font-weight:900; text-align:right; }}
 .print-mini-track {{ height:4.5mm; }} .print-status-fill {{ height:100%; background:linear-gradient(90deg,var(--noite),var(--medio)); border-radius:1.2mm; }}
-.print-footer {{ position:absolute; left:15mm; right:15mm; bottom:7mm; border-top:1px solid var(--borda); padding-top:2.5mm; display:flex; justify-content:space-between; color:var(--suave); font-size:6.7px; font-weight:700; }}
+.print-footer {{ position:absolute; left:15mm; right:15mm; bottom:7mm; border-top:1px solid var(--borda); padding-top:2.2mm; display:flex; justify-content:space-between; color:var(--suave); font-size:6.6px; font-weight:700; }}
 .print-empty {{ color:var(--suave); font-size:9px; padding:8mm; text-align:center; }}
-.print-narrative {{ margin:0 0 4mm; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:10pt; line-height:1.42; text-align:justify; text-indent:1.25cm; }}
+.print-card, .print-new-chart-card, .print-map-card, .print-chart-card, .print-highlight-grid, .print-priority-list, .print-kpis, .print-two {{ page-break-inside:avoid; break-inside:avoid; }}
+.print-map-card, .print-chart-card, .print-new-chart-grid {{ margin-bottom:3mm; }}
+.print-narrative {{ margin:0 0 3.2mm; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.7pt; line-height:1.48; text-align:justify; text-indent:1.1cm; page-break-inside:avoid; break-inside:avoid; orphans:3; widows:3; }}
 .print-narrative.no-indent {{ text-indent:0; }}
 .print-subsection-title {{ margin:4mm 0 2.5mm; color:var(--escuro); font-family:"Segoe UI",Arial,sans-serif; font-size:11.5pt; font-weight:750; text-align:left; }}
-.print-figure-title {{ margin:0 0 2mm; color:#18365C; font-family:"Segoe UI",Arial,sans-serif; font-size:9pt; font-weight:700; text-align:center; }}
-.print-figure-source {{ margin:1.5mm 0 3mm; color:#4C5F75; font-family:"Segoe UI",Arial,sans-serif; font-size:8pt; text-align:center; }}
+.print-figure-title {{ margin:0 0 2.2mm; color:#18365C; font-family:"Segoe UI",Arial,sans-serif; font-size:9pt; font-weight:700; text-align:center; }}
+.print-figure-source {{ margin:2mm 0 3.5mm; color:#4C5F75; font-family:"Segoe UI",Arial,sans-serif; font-size:7.9pt; text-align:center; }}
 .print-priority-list {{ margin:2mm 0 4mm 7mm; padding:0; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.3pt; line-height:1.38; }}
 .print-priority-list li {{ margin-bottom:1.8mm; }}
 .print-section-divider {{ border:0; border-top:1px solid var(--borda); margin:4mm 0; }}
@@ -3424,8 +3426,6 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
       <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
     </div>
   </div>
-  <p class="print-narrative"><b>Análise da Figura 2.</b> {analise_fig2}</p>
-  <p class="print-narrative"><b>Análise da Figura 3.</b> {analise_fig3}</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
@@ -3440,8 +3440,9 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2.2 Desempenho das Gerências Regionais</h2>
+  <p class="print-narrative"><b>Análise da Figura 2.</b> {analise_fig2}</p>
+  <p class="print-narrative"><b>Análise da Figura 3.</b> {analise_fig3}</p>
   <p class="print-narrative">{analise_desempenho}</p>
-  <p class="print-narrative">A avaliação regional combina o percentual de unidades climatizadas e o volume de ações ainda não concluídas, permitindo diferenciar resultados proporcionais e quantitativos absolutos no recorte selecionado.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
