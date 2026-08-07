@@ -3028,9 +3028,7 @@ def _montar_html_relatorio_impressao(
         )
     else:
         analise_fig5 = (
-            f"A Figura 5 apresenta a distribuição das demandas remanescentes entre as Gerências Regionais. Os maiores quantitativos "
-            f"são registrados em {top_pend_detalhado}. O ranking permite identificar as regionais com maior volume absoluto de ações "
-            "ainda não concluídas no recorte analisado."
+            f"Os maiores quantitativos de pendências são registrados em {top_pend_detalhado}."
         )
 
     # Figura 6, análise setorial baseada apenas nos campos existentes na planilha de setorização.
@@ -3052,9 +3050,7 @@ def _montar_html_relatorio_impressao(
         partes_setor = [f"<b>{n}</b>, com <b>{_fmt_num_br(v)}</b> registros" for n, v in setor_resumo]
         setores_txt = partes_setor[0] if len(partes_setor) == 1 else (f"{partes_setor[0]} e {partes_setor[1]}" if len(partes_setor) == 2 else f"{', '.join(partes_setor[:-1])} e {partes_setor[-1]}")
         analise_fig6 = (
-            f"A Figura 6 demonstra a distribuição das pendências entre os setores responsáveis. No recorte analisado, os maiores "
-            f"quantitativos estão concentrados em {setores_txt}. Essa leitura permite acompanhar a participação de cada setor no "
-            "conjunto das demandas registradas."
+            f"No recorte analisado, os maiores quantitativos de pendências estão concentrados em {setores_txt}."
         )
         setor_maior_nome, setor_maior_valor = setor_resumo[0]
     else:
@@ -3089,41 +3085,32 @@ def _montar_html_relatorio_impressao(
             "A classificação combina desempenho proporcional e volume de demandas remanescentes."
         )
 
-    # Conclusão única, adaptada ao recorte e sem inferências não sustentadas pela base.
+    # Considerações finais mantidas propositalmente genéricas.
     conclusao_paragrafo_1 = (
-        f"No recorte analisado, <b>{_fmt_pct_br(conclusao)}</b> das unidades escolares encontram-se climatizadas, correspondendo a "
-        f"<b>{_fmt_num_br(climatizadas_real)}</b> escolas, enquanto <b>{_fmt_num_br(pendencias_real)}</b> unidades permanecem com ações ainda não concluídas. "
-        f"Os resultados caracterizam <b>{avaliacao_tecnica}</b> no conjunto avaliado."
+        "Os resultados apresentados sintetizam a situação das ações de climatização no recorte analisado."
     )
-    if gre_unica and not resumo_gre.empty:
-        linha_unica = resumo_gre.iloc[0]
-        conclusao_paragrafo_2 = (
-            f"A análise concentra-se na <b>{_nome_narrativo(linha_unica.get('GRE_Label', ''))}</b>, que apresenta taxa de conclusão de "
-            f"<b>{_fmt_pct_br(float(linha_unica.get('Conclusao',0) or 0))}</b> e <b>{_fmt_num_br(float(linha_unica.get('Pendências',0) or 0))}</b> "
-            "unidades ainda não concluídas. A interpretação do resultado considera conjuntamente o percentual de atendimento e o volume remanescente."
-        )
-    elif melhor is not None and critica is not None:
-        conclusao_paragrafo_2 = (
-            f"Entre as regionais analisadas, <b>{_nome_narrativo(melhor.get('GRE_Label',''))}</b> apresenta o maior percentual de conclusão, "
-            f"com <b>{melhor_pct}</b>, enquanto <b>{_nome_narrativo(critica.get('GRE_Label',''))}</b> concentra o maior quantitativo absoluto de "
-            f"unidades ainda não concluídas, com <b>{critica_valor}</b> registros."
-        )
-    else:
-        conclusao_paragrafo_2 = "O recorte não apresenta dados suficientes para comparação regional."
+    conclusao_paragrafo_2 = (
+        "As informações refletem a situação registrada na base de acompanhamento na data indicada no relatório."
+    )
     conclusao_paragrafo_3 = (
-        f"Entre as pendências, observa-se {situacao_predominante}. Na distribuição por setor responsável, "
-        f"<b>{setor_maior_nome}</b> apresenta o maior quantitativo registrado, com <b>{_fmt_num_br(setor_maior_valor)}</b> ocorrências. "
-        "A leitura conjunta dos indicadores regionais, territoriais e setoriais fornece suporte ao acompanhamento das intervenções e à organização das prioridades da Gerência de Obras."
-        if setor_resumo else
-        f"Entre as pendências, observa-se {situacao_predominante}. A leitura conjunta dos indicadores regionais e territoriais fornece suporte ao acompanhamento das intervenções e à organização das prioridades da Gerência de Obras."
+        "O documento constitui apoio ao acompanhamento das intervenções pela Gerência de Obras."
     )
 
-    # Sumário simplificado. A paginação do corpo é dinâmica, portanto não são fixados números de página.
+    # Sumário correspondente aos tópicos apresentados no relatório.
     sumario_html = "".join([
-        '<div class="toc-row toc-main"><span>1. Síntese Executiva</span><i></i></div>',
-        '<div class="toc-row toc-main"><span>2. Análise Regional e Territorial</span><i></i></div>',
-        '<div class="toc-row toc-main"><span>3. Gestão das Pendências</span><i></i></div>',
-        '<div class="toc-row toc-main"><span>4. Considerações Finais</span><i></i></div>',
+        '<div class="toc-row toc-main"><span>1. Síntese Executiva</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.1 Finalidade do Relatório</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.2 Principais Indicadores</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.3 Panorama da Climatização Escolar</span><i></i><b>3</b></div>',
+        '<div class="toc-row toc-sub"><span>1.4 Base de Dados e Aplicação Gerencial</span><i></i><b>4</b></div>',
+        '<div class="toc-row toc-main"><span>2. Análise Regional da Climatização</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>2.1 Indicadores por Gerência Regional</span><i></i><b>5</b></div>',
+        '<div class="toc-row toc-sub"><span>2.2 Desempenho das Gerências Regionais</span><i></i><b>6</b></div>',
+        '<div class="toc-row toc-main"><span>3. Análise Territorial</span><i></i><b>7</b></div>',
+        '<div class="toc-row toc-main"><span>4. Gestão das Pendências</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.1 Panorama das Pendências</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-sub"><span>4.2 Distribuição por Setor Responsável</span><i></i><b>8</b></div>',
+        '<div class="toc-row toc-main"><span>5. Considerações Finais</span><i></i><b>9</b></div>',
     ])
 
 
@@ -3288,69 +3275,6 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-map-label.critical {{ color:#EF4444; }} .print-map-label.critical .print-priority-dot {{ background:#EF4444; }}
 .print-map-label.no-data {{ color:#7088A5; }} .print-map-label.no-data .print-priority-dot {{ background:#AFC1D5; }}
 
-/* ==========================================================
-   CORPO DO RELATÓRIO COM PAGINAÇÃO FLUIDA
-   O navegador passa a decidir as quebras conforme o conteúdo.
-   Cabeçalho e rodapé são repetidos em cada página impressa.
-   ========================================================== */
-.flow-report {{
-  width:210mm; background:#fff; margin:0 auto 20px; box-shadow:0 12px 34px rgba(0,31,73,.18);
-}}
-.flow-table {{ width:100%; border-collapse:collapse; border-spacing:0; table-layout:fixed; }}
-.flow-table thead {{ display:table-header-group; }}
-.flow-table tfoot {{ display:table-footer-group; }}
-.flow-table tbody {{ display:table-row-group; }}
-.flow-table th, .flow-table td {{ border:0; padding:0; vertical-align:top; }}
-.flow-header {{
-  min-height:29mm; margin:0 15mm; padding:9mm 0 5mm; display:grid;
-  grid-template-columns:30mm minmax(0,1fr) 30mm; align-items:center; gap:6mm;
-  border-bottom:1px solid var(--borda); background:#fff;
-}}
-.flow-header img.gov {{ width:30mm; max-height:15mm; object-fit:contain; justify-self:center; }}
-.flow-header img.geobs {{ width:24mm; max-height:15mm; object-fit:contain; justify-self:center; }}
-.flow-header-center {{ min-width:0; text-align:center; }}
-.flow-header-center .eyebrow {{ color:var(--medio); font-size:8.5px; font-weight:900; text-transform:uppercase; letter-spacing:1px; }}
-.flow-header-center h1 {{ margin:1.6mm 0 .8mm; color:var(--noite); font-size:18px; line-height:1.05; letter-spacing:-.25px; }}
-.flow-header-center p {{ margin:0; color:var(--suave); font-size:8.8px; font-weight:700; }}
-.flow-footer {{
-  margin:0 15mm; min-height:14mm; padding:2.4mm 0 5.5mm; border-top:1px solid var(--borda);
-  display:flex; justify-content:space-between; align-items:flex-start; color:var(--suave); font-size:6.6px; font-weight:700; background:#fff;
-}}
-.flow-page-number::after {{ content:""; }}
-.flow-cell {{ padding:3.5mm 15mm 3.5mm; background:#fff; }}
-.flow-row.section-start .flow-cell {{ padding-top:7mm; }}
-.flow-row.compact .flow-cell {{ padding-top:2.5mm; padding-bottom:3mm; }}
-.flow-row.keep, .flow-row.figure-row {{ page-break-inside:avoid; break-inside:avoid-page; }}
-.flow-row.section-start {{ page-break-after:avoid; break-after:avoid-page; }}
-.flow-section-title {{ margin:0 0 4mm; color:var(--noite); font-size:18px; line-height:1.1; font-weight:950; }}
-.flow-section-title::after {{ content:""; display:block; width:18mm; height:1.2mm; margin-top:2.2mm; background:var(--medio); border-radius:99px; }}
-.flow-narrative {{ margin:0; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.5pt; line-height:1.47; text-align:justify; text-indent:1.05cm; orphans:3; widows:3; }}
-.flow-narrative.no-indent {{ text-indent:0; }}
-.flow-note {{ color:var(--suave); font-size:8.1pt; line-height:1.4; margin:0; }}
-.flow-figure-wrap {{ page-break-inside:avoid; break-inside:avoid-page; margin:1mm 0 2mm; }}
-.flow-figure-wrap .print-new-chart-card, .flow-figure-wrap .print-map-card, .flow-figure-wrap .print-chart-card, .flow-figure-wrap .print-card {{ margin:0; }}
-.flow-analysis {{ margin-top:0; }}
-.flow-kpis {{ margin:0; }}
-
-.flow-figure-analysis {{ page-break-inside:avoid; break-inside:avoid-page; }}
-.flow-figure-analysis .flow-narrative {{ margin-top:4mm; }}
-.flow-conclusion-block {{ page-break-inside:avoid; break-inside:avoid-page; min-height:52mm; padding-top:2mm; }}
-.flow-conclusion-block .flow-section-title {{ margin-top:0; }}
-.flow-section-spacer {{ height:2mm; }}
-@media screen {{
-  .flow-report {{ min-height:297mm; }}
-}}
-@media print {{
-  .flow-report {{ width:210mm; margin:0; box-shadow:none; page-break-before:always; break-before:page; }}
-  .flow-cell {{ padding-left:16mm; padding-right:16mm; }}
-  .flow-table {{ width:210mm; }}
-  .flow-header {{ margin:0 15mm; }}
-  .flow-footer {{ margin:0 15mm; }}
-  .flow-cell {{ padding-left:15mm; padding-right:15mm; }}
-  .flow-row.figure-row {{ page-break-inside:avoid; break-inside:avoid-page; }}
-  .flow-row.section-start {{ page-break-after:avoid; break-after:avoid-page; }}
-}}
-
 </style>
 </head>
 <body>
@@ -3387,159 +3311,189 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <h1>Sumário</h1>
     <img src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <p class="toc-intro">Estrutura sintética do relatório. A paginação do conteúdo é ajustada automaticamente conforme os filtros selecionados.</p>
+  <p class="toc-intro">Estrutura do relatório e localização das análises apresentadas.</p>
   <div class="toc-list">{sumario_html}</div>
   <div class="print-footer"><span>Relatório de Climatização Escolar – GEOBS – SEE</span></div>
 </section>
 
-<section class="flow-report">
-  <table class="flow-table">
-    <thead>
-      <tr><th>
-        <div class="flow-header">
-          <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-          <div class="flow-header-center">
-            <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
-            <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
-            <p>Período analisado: {periodo_seguro}</p>
-          </div>
-          <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-        </div>
-      </th></tr>
-    </thead>
-    <tfoot>
-      <tr><td>
-        <div class="flow-footer">
-          <span>Relatório de Climatização Escolar · GEOBS – SEE</span>
-          <span>Documento gerado em {datetime.now().strftime('%d/%m/%Y')}</span>
-        </div>
-      </td></tr>
-    </tfoot>
-    <tbody>
+<section class="print-sheet page-sintese">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">1. Síntese Executiva</h2>
+  <h3 class="print-subsection-title">1.1 Finalidade do Relatório</h3>
+  <p class="print-narrative">O presente relatório consolida os principais indicadores do processo de climatização das unidades escolares da rede estadual de ensino da Paraíba, com base nas informações de acompanhamento da Gerência de Obras.</p>
+  <h3 class="print-subsection-title">1.2 Principais Indicadores</h3>
+  <div class="print-kpis">
+    <div class="print-kpi"><small>Indicador 1 – Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
+    <div class="print-kpi"><small>Indicador 2 – Escolas Climatizadas</small><b>{_fmt_num_br(climatizadas_real)}</b></div>
+    <div class="print-kpi" style="--accent:var(--claro)"><small>Indicador 3 – Obras em Andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
+    <div class="print-kpi" style="--accent:var(--vermelho)"><small>Indicador 4 – Escolas em Rota de Climatização</small><b>{_fmt_num_br(rota_real)}</b></div>
+    <div class="print-kpi" style="--accent:var(--medio)"><small>Indicador 5 – Taxa Geral de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
+  </div>
+  <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades escolares encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b>. Permanecem <b>{_fmt_num_br(andamento_real)}</b> unidades em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização.</p>
+  <h3 class="print-subsection-title">1.3 Panorama da Climatização Escolar</h3>
+  <div class="print-two">
+    <div class="print-card">
+      <div class="print-figure-title">Figura 1 – Panorama Geral da Climatização Escolar</div>
+      <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
+      <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+    </div>
+    <div class="print-card">
+      <div class="print-figure-title">Indicador geral de conclusão</div>
+      <div class="print-progress-number">{_fmt_pct_br(conclusao)}</div>
+      <div class="print-progress-track"><div class="print-progress-fill"></div></div>
+      <p class="print-subtitle">{_fmt_num_br(climatizadas_real)} escolas climatizadas e {_fmt_num_br(pendencias_real)} pendências.</p>
+      <p class="print-subtitle">{escape(leitura_panorama)}</p>
+    </div>
+  </div>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row section-start"><td class="flow-cell">
-        <h2 class="flow-section-title">1. Síntese Executiva</h2>
-        <p class="flow-narrative">O presente relatório consolida os principais indicadores do processo de climatização das unidades escolares da rede estadual de ensino da Paraíba, com base nas informações de acompanhamento da Gerência de Obras.</p>
-      </td></tr>
+<section class="print-sheet page-metodologia">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">1. Síntese Executiva</h2>
+  <h3 class="print-subsection-title">1.3 Panorama da Climatização Escolar</h3>
+  <p class="print-narrative">A Figura 1 mostra que <b>{_fmt_pct_br(conclusao)}</b> das unidades estão climatizadas e <b>{_fmt_pct_br(pct_pendencias)}</b> permanecem com ações não concluídas. {leitura_pendencias}</p>
+  <div class="print-analysis-divider"></div>
+  <h3 class="print-subsection-title">1.4 Base de Dados e Aplicação Gerencial</h3>
+  <p class="print-narrative">As informações são consolidadas a partir da Planilha Geral da Gerência de Obras e de registros de acompanhamento técnico, quando aplicável. Os indicadores correspondem ao recorte selecionado e à situação registrada na data de atualização da base.</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row keep"><td class="flow-cell">
-        <div class="print-kpis flow-kpis">
-          <div class="print-kpi"><small>Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
-          <div class="print-kpi"><small>Escolas Climatizadas</small><b>{_fmt_num_br(climatizadas_real)}</b></div>
-          <div class="print-kpi" style="--accent:var(--claro)"><small>Em Andamento</small><b>{_fmt_num_br(andamento_real)}</b></div>
-          <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em Rota</small><b>{_fmt_num_br(rota_real)}</b></div>
-          <div class="print-kpi" style="--accent:var(--medio)"><small>Taxa de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
-        </div>
-      </td></tr>
+<section class="print-sheet page-graficos">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">2. Análise Regional da Climatização</h2>
+  <h3 class="print-subsection-title">2.1 Indicadores por Gerência Regional</h3>
+  <p class="print-narrative">A análise regional compara o total de unidades, as escolas climatizadas e as ações ainda não concluídas em cada GRE.</p>
+  <div class="print-new-chart-grid {classe_grade_graficos}">
+    <div class="print-new-chart-card item-area">
+      <div class="print-figure-title">Figura 2 – Comparativo da Climatização por GRE</div>
+      {_relatorio_area_svg(base_filtrada)}
+      <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+    </div>
+    <div class="print-new-chart-card item-barras">
+      <div class="print-figure-title">Figura 3 – Unidades Escolares Climatizadas por GRE</div>
+      {_relatorio_barras_verticais_svg(base_filtrada)}
+      <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+    </div>
+  </div>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b>. Permanecem <b>{_fmt_num_br(andamento_real)}</b> unidades em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização.</p>
-      </td></tr>
+<section class="print-sheet page-interpretacao-regional">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">2.2 Desempenho das Gerências Regionais</h2>
+  <p class="print-narrative">{analise_fig2}</p>
+  <p class="print-narrative">{analise_fig3}</p>
+  <p class="print-narrative">Os resultados evidenciam diferentes níveis de avanço entre as Gerências Regionais.</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-two">
-          <div class="print-card">
-            <div class="print-figure-title">Figura 1 – Panorama Geral da Climatização Escolar</div>
-            <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
-            <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
-            <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-          </div>
-          <div class="print-card">
-            <div class="print-figure-title">Indicador geral de conclusão</div>
-            <div class="print-progress-number">{_fmt_pct_br(conclusao)}</div>
-            <div class="print-progress-track"><div class="print-progress-fill"></div></div>
-            <p class="print-subtitle">{_fmt_num_br(climatizadas_real)} unidades climatizadas e {_fmt_num_br(pendencias_real)} ações ainda não concluídas.</p>
-          </div>
-        </div>
-      </td></tr>
+<section class="print-sheet page-mapa">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">3. Análise Territorial</h2>
+  <p class="print-narrative">A análise territorial apresenta a distribuição espacial dos percentuais de conclusão entre as Gerências Regionais selecionadas.</p>
+  <div class="print-map-card">
+    <div class="print-figure-title">Figura 4 – Distribuição Territorial da Climatização por GRE</div>
+    {_relatorio_mapa_gre_html(base_filtrada)}
+    <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
+    <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
+  </div>
+  <div class="print-highlight-grid">
+    <div class="print-highlight" style="--accent:var(--escuro)"><small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p></div>
+    <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
+  </div>
+  <p class="print-narrative">{analise_fig4}</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative">As unidades ainda não concluídas representam <b>{_fmt_pct_br(pct_pendencias)}</b> da base. {leitura_pendencias}</p>
-        <p class="flow-note" style="margin-top:2.3mm;">Os dados correspondem à situação registrada na base vigente na data de atualização indicada no relatório.</p>
-      </td></tr>
+<section class="print-sheet page-prioridades">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">4. Gestão das Pendências</h2>
+  <h3 class="print-subsection-title">4.1 Panorama das Pendências</h3>
+  <p class="print-narrative">No recorte analisado, existem <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização. A Figura 5 apresenta sua distribuição entre as Gerências Regionais.</p>
+  <div class="print-chart-card item-ranking">
+    <div class="print-figure-title">Figura 5 – Ranking de Pendências por GRE</div>
+    <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
+    {_relatorio_ranking_html(base_filtrada, 6)}
+    <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+  </div>
+  <p class="print-narrative">{analise_fig5}</p>
+  <h3 class="print-subsection-title">4.2 Distribuição por Setor Responsável</h3>
+  <p class="print-narrative">A Figura 6 apresenta a distribuição das pendências por setor responsável.</p>
+  <div class="print-card item-setorizacao" style="min-height:58mm;">
+    <div class="print-figure-title">Figura 6 – Distribuição das Pendências por Setor Responsável</div>
+    {_relatorio_setores_html(setor, 10)}
+    <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
+  </div>
+  <p class="print-narrative">{analise_fig6}</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
+</section>
 
-      <tr class="flow-row section-start"><td class="flow-cell">
-        <h2 class="flow-section-title">2. Análise Regional e Territorial</h2>
-        <p class="flow-narrative">A análise regional considera o total de unidades, as escolas climatizadas e as ações ainda não concluídas em cada Gerência Regional de Educação, permitindo comparar o estágio das intervenções no recorte selecionado.</p>
-      </td></tr>
-
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-new-chart-card">
-          <div class="print-figure-title">Figura 2 – Comparativo da Climatização por GRE</div>
-          {_relatorio_area_svg(base_filtrada)}
-          <div class="print-chart-legend"><span style="color:var(--escuro)">●</span> Climatizadas &nbsp;&nbsp; <span style="color:var(--medio)">●</span> Pendências &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Total</div>
-          <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-        </div>
-      </td></tr>
-
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative flow-analysis">{analise_fig2}</p>
-      </td></tr>
-
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-new-chart-card">
-          <div class="print-figure-title">Figura 3 – Unidades Escolares Climatizadas por GRE</div>
-          {_relatorio_barras_verticais_svg(base_filtrada)}
-          <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-        </div>
-      </td></tr>
-
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative flow-analysis">{analise_fig3}</p>
-      </td></tr>
-
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-wrap print-map-card">
-          <div class="print-figure-title">Figura 4 – Distribuição Territorial da Climatização por GRE</div>
-          {_relatorio_mapa_gre_html(base_filtrada)}
-          <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
-          <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
-        </div>
-      </td></tr>
-
-      <tr class="flow-row compact"><td class="flow-cell">
-        <p class="flow-narrative flow-analysis">{analise_fig4}</p>
-      </td></tr>
-
-      <tr class="flow-row section-start"><td class="flow-cell">
-        <h2 class="flow-section-title">3. Gestão das Pendências</h2>
-        <p class="flow-narrative">No recorte analisado, foram identificadas <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> unidades em andamento e <b>{_fmt_num_br(rota_real)}</b> unidades em rota de climatização.</p>
-      </td></tr>
-
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-analysis">
-          <div class="flow-figure-wrap print-chart-card">
-            <div class="print-figure-title">Figura 5 – Ranking de Pendências por GRE</div>
-            <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
-            {_relatorio_ranking_html(base_filtrada, 6)}
-            <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-          </div>
-          <p class="flow-narrative flow-analysis">{analise_fig5}</p>
-        </div>
-      </td></tr>
-
-      <tr class="flow-row figure-row"><td class="flow-cell">
-        <div class="flow-figure-analysis">
-          <div class="flow-figure-wrap print-card" style="min-height:50mm;">
-            <div class="print-figure-title">Figura 6 – Distribuição das Pendências por Setor Responsável</div>
-            {_relatorio_setores_html(setor, 10)}
-            <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
-          </div>
-          <p class="flow-narrative flow-analysis">{analise_fig6}</p>
-        </div>
-      </td></tr>
-
-      <tr class="flow-row section-start keep"><td class="flow-cell">
-        <div class="flow-conclusion-block">
-          <h2 class="flow-section-title">4. Considerações Finais</h2>
-          <p class="flow-narrative">Os resultados apresentados sintetizam a situação das ações de climatização no recorte analisado, considerando o quantitativo de unidades atendidas, as ações ainda não concluídas e sua distribuição regional e setorial.</p>
-          <p class="flow-narrative" style="margin-top:3mm;">As informações refletem a situação registrada na base na data de atualização indicada no relatório e servem de apoio ao acompanhamento das intervenções pela Gerência de Obras.</p>
-          <p class="flow-note" style="margin-top:4mm;"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
-        </div>
-      </td></tr>
-
-    </tbody>
-  </table>
+<section class="print-sheet page-conclusao">
+  <div class="print-header">
+    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+    <div class="print-header-center">
+      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
+      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
+      <p>Período analisado: {periodo_seguro}</p>
+    </div>
+    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
+  </div>
+  <h2 class="print-section-title">5. Considerações Finais</h2>
+  <p class="print-narrative">Os resultados sintetizam a situação das ações de climatização no recorte analisado. As informações refletem a base vigente na data indicada e apoiam o acompanhamento das intervenções pela Gerência de Obras.</p>
+  <hr class="print-section-divider">
+  <p class="print-narrative no-indent"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
+  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 </div>
 </body>
