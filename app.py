@@ -3366,13 +3366,75 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .print-priority-list {{ margin:2mm 0 4mm 7mm; padding:0; color:#25364F; font-family:"Segoe UI",Arial,sans-serif; font-size:9.3pt; line-height:1.38; }}
 .print-priority-list li {{ margin-bottom:1.8mm; }}
 .print-section-divider {{ border:0; border-top:1px solid var(--borda); margin:4mm 0; }}
-@page {{ size:A4 portrait; margin:0; }}
+@page {{
+  size:210mm 297mm;
+  margin:0;
+}}
+
 @media print {{
-  html,body {{ background:#fff; }}
-  .print-toolbar {{ display:none !important; }}
-  .print-document {{ padding:0; gap:0; display:block; }}
-  .print-sheet {{ margin:0; box-shadow:none; page-break-after:always; break-after:page; }}
-  .print-sheet:last-child {{ page-break-after:auto; break-after:auto; }}
+  html {{
+    margin:0 !important;
+    padding:0 !important;
+    background:#fff !important;
+    zoom:1 !important;
+    transform:none !important;
+  }}
+
+  body {{
+    margin:0 !important;
+    padding:0 !important;
+    background:#fff !important;
+    zoom:1 !important;
+    transform:none !important;
+    min-width:210mm !important;
+    width:210mm !important;
+  }}
+
+  .print-toolbar {{
+    display:none !important;
+  }}
+
+  .print-document {{
+    width:210mm !important;
+    margin:0 !important;
+    padding:0 !important;
+    gap:0 !important;
+    display:block !important;
+    zoom:1 !important;
+    transform:none !important;
+  }}
+
+  .print-sheet {{
+    width:210mm !important;
+    height:297mm !important;
+    min-width:210mm !important;
+    max-width:210mm !important;
+    min-height:297mm !important;
+    max-height:297mm !important;
+    margin:0 !important;
+    box-shadow:none !important;
+    transform:none !important;
+    zoom:1 !important;
+    page-break-after:always;
+    break-after:page;
+  }}
+
+  .print-sheet:last-child {{
+    page-break-after:auto;
+    break-after:auto;
+  }}
+}}
+
+html.printing-report,
+html.printing-report body {{
+  zoom:1 !important;
+  transform:none !important;
+}}
+
+html.printing-report .print-document,
+html.printing-report .print-sheet {{
+  transform:none !important;
+  zoom:1 !important;
 }}
 
 .print-real-map {{ position:relative; width:100%; margin-top:3mm; }}
@@ -3433,7 +3495,17 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .report-spacer {{ height:2mm; }}
 @media print {{
   .report-flow {{ display:none !important; }}
-  .generated-page .page-body {{ height:220mm; }}
+  .generated-page .page-body {{
+    height:220mm !important;
+    max-height:220mm !important;
+    overflow:hidden !important;
+  }}
+  .generated-page {{
+    width:210mm !important;
+    height:297mm !important;
+    transform:none !important;
+    zoom:1 !important;
+  }}
 }}
 """
 
@@ -3456,7 +3528,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 <style>{css_report}</style>
 </head>
 <body>
-<div class="print-toolbar"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+<div class="print-toolbar"><button onclick="imprimirRelatorio()">🖨️ Imprimir / Salvar como PDF</button></div>
 <div class="print-document" id="print-document">
 <section class="print-sheet cover-page fixed-page">
   <div class="cover-top"><img class="cover-gov" src="{GOV_LOGO}" alt="Governo da Paraíba"><div></div><img class="cover-geobs" src="{GEOBS_LOGO}" alt="GEOBS"></div>
@@ -3642,8 +3714,43 @@ async function paginateReport() {{
     else if (sectionPages[target]) el.textContent = sectionPages[target];
   }});
 }}
-window.addEventListener('load', () => requestAnimationFrame(() => paginateReport()));
-window.addEventListener('resize', () => {{ clearTimeout(window.__reportResize); window.__reportResize = setTimeout(paginateReport, 180); }});
+let __relatorioPaginado = false;
+
+async function prepararRelatorioParaImpressao() {{
+  if (!__relatorioPaginado) {{
+    await paginateReport();
+    __relatorioPaginado = true;
+  }}
+}}
+
+async function imprimirRelatorio() {{
+  await prepararRelatorioParaImpressao();
+
+  // Marca o documento como pronto para impressão sem recalcular a
+  // distribuição das páginas com base no zoom atual da visualização.
+  document.documentElement.classList.add('printing-report');
+
+  requestAnimationFrame(() => {{
+    requestAnimationFrame(() => window.print());
+  }});
+}}
+
+window.addEventListener('load', () => {{
+  requestAnimationFrame(async () => {{
+    await paginateReport();
+    __relatorioPaginado = true;
+  }});
+}});
+
+// Importante: não repaginar em "resize", pois o zoom do navegador
+// dispara esse evento e poderia mudar a distribuição do conteúdo.
+window.addEventListener('beforeprint', () => {{
+  document.documentElement.classList.add('printing-report');
+}});
+
+window.addEventListener('afterprint', () => {{
+  document.documentElement.classList.remove('printing-report');
+}});
 </script>
 </body>
 </html>"""
