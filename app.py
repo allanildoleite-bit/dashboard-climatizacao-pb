@@ -3118,7 +3118,7 @@ def _montar_html_relatorio_impressao(
         f"Entre as pendências, observa-se {situacao_predominante}. A leitura conjunta dos indicadores regionais e territoriais fornece suporte ao acompanhamento das intervenções e à organização das prioridades da Gerência de Obras."
     )
 
-    # Sumário correspondente exatamente aos tópicos apresentados no relatório.
+    # Sumário correspondente aos tópicos apresentados no relatório.
     sumario_html = "".join([
         '<div class="toc-row toc-main"><span>1. Síntese Executiva</span><i></i><b>3</b></div>',
         '<div class="toc-row toc-sub"><span>1.1 Finalidade do Relatório</span><i></i><b>3</b></div>',
@@ -3129,12 +3129,10 @@ def _montar_html_relatorio_impressao(
         '<div class="toc-row toc-sub"><span>2.1 Indicadores por Gerência Regional</span><i></i><b>5</b></div>',
         '<div class="toc-row toc-sub"><span>2.2 Desempenho das Gerências Regionais</span><i></i><b>6</b></div>',
         '<div class="toc-row toc-main"><span>3. Análise Territorial</span><i></i><b>7</b></div>',
-        '<div class="toc-row toc-sub"><span>3.1 Distribuição Territorial da Climatização</span><i></i><b>7</b></div>',
         '<div class="toc-row toc-main"><span>4. Gestão das Pendências</span><i></i><b>8</b></div>',
         '<div class="toc-row toc-sub"><span>4.1 Panorama das Pendências</span><i></i><b>8</b></div>',
         '<div class="toc-row toc-sub"><span>4.2 Distribuição por Setor Responsável</span><i></i><b>8</b></div>',
-        '<div class="toc-row toc-sub"><span>4.3 Matriz de Priorização</span><i></i><b>9</b></div>',
-        '<div class="toc-row toc-main"><span>5. Conclusões</span><i></i><b>10</b></div>',
+        '<div class="toc-row toc-main"><span>5. Considerações Finais</span><i></i><b>9</b></div>',
     ])
 
 
@@ -3352,8 +3350,8 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <h2 class="print-section-title">1. Síntese Executiva</h2>
   <h3 class="print-subsection-title">1.1 Finalidade do Relatório</h3>
-  <p class="print-narrative">O presente relatório tem por finalidade consolidar e apresentar os principais indicadores relacionados ao processo de climatização das unidades escolares da rede estadual de ensino da Paraíba. O documento subsidia o acompanhamento das intervenções, permitindo identificar o estágio de execução das ações, as demandas remanescentes e as diferenças observadas entre as Gerências Regionais de Educação.</p>
-  <p class="print-narrative">A análise reúne informações quantitativas e territoriais sobre as unidades escolares acompanhadas, contemplando escolas climatizadas, intervenções em andamento e unidades em rota de climatização. A consolidação desses dados permite uma leitura integrada da situação registrada no recorte selecionado.</p>
+  <p class="print-narrative">O presente relatório consolida os principais indicadores do processo de climatização das unidades escolares da rede estadual de ensino da Paraíba, subsidiando o acompanhamento das intervenções conduzidas pela Gerência de Obras.</p>
+  <p class="print-narrative">A análise contempla unidades climatizadas, intervenções em andamento, unidades em rota de climatização e a distribuição das demandas entre as Gerências Regionais de Educação.</p>
   <h3 class="print-subsection-title">1.2 Principais Indicadores</h3>
   <div class="print-kpis">
     <div class="print-kpi"><small>Indicador 1 – Total de Escolas</small><b>{_fmt_num_br(total_real)}</b></div>
@@ -3362,7 +3360,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div class="print-kpi" style="--accent:var(--vermelho)"><small>Indicador 4 – Escolas em Rota de Climatização</small><b>{_fmt_num_br(rota_real)}</b></div>
     <div class="print-kpi" style="--accent:var(--medio)"><small>Indicador 5 – Taxa Geral de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
   </div>
-  <p class="print-narrative">No recorte analisado, a base de acompanhamento contempla <b>{_fmt_num_br(total_real)}</b> unidades escolares, das quais <b>{_fmt_num_br(climatizadas_real)}</b> encontram-se climatizadas, correspondendo a uma taxa geral de conclusão de <b>{_fmt_pct_br(conclusao)}</b>. Permanecem <b>{_fmt_num_br(andamento_real)}</b> unidades com intervenções em andamento e <b>{_fmt_num_br(rota_real)}</b> unidades em rota de climatização, totalizando <b>{_fmt_num_br(pendencias_real)}</b> unidades com ações ainda não concluídas. {leitura_panorama}</p>
+  <p class="print-narrative">No recorte analisado, a base contempla <b>{_fmt_num_br(total_real)}</b> unidades escolares, das quais <b>{_fmt_num_br(climatizadas_real)}</b> encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b> do total. Permanecem <b>{_fmt_num_br(andamento_real)}</b> unidades em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização, totalizando <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas.</p>
   <h3 class="print-subsection-title">1.3 Panorama da Climatização Escolar</h3>
   <div class="print-two">
     <div class="print-card">
@@ -3397,9 +3395,8 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   <p class="print-narrative"><b>Análise da Figura 1.</b> A Figura 1 apresenta a composição geral do estágio das ações de climatização. As unidades climatizadas representam <b>{_fmt_pct_br(conclusao)}</b> do total acompanhado, enquanto as ações ainda não concluídas correspondem a <b>{_fmt_pct_br(pct_pendencias)}</b>. {leitura_pendencias}</p>
   <div class="print-analysis-divider"></div>
   <h3 class="print-subsection-title">1.4 Base de Dados e Aplicação Gerencial</h3>
-  <p class="print-narrative">As informações apresentadas neste relatório são consolidadas a partir da Planilha Geral de acompanhamento da Gerência de Obras, complementadas, quando aplicável, por registros provenientes de visitas técnicas e informações encaminhadas pelas equipes responsáveis pelo acompanhamento das intervenções.</p>
-  <p class="print-narrative">Os indicadores correspondem à situação registrada na base vigente na data de atualização indicada no relatório e refletem o recorte definido no momento de sua emissão. As unidades em andamento e em rota representam, em conjunto, <b>{_fmt_pct_br(pct_pendencias)}</b> da base analisada.</p>
-  <p class="print-narrative">A consolidação dessas informações contribui para o acompanhamento da evolução das intervenções, para a identificação das demandas remanescentes e para a organização das prioridades de atuação da Gerência de Obras.</p>
+  <p class="print-narrative">As informações são consolidadas a partir da Planilha Geral de acompanhamento da Gerência de Obras e, quando aplicável, complementadas por registros das atividades de acompanhamento técnico.</p>
+  <p class="print-narrative">Os indicadores refletem a situação registrada na base vigente na data de atualização e correspondem ao recorte selecionado no momento da emissão do relatório.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
@@ -3415,7 +3412,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <h2 class="print-section-title">2. Análise Regional da Climatização</h2>
   <h3 class="print-subsection-title">2.1 Indicadores por Gerência Regional</h3>
-  <p class="print-narrative">As Gerências Regionais de Educação apresentam diferentes quantitativos de unidades escolares, o que exige uma análise que considere simultaneamente os valores absolutos de atendimento, o total de escolas existentes e o volume de pendências registrado em cada regional. Essa abordagem permite comparar o avanço das ações sem desconsiderar as diferenças de dimensão entre as GREs.</p>
+  <p class="print-narrative">As Gerências Regionais de Educação apresentam diferentes quantitativos de unidades escolares. Por esse motivo, a análise considera conjuntamente o total de escolas, as unidades climatizadas e as ações ainda não concluídas em cada GRE.</p>
   <div class="print-new-chart-grid {classe_grade_graficos}">
     <div class="print-new-chart-card item-area">
       <div class="print-figure-title">Figura 2 – Comparativo da Climatização por GRE</div>
@@ -3443,9 +3440,9 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">2.2 Desempenho das Gerências Regionais</h2>
-  <p class="print-narrative"><b>Análise da Figura 2.</b> {analise_fig2}</p>
-  <p class="print-narrative"><b>Análise da Figura 3.</b> {analise_fig3}</p>
-  <p class="print-narrative">{analise_desempenho}</p>
+  <p class="print-narrative">{analise_fig2}</p>
+  <p class="print-narrative">{analise_fig3}</p>
+  <p class="print-narrative">Os resultados demonstram diferentes níveis de avanço entre as Gerências Regionais. A avaliação considera conjuntamente o percentual de unidades climatizadas e o quantitativo de ações ainda não concluídas em cada GRE.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
@@ -3460,7 +3457,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
   <h2 class="print-section-title">3. Análise Territorial</h2>
-  <p class="print-narrative">A distribuição territorial dos indicadores permite visualizar as diferenças no estágio da climatização entre as Gerências Regionais contempladas no recorte. A representação cartográfica classifica cada regional conforme o percentual de unidades climatizadas e permite relacionar o desempenho proporcional ao volume de demandas existentes.</p>
+  <p class="print-narrative">A análise territorial permite visualizar a distribuição espacial dos diferentes níveis de conclusão das ações de climatização entre as Gerências Regionais contempladas no recorte.</p>
   <div class="print-map-card">
     <div class="print-figure-title">Figura 4 – Distribuição Territorial da Climatização por GRE</div>
     {_relatorio_mapa_gre_html(base_filtrada)}
@@ -3471,9 +3468,7 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     <div class="print-highlight" style="--accent:var(--escuro)"><small>Maior percentual de conclusão</small><b>{melhor_pct}</b><p>{melhor_nome}</p></div>
     <div class="print-highlight" style="--accent:var(--vermelho)"><small>Maior volume de pendências</small><b>{critica_valor}</b><p>{critica_nome}</p></div>
   </div>
-  <h3 class="print-subsection-title">3.1 Distribuição Territorial da Climatização</h3>
   <p class="print-narrative">{analise_fig4}</p>
-  <p class="print-narrative">A leitura territorial complementa os indicadores regionais ao evidenciar a distribuição espacial dos diferentes níveis de conclusão e das demandas remanescentes no recorte analisado.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
@@ -3489,43 +3484,23 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
   </div>
   <h2 class="print-section-title">4. Gestão das Pendências</h2>
   <h3 class="print-subsection-title">4.1 Panorama das Pendências</h3>
-  <p class="print-narrative">No recorte analisado, permanecem <b>{_fmt_num_br(pendencias_real)}</b> unidades escolares com ações de climatização ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> unidades com intervenções em andamento e <b>{_fmt_num_br(rota_real)}</b> unidades em rota de climatização. {leitura_pendencias}</p>
+  <p class="print-narrative">No recorte analisado, foram identificadas <b>{_fmt_num_br(pendencias_real)}</b> ações ainda não concluídas, sendo <b>{_fmt_num_br(andamento_real)}</b> unidades em andamento e <b>{_fmt_num_br(rota_real)}</b> em rota de climatização.</p>
+  <p class="print-narrative">A Figura 5 apresenta a distribuição das pendências entre as Gerências Regionais.</p>
   <div class="print-chart-card item-ranking">
     <div class="print-figure-title">Figura 5 – Ranking de Pendências por GRE</div>
     <div class="print-chart-legend"><span style="color:var(--claro)">●</span> Em andamento &nbsp;&nbsp; <span style="color:var(--vermelho)">●</span> Em rota</div>
     {_relatorio_ranking_html(base_filtrada, 6)}
     <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
   </div>
-  <p class="print-narrative"><b>Análise da Figura 5.</b> {analise_fig5}</p>
+  <p class="print-narrative">{analise_fig5}</p>
   <h3 class="print-subsection-title">4.2 Distribuição por Setor Responsável</h3>
+  <p class="print-narrative">A Figura 6 apresenta a distribuição das pendências entre os setores responsáveis.</p>
   <div class="print-card item-setorizacao" style="min-height:58mm;">
     <div class="print-figure-title">Figura 6 – Distribuição das Pendências por Setor Responsável</div>
     {_relatorio_setores_html(setor, 10)}
     <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
   </div>
-  <p class="print-narrative"><b>Análise da Figura 6.</b> {analise_fig6}</p>
-  <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
-</section>
-
-<section class="print-sheet page-grupos-prioridade">
-  <div class="print-header">
-    <img class="gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
-    <div class="print-header-center">
-      <div class="eyebrow">Secretaria de Estado da Educação · Gerência de Obras</div>
-      <h1>Relatório de Climatização Escolar – GEOBS – SEE</h1>
-      <p>Período analisado: {periodo_seguro}</p>
-    </div>
-    <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
-  </div>
-  <h2 class="print-section-title">4.3 Matriz de Priorização</h2>
-  <p class="print-narrative">A classificação das Gerências Regionais considera conjuntamente a taxa de conclusão e o quantitativo de unidades com ações ainda não concluídas. A combinação desses indicadores permite organizar as regionais segundo diferentes níveis de acompanhamento.</p>
-  <ul class="print-priority-list">
-    <li><b>Prioridade imediata:</b> {_lista_prioridade(prioridade_imediata)}</li>
-    <li><b>Prioridade de acompanhamento:</b> {_lista_prioridade(prioridade_acompanhamento)}</li>
-    <li><b>Estágio avançado de conclusão:</b> {_lista_prioridade(estagio_avancado)}</li>
-  </ul>
-  <p class="print-narrative">As regionais classificadas como prioridade imediata apresentam menor percentual de conclusão associado a demanda remanescente relevante. As regionais em prioridade de acompanhamento apresentam estágio intermediário de execução. As GREs em estágio avançado de conclusão apresentam os maiores percentuais de unidades climatizadas no recorte.</p>
-  <p class="print-narrative">{analise_prioridade}</p>
+  <p class="print-narrative">{analise_fig6}</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
 </section>
 
@@ -3539,11 +3514,9 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
     </div>
     <img class="geobs" src="{GEOBS_LOGO}" alt="GEOBS">
   </div>
-  <h2 class="print-section-title">5. Conclusões</h2>
-  <p class="print-narrative">{conclusao_paragrafo_1}</p>
-  <p class="print-narrative">{conclusao_paragrafo_2}</p>
-  <p class="print-narrative">{conclusao_paragrafo_3}</p>
-  <p class="print-narrative">A consolidação periódica dos dados permite acompanhar a evolução das ações de climatização e verificar as alterações nos indicadores apresentados ao longo do tempo.</p>
+  <h2 class="print-section-title">5. Considerações Finais</h2>
+  <p class="print-narrative">Os resultados apresentados sintetizam a situação das ações de climatização no recorte analisado, considerando o quantitativo de unidades atendidas, as ações ainda não concluídas e sua distribuição regional e setorial.</p>
+  <p class="print-narrative">As informações refletem a situação registrada na base na data de atualização indicada no relatório e servem de apoio ao acompanhamento das intervenções pela Gerência de Obras.</p>
   <hr class="print-section-divider">
   <p class="print-narrative no-indent"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
   <div class="print-footer"><span>Relatório de Climatização Escolar</span><span>GEOBS – SEE</span></div>
