@@ -2993,6 +2993,8 @@ def _montar_html_relatorio_impressao(
                 {_relatorio_barras_verticais_svg(base_filtrada)}
                 <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
               </div>
+            </div>""")
+            blocos.append(f"""<div class="report-block compact analysis-block">
               <p class="print-narrative">{texto_comparativo}</p>
             </div>""")
 
@@ -3035,6 +3037,8 @@ def _montar_html_relatorio_impressao(
             <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
           </div>
+        </div>""")
+        blocos.append(f"""<div class="report-block compact analysis-block">
           {destaques_mapa}
           <p class="print-narrative">{texto_mapa_bloco}</p>
         </div>""")
@@ -3064,6 +3068,8 @@ def _montar_html_relatorio_impressao(
             {_relatorio_ranking_html(base_filtrada, 6)}
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
           </div>
+        </div>""")
+        blocos.append(f"""<div class="report-block compact analysis-block">
           <p class="print-narrative">{texto_ranking}</p>
         </div>""")
     elif gre_unica and pendencias_real > 0:
@@ -3072,20 +3078,24 @@ def _montar_html_relatorio_impressao(
         </div>""")
 
     if mostrar_grafico_setor:
-        blocos.append(f"""<div class="report-block figure-block">
+        blocos.append("""<div class="report-block compact analysis-block">
           <p class="print-narrative">A distribuição por setor responsável complementa a leitura das demandas remanescentes no consolidado geral.</p>
+        </div>""")
+        blocos.append(f"""<div class="report-block figure-block">
           <div class="print-card item-setorizacao" style="min-height:50mm;">
             <div class="print-figure-title">Figura {fig_setor} – Distribuição das Pendências por Setor Responsável</div>
             {_relatorio_setores_html(setor, 10)}
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
           </div>
+        </div>""")
+        blocos.append(f"""<div class="report-block compact analysis-block">
           <p class="print-narrative">Os maiores quantitativos de pendências estão concentrados em {texto_setores}.</p>
         </div>""")
     elif mostrar_texto_setor_unico:
         blocos.append(f"""<div class="report-block compact"><p class="print-narrative">{texto_setor_unico}</p></div>""")
 
     # Considerações finais em dois parágrafos, sem criar uma página exclusiva obrigatória.
-    blocos.append("""<div class="report-block" data-section-start="sec4">
+    blocos.append("""<div class="report-block conclusions-block" data-section-start="sec4">
       <h2 class="print-section-title">4. Considerações Finais</h2>
       <p class="print-narrative">Os resultados apresentados permitem uma leitura consolidada da situação das ações de climatização no recorte analisado, considerando as unidades atendidas, as intervenções ainda não concluídas e sua distribuição territorial quando aplicável. A análise conjunta dos indicadores possibilita acompanhar o estágio das ações e identificar a concentração das demandas remanescentes.</p>
       <p class="print-narrative">As informações refletem a situação registrada na data de atualização indicada no relatório e constituem suporte para o acompanhamento técnico e gerencial das intervenções conduzidas pela Gerência de Obras. A atualização periódica da base permite acompanhar a evolução dos indicadores e subsidiar os encaminhamentos relacionados às demandas ainda existentes.</p>
@@ -3260,7 +3270,12 @@ html, body {{ margin:0; padding:0; background:#DDE6F0; color:var(--texto); font-
 .generated-page .page-body {{ height:220mm; overflow:hidden; }}
 .report-flow {{ display:none !important; }}
 .report-block {{ margin:0 0 4.2mm; break-inside:avoid; page-break-inside:avoid; }}
-.report-block.compact {{ margin-bottom:3.8mm; }}
+.report-block.compact {{ margin-bottom:3.2mm; }}
+.report-block.analysis-block {{ margin-bottom:2.6mm; }}
+.report-block.analysis-block .print-narrative {{ margin-bottom:2.4mm; }}
+.report-block.conclusions-block {{ break-inside:avoid; page-break-inside:avoid; margin-bottom:0; }}
+.report-block.conclusions-block .print-narrative {{ margin-bottom:3mm; }}
+
 .report-block .print-section-title {{ margin-bottom:3.5mm; }}
 .report-block .print-narrative {{ margin-bottom:3.6mm; }}
 .report-block .print-figure-title {{ margin-bottom:2.4mm; }}
@@ -3386,15 +3401,50 @@ async function paginateReport() {{
     }}
   }}
 
+  // Segunda passada de compactação:
+  // tenta puxar o primeiro bloco da página seguinte para o espaço
+  // disponível na página anterior, sem quebrar figuras.
+  let changed = true;
+  while (changed) {{
+    changed = false;
+    const pages = Array.from(generated.querySelectorAll('.generated-page'));
+    for (let p = 0; p < pages.length - 1; p++) {{
+      const currentBody = pages[p].querySelector('.page-body');
+      const nextBody = pages[p + 1].querySelector('.page-body');
+      if (!currentBody || !nextBody || !nextBody.firstElementChild) continue;
+
+      const candidate = nextBody.firstElementChild;
+      currentBody.appendChild(candidate);
+      const fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
+
+      if (fits) {{
+        changed = true;
+      }} else {{
+        nextBody.insertBefore(candidate, nextBody.firstElementChild);
+      }}
+    }}
+  }}
+
   // Remove qualquer página gerada que tenha ficado sem conteúdo real.
   Array.from(generated.querySelectorAll('.generated-page')).forEach(pg => {{
     const pgBody = pg.querySelector('.page-body');
     if (pgBody && pgBody.children.length === 0) pg.remove();
   }});
 
+  // Recalcula a página real de cada seção após a compactação.
+  const finalSectionPages = {{}};
+  Array.from(generated.querySelectorAll('.generated-page')).forEach(pg => {{
+    const number = Number(pg.dataset.pageNumber);
+    pg.querySelectorAll('[data-section-start]').forEach(sectionBlock => {{
+      const key = sectionBlock.dataset.sectionStart;
+      if (key && !(key in finalSectionPages)) finalSectionPages[key] = number;
+    }});
+  }});
+
   document.querySelectorAll('[data-target]').forEach(el => {{
     const target = el.dataset.target;
-    if (sectionPages[target]) el.textContent = sectionPages[target];
+    if (finalSectionPages[target]) el.textContent = finalSectionPages[target];
+    else if (sectionPages[target]) el.textContent = sectionPages[target];
   }});
 }}
 window.addEventListener('load', () => requestAnimationFrame(() => paginateReport()));
