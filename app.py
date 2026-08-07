@@ -2616,18 +2616,15 @@ def _relatorio_barras_verticais_svg(base_filtrada: pd.DataFrame) -> str:
     barras = []
     for i, (_, linha) in enumerate(dados.iterrows()):
         valor = float(linha.get("Climatizadas", 0) or 0)
-        total = float(linha.get("Total", 0) or 0)
-        pct = valor / total if total > 0 else 0.0
         bh = max(1.5, valor / maximo * h)
         x = margem["esq"] + passo * i + (passo - barra) / 2
         y = margem["top"] + h - bh
         numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
         rotulo = f'{numero.group()}ª' if numero else str(linha.get("GRE", ""))[:5]
-        label_y = max(10.0, y - 10.0)
+        label_y = max(10.0, y - 5.0)
         barras.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{barra:.1f}" height="{bh:.1f}" rx="3" fill="#003B73"/>'
             f'<text x="{x+barra/2:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="7.5" font-weight="900" fill="#001F49">{_fmt_num_br(valor)}</text>'
-            f'<text x="{x+barra/2:.1f}" y="{label_y+7.2:.1f}" text-anchor="middle" font-size="6.1" font-weight="800" fill="#637083">{_fmt_pct_br(pct)}</text>'
             f'<text x="{x+barra/2:.1f}" y="{altura-19}" text-anchor="middle" font-size="7.2" font-weight="800" fill="#17365D">{escape(rotulo)}</text>'
         )
     return (
@@ -2755,6 +2752,7 @@ def _montar_html_relatorio_impressao(
     # A primeira faixa representa as unidades climatizadas e a segunda
     # acumula as unidades em andamento. O restante corresponde às unidades em rota.
     pct_andamento = andamento_real / total_real if total_real > 0 else 0.0
+    pct_rota = rota_real / total_real if total_real > 0 else 0.0
     fim_clim = max(0.0, min(360.0, conclusao * 360.0))
     fim_and = max(fim_clim, min(360.0, fim_clim + pct_andamento * 360.0))
 
@@ -2873,6 +2871,101 @@ def _montar_html_relatorio_impressao(
         total_gre = clim_gre = pend_gre = taxa_gre = 0.0
         texto_gre_unica = ""
 
+
+    # Síntese técnica adaptativa para as Considerações Finais.
+    if conclusao >= 0.80:
+        leitura_estagio_final = (
+            "O recorte apresenta estágio avançado de atendimento, com predominância de unidades já climatizadas."
+        )
+    elif conclusao >= 0.60:
+        leitura_estagio_final = (
+            "O recorte apresenta avanço significativo das ações de climatização, embora permaneça volume relevante de demandas a concluir."
+        )
+    elif conclusao >= 0.40:
+        leitura_estagio_final = (
+            "O recorte apresenta estágio intermediário de execução, com participação expressiva de unidades ainda não concluídas."
+        )
+    else:
+        leitura_estagio_final = (
+            "O recorte apresenta baixa proporção de unidades concluídas, indicando concentração elevada de demandas remanescentes."
+        )
+
+    if pendencias_real <= 0:
+        leitura_status_final = (
+            "Não há ações pendentes registradas no recorte selecionado."
+        )
+    elif rota_real > andamento_real:
+        leitura_status_final = (
+            f"Entre as demandas remanescentes, predominam as unidades em rota de climatização, que representam "
+            f"{_fmt_pct_br(pct_rota)} da base, enquanto {_fmt_pct_br(pct_andamento)} correspondem às intervenções em andamento."
+        )
+    elif andamento_real > rota_real:
+        leitura_status_final = (
+            f"Entre as demandas remanescentes, predominam as intervenções em andamento, que representam "
+            f"{_fmt_pct_br(pct_andamento)} da base, enquanto {_fmt_pct_br(pct_rota)} correspondem às unidades em rota de climatização."
+        )
+    else:
+        leitura_status_final = (
+            f"As intervenções em andamento e as unidades em rota apresentam participação equivalente, com "
+            f"{_fmt_pct_br(pct_andamento)} da base em cada situação."
+        )
+
+    if comparacao_gre and not resumo_gre.empty:
+        resumo_final = resumo_gre.copy()
+        resumo_final = resumo_final[resumo_final["Total"] > 0].copy()
+
+        if not resumo_final.empty:
+            melhor_linha = resumo_final.sort_values(
+                ["Conclusao", "Pendências"], ascending=[False, True]
+            ).iloc[0]
+            menor_linha = resumo_final.sort_values(
+                ["Conclusao", "Pendências"], ascending=[True, False]
+            ).iloc[0]
+            maior_pend_linha = resumo_final.sort_values(
+                ["Pendências", "Conclusao"], ascending=[False, True]
+            ).iloc[0]
+
+            melhor_final_nome = _nome_narrativo(
+                melhor_linha.get("GRE_Label", melhor_linha.get("GRE", "GRE"))
+            )
+            melhor_final_pct = float(melhor_linha.get("Conclusao", 0) or 0)
+
+            menor_final_nome = _nome_narrativo(
+                menor_linha.get("GRE_Label", menor_linha.get("GRE", "GRE"))
+            )
+            menor_final_pct = float(menor_linha.get("Conclusao", 0) or 0)
+
+            maior_pend_final_nome = _nome_narrativo(
+                maior_pend_linha.get("GRE_Label", maior_pend_linha.get("GRE", "GRE"))
+            )
+            maior_pend_final = float(maior_pend_linha.get("Pendências", 0) or 0)
+
+            if menor_final_nome == maior_pend_final_nome:
+                leitura_regional_final = (
+                    f"Na análise regional, <b>{melhor_final_nome}</b> apresenta o melhor resultado proporcional, "
+                    f"com <b>{_fmt_pct_br(melhor_final_pct)}</b> das unidades climatizadas. "
+                    f"A maior criticidade concentra-se em <b>{menor_final_nome}</b>, que combina a menor taxa de conclusão "
+                    f"(<b>{_fmt_pct_br(menor_final_pct)}</b>) com o maior volume de pendências "
+                    f"(<b>{_fmt_num_br(maior_pend_final)}</b> unidades)."
+                )
+            else:
+                leitura_regional_final = (
+                    f"Na análise regional, <b>{melhor_final_nome}</b> apresenta o melhor resultado proporcional, "
+                    f"com <b>{_fmt_pct_br(melhor_final_pct)}</b> das unidades climatizadas. "
+                    f"Em sentido oposto, <b>{menor_final_nome}</b> registra a menor taxa de conclusão, com "
+                    f"<b>{_fmt_pct_br(menor_final_pct)}</b>, enquanto <b>{maior_pend_final_nome}</b> concentra o maior volume "
+                    f"de ações ainda não concluídas, com <b>{_fmt_num_br(maior_pend_final)}</b> unidades."
+                )
+        else:
+            leitura_regional_final = ""
+    elif gre_unica:
+        leitura_regional_final = (
+            f"No recorte da <b>{nome_gre}</b>, a taxa de conclusão é de <b>{_fmt_pct_br(taxa_gre)}</b>, "
+            f"com <b>{_fmt_num_br(pend_gre)}</b> ações ainda não concluídas."
+        )
+    else:
+        leitura_regional_final = ""
+
     # Setorização só é exibida quando o recorte é compatível com a natureza consolidada dessa planilha.
     setor_norm = _normalizar_setor_resumo(setor) if setor is not None else pd.DataFrame()
     setor_norm = setor_norm[setor_norm["Pendencias"] > 0].copy() if not setor_norm.empty else setor_norm
@@ -2927,7 +3020,7 @@ def _montar_html_relatorio_impressao(
         <div class="print-kpi" style="--accent:var(--vermelho)"><small>Em Rota</small><b>{_fmt_num_br(rota_real)}</b></div>
         <div class="print-kpi" style="--accent:var(--medio)"><small>Taxa de Conclusão</small><b>{_fmt_pct_br(conclusao)}</b></div>
       </div>
-      <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas. As ações ainda não concluídas totalizam <b>{_fmt_num_br(pendencias_real)}</b> unidades.</p>
+      <p class="print-narrative">No recorte analisado, <b>{_fmt_num_br(climatizadas_real)}</b> das <b>{_fmt_num_br(total_real)}</b> unidades encontram-se climatizadas, correspondendo a <b>{_fmt_pct_br(conclusao)}</b>. As intervenções em andamento representam <b>{_fmt_pct_br(pct_andamento)}</b> da base, enquanto as unidades em rota de climatização correspondem a <b>{_fmt_pct_br(pct_rota)}</b>.</p>
     </div>""")
 
     blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
@@ -2939,7 +3032,11 @@ def _montar_html_relatorio_impressao(
         <div class="print-card">
           <div class="print-figure-title">Figura {fig_panorama} – Panorama Geral da Climatização Escolar</div>
           <div class="print-donut"><div class="print-donut-label">{_fmt_pct_br(conclusao)}</div></div>
-          <div class="print-legend"><span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas</span><span><i class="print-dot" style="background:var(--claro)"></i>Em andamento</span><span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota</span></div>
+          <div class="print-legend">
+            <span><i class="print-dot" style="background:var(--escuro)"></i>Climatizadas <b>{_fmt_pct_br(conclusao)}</b></span>
+            <span><i class="print-dot" style="background:var(--claro)"></i>Em andamento <b>{_fmt_pct_br(pct_andamento)}</b></span>
+            <span><i class="print-dot" style="background:var(--vermelho)"></i>Em rota <b>{_fmt_pct_br(pct_rota)}</b></span>
+          </div>
           <div class="print-figure-source">Fonte: Gerência de Obras – SEE, com base na planilha de monitoramento.</div>
         </div>
         <div class="print-card">
@@ -3098,12 +3195,12 @@ def _montar_html_relatorio_impressao(
     elif mostrar_texto_setor_unico:
         blocos.append(f"""<div class="report-block compact"><p class="print-narrative">{texto_setor_unico}</p></div>""")
 
-    # Considerações finais em dois parágrafos, sem criar uma página exclusiva obrigatória.
-    blocos.append("""<div class="report-block conclusions-block" data-section-start="sec4">
+    # Considerações finais adaptativas em dois parágrafos.
+    blocos.append(f"""<div class="report-block conclusions-block" data-section-start="sec4">
       <h2 class="print-section-title">4. Considerações Finais</h2>
-      <p class="print-narrative">Os resultados apresentados permitem uma leitura consolidada da situação das ações de climatização no recorte analisado, considerando as unidades atendidas, as intervenções ainda não concluídas e sua distribuição territorial quando aplicável. A análise conjunta dos indicadores possibilita acompanhar o estágio das ações e identificar a concentração das demandas remanescentes.</p>
-      <p class="print-narrative">As informações refletem a situação registrada na data de atualização indicada no relatório e constituem suporte para o acompanhamento técnico e gerencial das intervenções conduzidas pela Gerência de Obras. A atualização periódica da base permite acompanhar a evolução dos indicadores e subsidiar os encaminhamentos relacionados às demandas ainda existentes.</p>
-      <p class="print-narrative no-indent"><b>Última atualização da base:</b> """ + atualizacao + """. <b>Data de emissão:</b> """ + datetime.now().strftime('%d/%m/%Y') + """.</p>
+      <p class="print-narrative">No recorte analisado, <b>{_fmt_pct_br(conclusao)}</b> das unidades escolares encontram-se climatizadas, enquanto <b>{_fmt_pct_br(pct_pendencias)}</b> permanecem com ações ainda não concluídas. {leitura_estagio_final} {leitura_status_final}</p>
+      <p class="print-narrative">{leitura_regional_final} Os resultados consolidados constituem suporte ao acompanhamento técnico e gerencial das intervenções, permitindo direcionar a atenção para as regionais com menor desempenho proporcional ou maior concentração de pendências e acompanhar a manutenção dos resultados nas áreas com maior nível de conclusão.</p>
+      <p class="print-narrative no-indent"><b>Última atualização da base:</b> {atualizacao}. <b>Data de emissão:</b> {datetime.now().strftime('%d/%m/%Y')}.</p>
     </div>""")
 
     flow_html = "".join(blocos)
