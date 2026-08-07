@@ -3241,7 +3241,7 @@ def _montar_html_relatorio_impressao(
         blocos.append(f"""<div class="report-block compact"><p class="print-narrative">{texto_setor_unico}</p></div>""")
 
     # Considerações finais adaptativas em dois parágrafos.
-    blocos.append(f"""<div class="report-block conclusions-block" data-section-start="sec4" data-force-new-page="true">
+    blocos.append(f"""<div class="report-block conclusions-block" data-section-start="sec4">
       <h2 class="print-section-title">4. Considerações Finais</h2>
       <p class="print-narrative">No recorte analisado, <b>{_fmt_pct_br(conclusao)}</b> das unidades escolares encontram-se climatizadas, enquanto <b>{_fmt_pct_br(pct_pendencias)}</b> permanecem com ações ainda não concluídas. {leitura_estagio_final} {leitura_status_final}</p>
       <p class="print-narrative">{leitura_regional_final} Os resultados consolidados constituem suporte ao acompanhamento técnico e gerencial das intervenções, permitindo direcionar a atenção para as regionais com menor desempenho proporcional ou maior concentração de pendências e acompanhar a manutenção dos resultados nas áreas com maior nível de conclusão.</p>
@@ -3511,7 +3511,12 @@ html.printing-report .print-sheet {{
 
 
 .report-block.analysis-block .print-narrative {{ margin-bottom:2.4mm; }}
-.report-block.conclusions-block {{ break-inside:avoid; page-break-inside:avoid; margin-bottom:0; }}
+.report-block.conclusions-block {{
+  break-inside:avoid;
+  page-break-inside:avoid;
+  margin-top:4.5mm;
+  margin-bottom:0;
+}}
 .report-block.conclusions-block .print-narrative {{ margin-bottom:3mm; }}
 
 .report-block .print-section-title {{ margin-bottom:3.5mm; }}
@@ -3623,13 +3628,6 @@ async function paginateReport() {{
   for (let i = 0; i < blocks.length; i++) {{
     const sourceBlock = blocks[i];
 
-    // Blocos marcados para nova página começam obrigatoriamente em uma folha limpa.
-    // Usado nas Considerações Finais para mantê-las isoladas na última página.
-    if (sourceBlock.dataset.forceNewPage === 'true' && body.children.length > 0) {{
-      page = newPage();
-      body = page.querySelector('.page-body');
-    }}
-
     const block = sourceBlock.cloneNode(true);
     if (sourceBlock.dataset.smartCompact === 'true') {{
       block.classList.add('smart-compact');
@@ -3706,9 +3704,6 @@ async function paginateReport() {{
       if (!currentBody || !nextBody || !nextBody.firstElementChild) continue;
 
       const candidate = nextBody.firstElementChild;
-
-      // Não mover para trás blocos que devem iniciar em uma nova página.
-      if (candidate.dataset.forceNewPage === 'true') continue;
 
       currentBody.appendChild(candidate);
       let fits = currentBody.scrollHeight <= currentBody.clientHeight + 2;
