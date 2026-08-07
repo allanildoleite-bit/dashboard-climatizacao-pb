@@ -2777,6 +2777,13 @@ def _montar_html_relatorio_impressao(
     conclusao = max(0.0, min(1.0, float(totais.get("conclusao", 0) or 0)))
     pct_pendencias = pendencias_real / total_real if total_real > 0 else 0.0
 
+    # Ângulos usados no gráfico de rosca do panorama geral.
+    # A primeira faixa representa as unidades climatizadas e a segunda
+    # acumula as unidades em andamento. O restante corresponde às unidades em rota.
+    pct_andamento = andamento_real / total_real if total_real > 0 else 0.0
+    fim_clim = max(0.0, min(360.0, conclusao * 360.0))
+    fim_and = max(fim_clim, min(360.0, fim_clim + pct_andamento * 360.0))
+
     fonte = escape(str(config.get("Fonte dos dados", "GEOBS / Governo da Paraíba")))
     atualizacao = escape(str(config.get("Última atualização oficial", config.get("Ultima atualização oficial", "Não informada"))))
     periodo_seguro = escape(str(periodo_label))
