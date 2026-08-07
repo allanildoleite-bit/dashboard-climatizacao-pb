@@ -4233,22 +4233,6 @@ body {
     font-weight: 900;
 }
 
-.gre-metrics {
-    grid-column: 2 / 4;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 6px 14px;
-    margin-top: -3px;
-    color: #617187;
-    font-size: 10px;
-    font-weight: 750;
-    line-height: 1.2;
-}
-.gre-metrics b { color:#203A5E; }
-.gre-metrics .metric-clim b { color:var(--azul-escuro); }
-.gre-metrics .metric-and b { color:var(--azul-medio); }
-.gre-metrics .metric-rota b { color:var(--vermelho); }
 
 .legend-top {
     display: flex;
@@ -5972,11 +5956,6 @@ function renderPanorama(rows) {
                     </div>
                 </div>
                 <div class="gre-total">${fmtNum(d.Total)}</div>
-                <div class="gre-metrics">
-                    <span class="metric-clim">Climatizadas: <b>${fmtNum(clim)}</b> (${fmtPct(pctClim)})</span>
-                    <span class="metric-and">Em andamento: <b>${fmtNum(andamento)}</b> (${fmtPct(pctAnd)})</span>
-                    <span class="metric-rota">Em rota: <b>${fmtNum(rota)}</b> (${fmtPct(pctRota)})</span>
-                </div>
             </div>`;
     });
 
