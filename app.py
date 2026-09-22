@@ -1110,7 +1110,7 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     col_climatizacao = achar_coluna(df, ["CLIMATIZAÇÃO", "Climatizacao", "Climatização", "Situação da Climatização", "Situacao da Climatizacao"], obrigatoria=False)
     col_data_clim = achar_coluna(df, ["DATA DA CLIMATIZAÇÃO", "Data da Climatização", "Data da Climatizacao"], obrigatoria=False)
     col_status = achar_coluna(df, ["Status", "STATUS"], obrigatoria=False)
-    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricos", "Servicos Eletricos"], obrigatoria=False)
+    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricas", "Servicos Eletricos"], obrigatoria=False)
     col_padrao = achar_coluna(df, ["Padrão de Entrada", "Padrao de Entrada", "Padrão Entrada", "Padrao Entrada", "Padrão de Ligação", "Padrao de Ligacao"], obrigatoria=False)
 
     dados = pd.DataFrame(index=df.index)
@@ -1123,7 +1123,7 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     dados["Climatização"] = _serie_texto(df, col_climatizacao)
     dados["Data da Climatização"] = _serie_texto(df, col_data_clim)
     dados["Status"] = _serie_texto(df, col_status)
-    dados["Serviços Elétricos"] = _serie_texto(df, col_servicos)
+    dados["Serviços Elétricas"] = _serie_texto(df, col_servicos)
     dados["Padrão de Entrada"] = _serie_texto(df, col_padrao)
 
     dados = dados[dados["Unidade Escolar"].apply(_valor_informado)].copy()
@@ -1358,6 +1358,53 @@ def _status_climatizacao_grupo(valor) -> str:
     return "Outros"
 
 
+
+def _sincronizar_selecao_consulta(selected_rows):
+    """Sincroniza a seleção da grade com o quadro informativo.
+
+    Se houver uma escola selecionada, abre a ficha.
+    Se a seleção for removida, fecha a ficha e mantém a lista geral visível.
+    """
+    if selected_rows is None:
+        selected_rows = []
+
+    try:
+        import pandas as _pd
+        if isinstance(selected_rows, _pd.DataFrame):
+            if selected_rows.empty:
+                st.session_state["consulta_entidade_aberta"] = None
+                st.session_state["consulta_resultado_busca"] = None
+                return None
+            registro = selected_rows.iloc[0].to_dict()
+        elif isinstance(selected_rows, list):
+            if len(selected_rows) == 0:
+                st.session_state["consulta_entidade_aberta"] = None
+                st.session_state["consulta_resultado_busca"] = None
+                return None
+            registro = selected_rows[0] if isinstance(selected_rows[0], dict) else {}
+        elif isinstance(selected_rows, dict):
+            registro = selected_rows
+        else:
+            registro = {}
+    except Exception:
+        registro = {}
+
+    indice = registro.get("_indice_base")
+    if indice is None or str(indice).strip() == "":
+        st.session_state["consulta_entidade_aberta"] = None
+        st.session_state["consulta_resultado_busca"] = None
+        return None
+
+    try:
+        indice = int(indice)
+    except Exception:
+        pass
+
+    st.session_state["consulta_entidade_aberta"] = ("escola", indice)
+    st.session_state["consulta_resultado_busca"] = ("escola", indice)
+    return indice
+
+
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
@@ -1545,6 +1592,14 @@ def renderizar_consulta_unidade_escolar():
 
     entidade_aberta = st.session_state.get("consulta_entidade_aberta")
 
+    if entidade_aberta:
+        col_ficha_titulo, col_fechar_ficha = st.columns([6, 1])
+        with col_fechar_ficha:
+            if st.button("Fechar ficha", key="consulta_fechar_ficha", use_container_width=True):
+                st.session_state["consulta_entidade_aberta"] = None
+                st.session_state["consulta_resultado_busca"] = None
+                st.rerun()
+
     # ========================================================
     # FILTROS COMPLEMENTARES
     # ========================================================
@@ -1581,8 +1636,8 @@ def renderizar_consulta_unidade_escolar():
 
     f5, f6, f7, f8 = st.columns(4)
     with f5:
-        servico = selectbox_consulta_seguro("Serviços Elétricos", _opcoes_coluna(filtrada, "Serviços Elétricos"), "consulta_servico_eletrico")
-    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricos", servico)
+        servico = selectbox_consulta_seguro("Serviços Elétricas", _opcoes_coluna(filtrada, "Serviços Elétricas"), "consulta_servico_eletrico")
+    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricas", servico)
     with f6:
         padrao = selectbox_consulta_seguro("Padrão de Entrada", _opcoes_coluna(filtrada, "Padrão de Entrada"), "consulta_padrao")
     filtrada = _aplicar_filtro_exato(filtrada, "Padrão de Entrada", padrao)
@@ -1607,7 +1662,7 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     tabela = filtrada[[
         "Unidade Escolar", "Município", "GRE", "Climatização", "Status",
-        "Serviços Elétricos", "Padrão de Entrada",
+        "Serviços Elétricas", "Padrão de Entrada",
         "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"
     ]].copy()
 
@@ -1643,7 +1698,7 @@ def renderizar_consulta_unidade_escolar():
         gb.configure_column("GRE", minWidth=85, maxWidth=105)
         gb.configure_column("Climatização", minWidth=165, flex=1.15)
         gb.configure_column("Status", minWidth=180, flex=1.25)
-        gb.configure_column("Serviços Elétricos", minWidth=175, flex=1.15)
+        gb.configure_column("Serviços Elétricas", minWidth=175, flex=1.15)
         gb.configure_column("Padrão de Entrada", minWidth=145, flex=1.0)
         gb.configure_column("Responsável - Elétrica", minWidth=170, flex=1.1)
         gb.configure_column("Responsável - Civil", minWidth=170, flex=1.1)
@@ -1871,7 +1926,7 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-ficha">
               <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
               <div class="consulta-ficha-corpo">
-                <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Serviços Elétricas</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricas")))}</div></div>
                 <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
               </div>
             </div>
