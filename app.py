@@ -817,14 +817,115 @@ def _serie_texto(df: pd.DataFrame, coluna: Optional[str], padrao: str = "") -> p
     return pd.Series([padrao] * len(df), index=df.index, dtype="object")
 
 
+def _nomes_colunas_unicos(valores) -> List[str]:
+    """Cria nomes de colunas válidos e únicos a partir de uma linha de cabeçalho."""
+    usados = {}
+    saida = []
+    for i, valor in enumerate(valores, start=1):
+        nome = " ".join(str(valor).strip().split()) if _valor_informado(valor) else f"Coluna {i}"
+        base = nome
+        contador = usados.get(base, 0)
+        if contador:
+            nome = f"{base} ({contador + 1})"
+        usados[base] = contador + 1
+        saida.append(nome)
+    return saida
+
+
+def _preparar_cabecalho_consulta(df: pd.DataFrame, tipo: str) -> pd.DataFrame:
+    """
+    Corrige automaticamente planilhas publicadas cujo cabeçalho real não está
+    na primeira linha. Isso é comum quando a aba possui título, linhas mescladas
+    ou observações antes da tabela.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df.copy()
+
+    dados = df.copy()
+    dados.columns = [" ".join(str(c).strip().split()) for c in dados.columns]
+
+    if tipo == "escolas":
+        grupos = [
+            ["unidade escolar", "escola", "nome da escola"],
+            ["gre", "gerencia regional", "gerência regional"],
+            ["inep", "cod inep", "codigo inep", "código inep"],
+            ["municipio", "município", "cidade"],
+        ]
+        minimo = 2
+    else:
+        grupos = [
+            ["gre", "gerencia regional", "gerência regional"],
+            ["inep", "cod inep", "codigo inep", "código inep"],
+            ["unidade escolar", "escola", "nome da escola"],
+            ["eletrica", "elétrica", "responsavel eletrica", "responsável elétrica"],
+            ["civil", "responsavel civil", "responsável civil"],
+            ["responsavel", "responsável", "responsavel tecnico", "responsável técnico"],
+        ]
+        minimo = 1
+
+    def pontuar(linha) -> int:
+        celulas = [normalizar_texto(v) for v in linha if _valor_informado(v)]
+        pontos = 0
+        for alternativas in grupos:
+            achou = False
+            for celula in celulas:
+                for alt in alternativas:
+                    alt_n = normalizar_texto(alt)
+                    if celula == alt_n or (alt_n and alt_n in celula):
+                        achou = True
+                        break
+                if achou:
+                    break
+            if achou:
+                pontos += 1
+        return pontos
+
+    # Se o cabeçalho lido pelo pandas já é o cabeçalho verdadeiro, não altera.
+    if pontuar(list(dados.columns)) >= minimo:
+        return dados
+
+    # O pandas pode ter usado uma linha de título como cabeçalho. Recolocamos
+    # os nomes atuais como primeira linha e procuramos o cabeçalho real abaixo.
+    matriz = [list(dados.columns)] + dados.astype(object).values.tolist()
+    limite = min(len(matriz), 40)
+    melhor_indice = None
+    melhor_pontuacao = -1
+    for i in range(limite):
+        pontos = pontuar(matriz[i])
+        if pontos > melhor_pontuacao:
+            melhor_pontuacao = pontos
+            melhor_indice = i
+
+    if melhor_indice is not None and melhor_pontuacao >= minimo:
+        cabecalho = _nomes_colunas_unicos(matriz[melhor_indice])
+        linhas = matriz[melhor_indice + 1:]
+        corrigido = pd.DataFrame(linhas, columns=cabecalho)
+        corrigido = corrigido.dropna(how="all").reset_index(drop=True)
+        return corrigido
+
+    # Mantém a estrutura original para que a mensagem de erro abaixo informe
+    # as colunas realmente recebidas, facilitando qualquer ajuste posterior.
+    return dados
+
+
 def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+    df = _preparar_cabecalho_consulta(df, "escolas")
     df.columns = [str(c).strip() for c in df.columns]
 
     col_gre = achar_coluna(df, ["GRE", "Gerência Regional", "Gerencia Regional"], obrigatoria=False)
     col_inep = achar_coluna(df, ["CÓD. INEP", "COD. INEP", "Cód. INEP", "Codigo INEP", "Código INEP", "INEP"], obrigatoria=False)
     col_uc = achar_coluna(df, ["UC", "Unidade Consumidora", "Nº UC", "Numero UC"], obrigatoria=False)
-    col_escola = achar_coluna(df, ["UNIDADE ESCOLAR", "Unidade Escolar", "Escola", "Nome da Escola"], obrigatoria=True)
+    col_escola = achar_coluna(
+        df,
+        ["UNIDADE ESCOLAR", "Unidade Escolar", "Escola", "Nome da Escola", "Unidade de Ensino", "Nome da Unidade Escolar"],
+        obrigatoria=False,
+    )
+    if not col_escola:
+        colunas_recebidas = ", ".join(str(c) for c in df.columns[:30])
+        raise ValueError(
+            "Não foi possível identificar a coluna da unidade escolar na planilha geral. "
+            f"Colunas recebidas após a leitura: {colunas_recebidas}"
+        )
     col_municipio = achar_coluna(df, ["MUNICÍPIO", "Municipio", "Município", "Cidade"], obrigatoria=False)
     col_servidor = achar_coluna(df, ["SERVIDOR RESPONSAVEL", "Servidor Responsável", "Servidor Responsavel"], obrigatoria=False)
     col_climatizacao = achar_coluna(df, ["CLIMATIZAÇÃO", "Climatizacao", "Climatização", "Situação da Climatização", "Situacao da Climatizacao"], obrigatoria=False)
@@ -872,7 +973,7 @@ def _detectar_coluna_responsavel_area(df: pd.DataFrame, area: str) -> Optional[s
 
 
 def tratar_consulta_responsaveis(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+    df = _preparar_cabecalho_consulta(df, "responsaveis")
     df.columns = [str(c).strip() for c in df.columns]
 
     col_inep = achar_coluna(df, ["CÓD. INEP", "COD. INEP", "Código INEP", "Codigo INEP", "INEP"], obrigatoria=False)
