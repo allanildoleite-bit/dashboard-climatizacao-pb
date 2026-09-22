@@ -1436,30 +1436,38 @@ def renderizar_consulta_unidade_escolar():
                     if nome:
                         nomes_resp.add(nome)
 
-    c_busca, c_limpar = st.columns([5.4, .7])
-    with c_busca:
-        texto_busca = st.text_input(
-            "Pesquisar",
-            placeholder="Digite o nome da escola, responsável técnico, UC ou código INEP",
-            key="consulta_texto_busca",
-        )
-    with c_limpar:
-        st.write("")
-        st.write("")
-        if st.button("Limpar", use_container_width=True, key="consulta_limpar"):
-            for chave in list(st.session_state.keys()):
-                if chave.startswith("consulta_") and chave != "consulta_limpar":
-                    del st.session_state[chave]
-            st.rerun()
+    texto_busca = st.text_input(
+        "Pesquisar",
+        placeholder="Digite o nome da escola, responsável técnico, UC ou código INEP",
+        key="consulta_texto_busca",
+    )
 
     termo_busca = normalizar_texto(texto_busca)
 
-    # Se o usuário começar uma nova pesquisa, libera a entidade anterior para
-    # que a tela responda imediatamente ao novo texto digitado.
+    # Atualização automática da consulta:
+    # qualquer alteração na barra de pesquisa limpa apenas seleções derivadas
+    # da pesquisa anterior. Ao apagar o texto, a listagem completa volta
+    # imediatamente, sem depender de um botão "Limpar".
     termo_anterior = st.session_state.get("consulta_termo_anterior", "")
     if termo_busca != termo_anterior:
         st.session_state["consulta_entidade_aberta"] = None
         st.session_state["consulta_resultado_busca"] = None
+
+        # Evita filtros "presos" a uma pesquisa/escola anterior.
+        # Os filtros complementares voltam ao estado neutro e serão
+        # reconstruídos com as opções válidas do recorte atual.
+        for chave_filtro in [
+            "consulta_gre",
+            "consulta_municipio",
+            "consulta_climatizacao",
+            "consulta_status",
+            "consulta_servico_eletrico",
+            "consulta_padrao",
+            "consulta_resp_eletrica",
+            "consulta_resp_civil",
+        ]:
+            st.session_state[chave_filtro] = "Todos"
+
         st.session_state["consulta_termo_anterior"] = termo_busca
 
     opcoes_resultado = []
@@ -1540,45 +1548,49 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     # FILTROS COMPLEMENTARES
     # ========================================================
+    def selectbox_consulta_seguro(label, opcoes, key):
+        """Mantém o filtro válido quando o conjunto de opções muda."""
+        opcoes_validas = ["Todos"] + [v for v in opcoes if v != "Todos"]
+        atual = st.session_state.get(key, "Todos")
+        if atual not in opcoes_validas:
+            st.session_state[key] = "Todos"
+        return st.selectbox(label, opcoes_validas, key=key)
+
     filtrada = base.copy()
 
     if termo_busca:
         filtrada = filtrada[filtrada["_BUSCA"].str.contains(re.escape(termo_busca), na=False)].copy()
 
-    if entidade_aberta and entidade_aberta[0] == "responsavel":
-        nome_resp = entidade_aberta[1]
-        filtrada = base[base.apply(lambda r: responsavel_na_linha(r, nome_resp), axis=1)].copy()
-    elif entidade_aberta and entidade_aberta[0] == "escola":
-        indice_escola_busca = entidade_aberta[1]
-        if indice_escola_busca in base.index:
-            filtrada = base.loc[[indice_escola_busca]].copy()
-
+    # A entidade aberta (escola ou responsável) controla somente o quadro
+    # informativo. Ela NÃO reduz as opções dos filtros nem prende a tabela
+    # à escola selecionada. Assim, o usuário pode consultar uma ficha e
+    # continuar navegando livremente pelos filtros.
     f1, f2, f3, f4 = st.columns(4)
     with f1:
-        gre = st.selectbox("Gerência Regional de Educação (GRE)", ["Todos"] + _opcoes_coluna(filtrada, "GRE"), key="consulta_gre")
+        gre = selectbox_consulta_seguro("Gerência Regional de Educação (GRE)", _opcoes_coluna(filtrada, "GRE"), "consulta_gre")
     filtrada = _aplicar_filtro_exato(filtrada, "GRE", gre)
     with f2:
-        municipio = st.selectbox("Município", ["Todos"] + _opcoes_coluna(filtrada, "Município"), key="consulta_municipio")
+        municipio = selectbox_consulta_seguro("Município", _opcoes_coluna(filtrada, "Município"), "consulta_municipio")
     filtrada = _aplicar_filtro_exato(filtrada, "Município", municipio)
     with f3:
-        climatizacao = st.selectbox("Situação da Climatização", ["Todos"] + _opcoes_coluna(filtrada, "Climatização"), key="consulta_climatizacao")
+        climatizacao = selectbox_consulta_seguro("Situação da Climatização", _opcoes_coluna(filtrada, "Climatização"), "consulta_climatizacao")
     filtrada = _aplicar_filtro_exato(filtrada, "Climatização", climatizacao)
     with f4:
-        status = st.selectbox("Status Operacional", ["Todos"] + _opcoes_coluna(filtrada, "Status"), key="consulta_status")
+        status = selectbox_consulta_seguro("Status Operacional", _opcoes_coluna(filtrada, "Status"), "consulta_status")
     filtrada = _aplicar_filtro_exato(filtrada, "Status", status)
 
     f5, f6, f7, f8 = st.columns(4)
     with f5:
-        servico = st.selectbox("Serviços Elétricos", ["Todos"] + _opcoes_coluna(filtrada, "Serviços Elétricos"), key="consulta_servico_eletrico")
+        servico = selectbox_consulta_seguro("Serviços Elétricos", _opcoes_coluna(filtrada, "Serviços Elétricos"), "consulta_servico_eletrico")
     filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricos", servico)
     with f6:
-        padrao = st.selectbox("Padrão de Entrada", ["Todos"] + _opcoes_coluna(filtrada, "Padrão de Entrada"), key="consulta_padrao")
+        padrao = selectbox_consulta_seguro("Padrão de Entrada", _opcoes_coluna(filtrada, "Padrão de Entrada"), "consulta_padrao")
     filtrada = _aplicar_filtro_exato(filtrada, "Padrão de Entrada", padrao)
     with f7:
-        resp_eletrica = st.selectbox("Responsável Técnico de Elétrica", ["Todos"] + _opcoes_coluna(filtrada, "Responsável Técnico de Elétrica"), key="consulta_resp_eletrica")
+        resp_eletrica = selectbox_consulta_seguro("Responsável Técnico de Elétrica", _opcoes_coluna(filtrada, "Responsável Técnico de Elétrica"), "consulta_resp_eletrica")
     filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Elétrica", resp_eletrica)
     with f8:
-        resp_civil = st.selectbox("Responsável Técnico de Civil", ["Todos"] + _opcoes_coluna(filtrada, "Responsável Técnico de Civil"), key="consulta_resp_civil")
+        resp_civil = selectbox_consulta_seguro("Responsável Técnico de Civil", _opcoes_coluna(filtrada, "Responsável Técnico de Civil"), "consulta_resp_civil")
     filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Civil", resp_civil)
 
     if filtrada.empty:
@@ -1611,7 +1623,7 @@ def renderizar_consulta_unidade_escolar():
     tabela_exibicao.insert(1, "_dblclick", 0)
 
     st.markdown(
-        '<div class="consulta-instrucao">Dê dois cliques em uma unidade escolar para abrir a ficha. Na pesquisa, selecione uma escola ou responsável para exibir o quadro correspondente.</div>',
+        '<div class="consulta-instrucao">Dê dois cliques em uma unidade escolar para abrir a ficha. A ficha permanece apenas como consulta e não limita os filtros nem a listagem.</div>',
         unsafe_allow_html=True,
     )
 
