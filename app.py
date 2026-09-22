@@ -8418,95 +8418,84 @@ def renderizar():
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
         html = montar_html(base, setor, responsaveis, acompanhamento, config)
 
+        # ========================================================
+        # NAVEGAÇÃO PRINCIPAL
+        # Botões nativos do Streamlit + Material Symbols.
+        # Evita emojis e elimina completamente os círculos do st.radio.
+        # ========================================================
         st.markdown(
             """
             <style>
-            /* Navegação principal sempre visível, sem depender das abas nativas. */
             header[data-testid="stHeader"] { height:0 !important; min-height:0 !important; }
             .block-container { padding-top:0.65rem !important; }
-            div[data-testid="stRadio"] {
-                position:relative;
-                z-index:50;
-                margin:0 0 0.65rem;
-                padding:0.35rem;
+
+            /* Caixa discreta para a navegação principal. */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.nav-principal-anchor) {
                 background:#FFFFFF;
-                border:1px solid #D9E4F2;
-                border-radius:12px;
-                box-shadow:0 3px 10px rgba(0,31,73,.10);
+                border:1px solid #D9E4F2 !important;
+                border-radius:14px !important;
+                box-shadow:0 4px 12px rgba(0,31,73,.10);
             }
-            div[data-testid="stRadio"] > label { display:none !important; }
-            div[data-testid="stRadio"] div[role="radiogroup"] {
-                display:flex !important;
-                flex-direction:row !important;
-                gap:0.35rem !important;
-                width:100%;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] {
-                flex:1 1 0;
-                min-height:42px;
-                margin:0 !important;
-                padding:0.55rem 1rem !important;
-                justify-content:center;
-                border-radius:9px;
-                color:#53657A !important;
-                font-size:0.98rem !important;
-                font-weight:800 !important;
-                cursor:pointer;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
-                background:#EAF4FF !important;
-                color:#003B73 !important;
-                box-shadow:inset 0 -3px 0 #1F77D0;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {
-                display:none !important;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] {
-                display:flex !important;
-                align-items:center !important;
-                justify-content:center !important;
-                gap:.60rem !important;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]::before {
-                content:"";
-                width:18px;
-                height:18px;
-                display:inline-block;
-                background-repeat:no-repeat;
-                background-position:center;
-                background-size:contain;
-                opacity:.92;
-                flex:0 0 18px;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(1)::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='4' width='17' height='16' rx='2.2'/%3E%3Cpath d='M8 14V11'/%3E%3Cpath d='M12 14V8'/%3E%3Cpath d='M16 14v-3'/%3E%3Cpath d='M7 17.5h10'/%3E%3C/svg%3E");
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(2)::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7.5h10'/%3E%3Cpath d='M7 12h10'/%3E%3Cpath d='M7 16.5h6'/%3E%3Cpath d='M16.5 3.5H7.8a2.3 2.3 0 0 0-2.3 2.3v12.4a2.3 2.3 0 0 0 2.3 2.3h8.4a2.3 2.3 0 0 0 2.3-2.3V7.2z'/%3E%3Cpath d='M16.2 3.5v3.1a.9.9 0 0 0 .9.9h3.1'/%3E%3C/svg%3E");
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(3)::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20.5h16'/%3E%3Cpath d='M6.5 20.5V6.8l5.5-3.3 5.5 3.3v13.7'/%3E%3Cpath d='M9 10h6'/%3E%3Cpath d='M9 13h6'/%3E%3Cpath d='M10 20.5v-3.3h4v3.3'/%3E%3C/svg%3E");
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] p,
-            div[data-testid="stRadio"] label[data-baseweb="radio"] span {
-                color:inherit !important;
-                opacity:1 !important;
-                font-weight:800 !important;
-                margin:0 !important;
-                line-height:1.1 !important;
+            .nav-principal-anchor {
+                height:0;
+                margin:0;
+                padding:0;
+                overflow:hidden;
             }
             </style>
             """,
             unsafe_allow_html=True,
         )
 
-        pagina = st.radio(
-            "Navegação",
-            ["Dashboard", "Relatório para impressão", "Consulta por Unidade Escolar"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="pagina_principal",
-        )
+        paginas_validas = [
+            "Dashboard",
+            "Relatório para impressão",
+            "Consulta por Unidade Escolar",
+        ]
+        if st.session_state.get("pagina_principal") not in paginas_validas:
+            st.session_state["pagina_principal"] = "Dashboard"
+
+        def _mudar_pagina_principal(destino):
+            st.session_state["pagina_principal"] = destino
+
+        with st.container(border=True):
+            st.markdown('<div class="nav-principal-anchor"></div>', unsafe_allow_html=True)
+            nav1, nav2, nav3 = st.columns([1.0, 1.35, 1.65], gap="small")
+
+            pagina_atual = st.session_state["pagina_principal"]
+
+            with nav1:
+                st.button(
+                    "Dashboard",
+                    key="nav_dashboard",
+                    icon=":material/dashboard:",
+                    type="primary" if pagina_atual == "Dashboard" else "secondary",
+                    use_container_width=True,
+                    on_click=_mudar_pagina_principal,
+                    args=("Dashboard",),
+                )
+            with nav2:
+                st.button(
+                    "Relatório para impressão",
+                    key="nav_relatorio",
+                    icon=":material/description:",
+                    type="primary" if pagina_atual == "Relatório para impressão" else "secondary",
+                    use_container_width=True,
+                    on_click=_mudar_pagina_principal,
+                    args=("Relatório para impressão",),
+                )
+            with nav3:
+                st.button(
+                    "Consulta por Unidade Escolar",
+                    key="nav_consulta",
+                    icon=":material/school:",
+                    type="primary" if pagina_atual == "Consulta por Unidade Escolar" else "secondary",
+                    use_container_width=True,
+                    on_click=_mudar_pagina_principal,
+                    args=("Consulta por Unidade Escolar",),
+                )
+
+        pagina = st.session_state["pagina_principal"]
 
         if pagina == "Dashboard":
             components.html(html, height=7600, scrolling=True)
