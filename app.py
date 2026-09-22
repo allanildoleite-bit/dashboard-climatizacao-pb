@@ -1532,6 +1532,22 @@ def _status_climatizacao_grupo(valor) -> str:
 
 
 
+
+def _opcoes_coluna(df: pd.DataFrame, coluna: str):
+    """Retorna opções únicas, válidas e ordenadas para os filtros da consulta."""
+    if df is None or df.empty or coluna not in df.columns:
+        return []
+
+    valores = []
+    for valor in df[coluna].tolist():
+        if _valor_informado(valor):
+            texto = str(valor).strip()
+            if texto and texto not in valores:
+                valores.append(texto)
+
+    return sorted(valores, key=lambda x: normalizar_texto(x))
+
+
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
