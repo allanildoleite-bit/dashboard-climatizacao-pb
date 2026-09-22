@@ -1,3 +1,7 @@
 streamlit
 pandas
-reportlab
+numpy
+plotly
+requests
+openpyxl
+streamlit-aggrid
