@@ -1548,6 +1548,23 @@ def _opcoes_coluna(df: pd.DataFrame, coluna: str):
     return sorted(valores, key=lambda x: normalizar_texto(x))
 
 
+
+def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataFrame:
+    """Aplica um filtro exato na coluna; 'Todos' mantém o conjunto inalterado."""
+    if df is None or df.empty:
+        return df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+    if coluna not in df.columns:
+        return df.copy()
+    if not _valor_informado(valor) or str(valor).strip() == "Todos":
+        return df.copy()
+
+    alvo = normalizar_texto(valor)
+    mascara = df[coluna].apply(
+        lambda x: normalizar_texto(x) == alvo if _valor_informado(x) else False
+    )
+    return df[mascara].copy()
+
+
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
