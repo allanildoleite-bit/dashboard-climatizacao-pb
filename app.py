@@ -8465,22 +8465,9 @@ def renderizar():
                 display:flex !important;
                 align-items:center !important;
                 justify-content:center !important;
+                gap:.60rem !important;
             }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] p,
-            div[data-testid="stRadio"] label[data-baseweb="radio"] span {
-                color:inherit !important;
-                opacity:1 !important;
-                font-weight:800 !important;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-                display:flex !important;
-                align-items:center !important;
-                justify-content:center !important;
-                gap:.55rem !important;
-                margin:0 !important;
-                line-height:1.1 !important;
-            }
-            div[data-testid="stRadio"] label[data-baseweb="radio"] p::before {
+            div[data-testid="stRadio"] label[data-baseweb="radio"]::before {
                 content:"";
                 width:18px;
                 height:18px;
@@ -8488,16 +8475,25 @@ def renderizar():
                 background-repeat:no-repeat;
                 background-position:center;
                 background-size:contain;
+                opacity:.92;
                 flex:0 0 18px;
             }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(1) p::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='8' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.5'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.5'/%3E%3Crect x='3' y='15' width='7' height='6' rx='1.5'/%3E%3C/svg%3E");
+            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(1)::before {
+                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='4' width='17' height='16' rx='2.2'/%3E%3Cpath d='M8 14V11'/%3E%3Cpath d='M12 14V8'/%3E%3Cpath d='M16 14v-3'/%3E%3Cpath d='M7 17.5h10'/%3E%3C/svg%3E");
             }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(2) p::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9V3h9l3 3v3'/%3E%3Cpath d='M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2'/%3E%3Crect x='7' y='14' width='10' height='7' rx='1'/%3E%3Cpath d='M8 6h7'/%3E%3C/svg%3E");
+            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(2)::before {
+                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7.5h10'/%3E%3Cpath d='M7 12h10'/%3E%3Cpath d='M7 16.5h6'/%3E%3Cpath d='M16.5 3.5H7.8a2.3 2.3 0 0 0-2.3 2.3v12.4a2.3 2.3 0 0 0 2.3 2.3h8.4a2.3 2.3 0 0 0 2.3-2.3V7.2z'/%3E%3Cpath d='M16.2 3.5v3.1a.9.9 0 0 0 .9.9h3.1'/%3E%3C/svg%3E");
             }
-            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(3) p::before {
-                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h16'/%3E%3Cpath d='M6 20V8l6-4 6 4v12'/%3E%3Cpath d='M9 11h6'/%3E%3Cpath d='M9 14h6'/%3E%3Cpath d='M10 20v-3h4v3'/%3E%3C/svg%3E");
+            div[data-testid="stRadio"] label[data-baseweb="radio"]:nth-of-type(3)::before {
+                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A4F9D' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20.5h16'/%3E%3Cpath d='M6.5 20.5V6.8l5.5-3.3 5.5 3.3v13.7'/%3E%3Cpath d='M9 10h6'/%3E%3Cpath d='M9 13h6'/%3E%3Cpath d='M10 20.5v-3.3h4v3.3'/%3E%3C/svg%3E");
+            }
+            div[data-testid="stRadio"] label[data-baseweb="radio"] p,
+            div[data-testid="stRadio"] label[data-baseweb="radio"] span {
+                color:inherit !important;
+                opacity:1 !important;
+                font-weight:800 !important;
+                margin:0 !important;
+                line-height:1.1 !important;
             }
             </style>
             """,
