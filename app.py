@@ -1110,8 +1110,34 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     col_climatizacao = achar_coluna(df, ["CLIMATIZAÇÃO", "Climatizacao", "Climatização", "Situação da Climatização", "Situacao da Climatizacao"], obrigatoria=False)
     col_data_clim = achar_coluna(df, ["DATA DA CLIMATIZAÇÃO", "Data da Climatização", "Data da Climatizacao"], obrigatoria=False)
     col_status = achar_coluna(df, ["Status", "STATUS"], obrigatoria=False)
-    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricos", "Servicos Eletricos"], obrigatoria=False)
-    col_padrao = achar_coluna(df, ["Padrão de Entrada", "Padrao de Entrada", "Padrão Entrada", "Padrao Entrada", "Padrão de Ligação", "Padrao de Ligacao"], obrigatoria=False)
+
+    # Campos elétricos da Planilha Geral. A ordem dos aliases é intencional:
+    # primeiro procuramos os nomes mais específicos usados na própria base e
+    # só depois os nomes legados, preservando compatibilidade com versões
+    # anteriores da planilha sem criar classificações novas.
+    col_instalacoes_eletricas = achar_coluna(
+        df,
+        [
+            "Instalações Elétricas", "Instalacoes Eletricas",
+            "Serviços de Instalações Elétricas", "Servicos de Instalacoes Eletricas",
+            "Serviços Elétricos", "Servicos Eletricos",
+            "Serviços de Elétrica", "Servicos de Eletrica",
+            "Serviço de Elétrica", "Servico de Eletrica",
+        ],
+        obrigatoria=False,
+    )
+    col_entrada_energia = achar_coluna(
+        df,
+        [
+            "CI de Entrada de Energia", "CI Entrada de Energia",
+            "Entrada de Energia",
+            "Padrão de Entrada de Energia", "Padrao de Entrada de Energia",
+            "Padrão de Entrada", "Padrao de Entrada",
+            "Padrão Entrada", "Padrao Entrada",
+            "Padrão de Ligação", "Padrao de Ligacao",
+        ],
+        obrigatoria=False,
+    )
 
     dados = pd.DataFrame(index=df.index)
     dados["GRE"] = _serie_texto(df, col_gre).apply(lambda x: padronizar_gre(x) or (str(x).strip() if _valor_informado(x) else ""))
@@ -1130,8 +1156,27 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     dados["Climatização"] = _serie_texto(df, col_climatizacao)
     dados["Data da Climatização"] = _serie_texto(df, col_data_clim)
     dados["Status"] = _serie_texto(df, col_status)
-    dados["Serviços Elétricos"] = _serie_texto(df, col_servicos)
-    dados["Padrão de Entrada"] = _serie_texto(df, col_padrao)
+    dados["Instalações Elétricas"] = _serie_texto(df, col_instalacoes_eletricas)
+    dados["Entrada de Energia"] = _serie_texto(df, col_entrada_energia)
+
+    # Padronização solicitada apenas para o status antigo. Os demais status
+    # permanecem exatamente como constam na Planilha Geral.
+    def _status_consulta(valor):
+        if not _valor_informado(valor):
+            return ""
+        original = str(valor).strip()
+        chave = normalizar_texto(original)
+        if chave in {"aguardando energia", "aguardando a energia"}:
+            return "Aguardando a Energisa-PB"
+        return original
+
+    dados["Status"] = dados["Status"].apply(_status_consulta)
+
+    # Aliases legados mantidos internamente para não quebrar nenhuma rotina
+    # externa que ainda use os nomes antigos. A interface passa a usar apenas
+    # os novos nomes abaixo.
+    dados["Serviços Elétricos"] = dados["Instalações Elétricas"]
+    dados["Padrão de Entrada"] = dados["Entrada de Energia"]
 
     dados = dados[dados["Unidade Escolar"].apply(_valor_informado)].copy()
     dados = dados[~dados["Unidade Escolar"].str.upper().str.contains(r"^TOTAL$|^TOTAIS$", na=False, regex=True)].copy()
@@ -1575,7 +1620,7 @@ def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataF
 
 
 # CONSULTA_UI_BUILD = "v19-reset-labels"
-# CONSULTA_UI_BUILD = "v21-rotulos-gre"
+# CONSULTA_UI_BUILD = "v22-eletrica-planilha-geral"
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
@@ -1846,11 +1891,11 @@ def renderizar_consulta_unidade_escolar():
 
     f5, f6, f7, f8 = st.columns(4)
     with f5:
-        servico = selectbox_consulta_seguro("Serviços Elétricos", _opcoes_coluna(filtrada, "Serviços Elétricos"), "consulta_servico_eletrico")
-    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricos", servico)
+        servico = selectbox_consulta_seguro("Instalações Elétricas", _opcoes_coluna(filtrada, "Instalações Elétricas"), "consulta_servico_eletrico")
+    filtrada = _aplicar_filtro_exato(filtrada, "Instalações Elétricas", servico)
     with f6:
-        padrao = selectbox_consulta_seguro("Padrão de Entrada de Energia", _opcoes_coluna(filtrada, "Padrão de Entrada"), "consulta_padrao")
-    filtrada = _aplicar_filtro_exato(filtrada, "Padrão de Entrada", padrao)
+        padrao = selectbox_consulta_seguro("Entrada de Energia", _opcoes_coluna(filtrada, "Entrada de Energia"), "consulta_padrao")
+    filtrada = _aplicar_filtro_exato(filtrada, "Entrada de Energia", padrao)
     with f7:
         resp_eletrica = selectbox_consulta_seguro("Responsável Técnico de Elétrica", _opcoes_coluna(filtrada, "Responsável Técnico de Elétrica"), "consulta_resp_eletrica")
     filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Elétrica", resp_eletrica)
@@ -1872,7 +1917,7 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     tabela = filtrada[[
         "Unidade Escolar", "Município", "GRE", "Climatização", "Status",
-        "Serviços Elétricos", "Padrão de Entrada",
+        "Instalações Elétricas", "Entrada de Energia",
         "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"
     ]].copy()
 
@@ -1895,7 +1940,6 @@ def renderizar_consulta_unidade_escolar():
 
     if AGGRID_DISPONIVEL:
         tabela_grid = tabela_exibicao.rename(columns={
-            "Padrão de Entrada": "Padrão de Entrada de Energia",
             "Responsável Técnico de Elétrica": "Responsável - Elétrica",
             "Responsável Técnico de Civil": "Responsável - Civil",
         })
@@ -1907,8 +1951,8 @@ def renderizar_consulta_unidade_escolar():
         gb.configure_column("GRE", minWidth=85, maxWidth=105)
         gb.configure_column("Climatização", minWidth=165, flex=1.15)
         gb.configure_column("Status", minWidth=180, flex=1.25)
-        gb.configure_column("Serviços Elétricos", minWidth=175, flex=1.15)
-        gb.configure_column("Padrão de Entrada de Energia", minWidth=165, flex=1.05)
+        gb.configure_column("Instalações Elétricas", minWidth=210, flex=1.35)
+        gb.configure_column("Entrada de Energia", minWidth=185, flex=1.10)
         gb.configure_column("Responsável - Elétrica", minWidth=170, flex=1.1)
         gb.configure_column("Responsável - Civil", minWidth=170, flex=1.1)
         gb.configure_selection("single", use_checkbox=False)
@@ -2164,10 +2208,10 @@ def renderizar_consulta_unidade_escolar():
             """, unsafe_allow_html=True)
             st.markdown(f"""
             <div class="consulta-ficha">
-              <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
+              <div class="consulta-ficha-topo"><h4>Instalações Elétricas</h4></div>
               <div class="consulta-ficha-corpo">
-                <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
-                <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Serviço de Instalação Elétrica</div><div class="conteudo">{escape(_texto_consulta(linha.get("Instalações Elétricas")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Entrada de Energia")))}</div></div>
               </div>
             </div>
             """, unsafe_allow_html=True)
