@@ -62,6 +62,10 @@ RESPONSAVEIS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM
 ACOMPANHAMENTO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1974682974&single=true&output=csv"
 CONFIG_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=274650779&single=true&output=csv"
 
+# Fontes exclusivas da terceira aba: Consulta por Unidade Escolar.
+CONSULTA_ESCOLAS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=1046000686&single=true&output=csv"
+CONSULTA_RESPONSAVEIS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=2070229368&single=true&output=csv"
+
 REFRESH_SECONDS = 150
 
 GRE_MAP_VIEWBOX = "40 12 1015 580"
@@ -774,6 +778,376 @@ def carregar_dados():
     config["Última atualização oficial"] = data_base
 
     return base, setor, responsaveis, acompanhamento, config
+
+
+# ============================================================
+# TERCEIRA ABA - CONSULTA POR UNIDADE ESCOLAR
+# ============================================================
+
+def _valor_informado(valor) -> bool:
+    if valor is None or pd.isna(valor):
+        return False
+    texto = str(valor).strip()
+    return normalizar_texto(texto) not in {"", "nan", "none", "nat", "-", "--", "na", "n a"}
+
+
+def _texto_consulta(valor) -> str:
+    if not _valor_informado(valor):
+        return "Não há informações"
+    return " ".join(str(valor).strip().split())
+
+
+def _normalizar_inep(valor) -> str:
+    if not _valor_informado(valor):
+        return ""
+    texto = re.sub(r"\.0$", "", str(valor).strip())
+    digitos = re.sub(r"\D", "", texto)
+    return digitos if digitos else texto.upper()
+
+
+def _normalizar_uc(valor) -> str:
+    if not _valor_informado(valor):
+        return ""
+    return re.sub(r"\.0$", "", str(valor).strip())
+
+
+def _serie_texto(df: pd.DataFrame, coluna: Optional[str], padrao: str = "") -> pd.Series:
+    if coluna and coluna in df.columns:
+        return df[coluna].apply(lambda x: "" if not _valor_informado(x) else " ".join(str(x).strip().split()))
+    return pd.Series([padrao] * len(df), index=df.index, dtype="object")
+
+
+def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_gre = achar_coluna(df, ["GRE", "Gerência Regional", "Gerencia Regional"], obrigatoria=False)
+    col_inep = achar_coluna(df, ["CÓD. INEP", "COD. INEP", "Cód. INEP", "Codigo INEP", "Código INEP", "INEP"], obrigatoria=False)
+    col_uc = achar_coluna(df, ["UC", "Unidade Consumidora", "Nº UC", "Numero UC"], obrigatoria=False)
+    col_escola = achar_coluna(df, ["UNIDADE ESCOLAR", "Unidade Escolar", "Escola", "Nome da Escola"], obrigatoria=True)
+    col_municipio = achar_coluna(df, ["MUNICÍPIO", "Municipio", "Município", "Cidade"], obrigatoria=False)
+    col_servidor = achar_coluna(df, ["SERVIDOR RESPONSAVEL", "Servidor Responsável", "Servidor Responsavel"], obrigatoria=False)
+    col_climatizacao = achar_coluna(df, ["CLIMATIZAÇÃO", "Climatizacao", "Climatização", "Situação da Climatização", "Situacao da Climatizacao"], obrigatoria=False)
+    col_data_clim = achar_coluna(df, ["DATA DA CLIMATIZAÇÃO", "Data da Climatização", "Data da Climatizacao"], obrigatoria=False)
+    col_status = achar_coluna(df, ["Status", "STATUS"], obrigatoria=False)
+    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricos", "Servicos Eletricos"], obrigatoria=False)
+    col_padrao = achar_coluna(df, ["Padrão de Entrada", "Padrao de Entrada", "Padrão Entrada", "Padrao Entrada", "Padrão de Ligação", "Padrao de Ligacao"], obrigatoria=False)
+
+    dados = pd.DataFrame(index=df.index)
+    dados["GRE"] = _serie_texto(df, col_gre).apply(lambda x: padronizar_gre(x) or (str(x).strip() if _valor_informado(x) else ""))
+    dados["Código INEP"] = _serie_texto(df, col_inep).apply(_normalizar_inep)
+    dados["UC"] = _serie_texto(df, col_uc).apply(_normalizar_uc)
+    dados["Unidade Escolar"] = _serie_texto(df, col_escola)
+    dados["Município"] = _serie_texto(df, col_municipio)
+    dados["Servidor Responsável"] = _serie_texto(df, col_servidor)
+    dados["Climatização"] = _serie_texto(df, col_climatizacao)
+    dados["Data da Climatização"] = _serie_texto(df, col_data_clim)
+    dados["Status"] = _serie_texto(df, col_status)
+    dados["Serviços Elétricos"] = _serie_texto(df, col_servicos)
+    dados["Padrão de Entrada"] = _serie_texto(df, col_padrao)
+
+    dados = dados[dados["Unidade Escolar"].apply(_valor_informado)].copy()
+    dados = dados[~dados["Unidade Escolar"].str.upper().str.contains(r"^TOTAL$|^TOTAIS$", na=False, regex=True)].copy()
+    dados["_INEP_KEY"] = dados["Código INEP"].apply(_normalizar_inep)
+    dados["_GRE_KEY"] = dados["GRE"].apply(lambda x: padronizar_gre(x) or normalizar_texto(x))
+    dados["_ESCOLA_KEY"] = dados["Unidade Escolar"].apply(normalizar_texto)
+    dados["_BUSCA"] = dados.apply(
+        lambda r: normalizar_texto(" | ".join([
+            str(r.get("Unidade Escolar", "")), str(r.get("Código INEP", "")),
+            str(r.get("Município", "")), str(r.get("UC", "")), str(r.get("GRE", ""))
+        ])), axis=1
+    )
+    return dados.reset_index(drop=True)
+
+
+def _detectar_coluna_responsavel_area(df: pd.DataFrame, area: str) -> Optional[str]:
+    alvo = normalizar_texto(area)
+    candidatos = []
+    for coluna in df.columns:
+        nome = normalizar_texto(coluna)
+        if alvo in nome:
+            pontos = 3 + (4 if "responsavel" in nome else 0) + (2 if "tecnico" in nome else 0)
+            candidatos.append((pontos, coluna))
+    return sorted(candidatos, reverse=True)[0][1] if candidatos else None
+
+
+def tratar_consulta_responsaveis(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_inep = achar_coluna(df, ["CÓD. INEP", "COD. INEP", "Código INEP", "Codigo INEP", "INEP"], obrigatoria=False)
+    col_gre = achar_coluna(df, ["GRE", "Gerência Regional", "Gerencia Regional"], obrigatoria=False)
+    col_escola = achar_coluna(df, ["Unidade Escolar", "Escola", "Nome da Escola"], obrigatoria=False)
+    col_eletrica = _detectar_coluna_responsavel_area(df, "eletrica") or achar_coluna(df, ["Elétrica", "Eletrica", "Responsável Elétrica", "Responsavel Eletrica"], obrigatoria=False)
+    col_civil = _detectar_coluna_responsavel_area(df, "civil") or achar_coluna(df, ["Civil", "Responsável Civil", "Responsavel Civil"], obrigatoria=False)
+    col_resp = achar_coluna(df, ["Responsável Técnico", "Responsavel Tecnico", "Responsável", "Responsavel", "Nome"], obrigatoria=False)
+    col_area = achar_coluna(df, ["Área", "Area", "Área Técnica", "Area Tecnica", "Setor", "Disciplina"], obrigatoria=False)
+
+    registros = []
+    for _, row in df.iterrows():
+        inep = _normalizar_inep(row.get(col_inep, "")) if col_inep else ""
+        gre_bruto = row.get(col_gre, "") if col_gre else ""
+        gre = padronizar_gre(gre_bruto) or (str(gre_bruto).strip() if _valor_informado(gre_bruto) else "")
+        escola = str(row.get(col_escola, "")).strip() if col_escola and _valor_informado(row.get(col_escola, "")) else ""
+        eletrica = _texto_consulta(row.get(col_eletrica, "")) if col_eletrica and _valor_informado(row.get(col_eletrica, "")) else ""
+        civil = _texto_consulta(row.get(col_civil, "")) if col_civil and _valor_informado(row.get(col_civil, "")) else ""
+
+        if col_resp and _valor_informado(row.get(col_resp, "")):
+            resp = _texto_consulta(row.get(col_resp, ""))
+            area_txt = normalizar_texto(row.get(col_area, "")) if col_area else ""
+            if "eletr" in area_txt:
+                eletrica = resp
+            elif "civil" in area_txt:
+                civil = resp
+
+        if inep or gre or escola:
+            registros.append({
+                "_INEP_KEY": inep,
+                "_GRE_KEY": padronizar_gre(gre) or normalizar_texto(gre),
+                "_ESCOLA_KEY": normalizar_texto(escola),
+                "Responsável Técnico de Elétrica": eletrica,
+                "Responsável Técnico de Civil": civil,
+            })
+
+    if not registros:
+        return pd.DataFrame(columns=["_INEP_KEY", "_GRE_KEY", "_ESCOLA_KEY", "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"])
+    return pd.DataFrame(registros)
+
+
+def _mapa_responsaveis(resp: pd.DataFrame, chave: str, coluna_resp: str) -> dict:
+    mapa = {}
+    if resp.empty or chave not in resp.columns or coluna_resp not in resp.columns:
+        return mapa
+    parte = resp[(resp[chave].astype(str).str.strip() != "") & resp[coluna_resp].apply(_valor_informado)].copy()
+    for valor_chave, grupo in parte.groupby(chave):
+        nomes = []
+        for nome in grupo[coluna_resp]:
+            nome = str(nome).strip()
+            if nome and nome not in nomes:
+                nomes.append(nome)
+        if nomes:
+            mapa[str(valor_chave)] = " / ".join(nomes)
+    return mapa
+
+
+def combinar_consulta_escolas_responsaveis(escolas: pd.DataFrame, resp: pd.DataFrame) -> pd.DataFrame:
+    dados = escolas.copy()
+    for coluna_resp in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
+        mapa_inep = _mapa_responsaveis(resp, "_INEP_KEY", coluna_resp)
+        mapa_escola = _mapa_responsaveis(resp, "_ESCOLA_KEY", coluna_resp)
+        mapa_gre = _mapa_responsaveis(resp, "_GRE_KEY", coluna_resp)
+
+        def resolver(linha):
+            inep = str(linha.get("_INEP_KEY", ""))
+            escola = str(linha.get("_ESCOLA_KEY", ""))
+            gre = str(linha.get("_GRE_KEY", ""))
+            if inep and inep in mapa_inep:
+                return mapa_inep[inep]
+            if escola and escola in mapa_escola:
+                return mapa_escola[escola]
+            if gre and gre in mapa_gre:
+                return mapa_gre[gre]
+            return ""
+
+        dados[coluna_resp] = dados.apply(resolver, axis=1)
+    return dados
+
+
+@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
+def carregar_dados_consulta_unidade():
+    escolas_raw = ler_csv_publicado(CONSULTA_ESCOLAS_URL, "Consulta - Planilha Geral")
+    responsaveis_raw = ler_csv_publicado(CONSULTA_RESPONSAVEIS_URL, "Consulta - Responsáveis")
+    escolas = tratar_consulta_escolas(escolas_raw)
+    responsaveis = tratar_consulta_responsaveis(responsaveis_raw)
+    return combinar_consulta_escolas_responsaveis(escolas, responsaveis)
+
+
+def _opcoes_coluna(df: pd.DataFrame, coluna: str) -> List[str]:
+    if coluna not in df.columns or df.empty:
+        return []
+    valores = []
+    for valor in df[coluna].tolist():
+        if _valor_informado(valor):
+            texto = str(valor).strip()
+            if texto not in valores:
+                valores.append(texto)
+    if coluna == "GRE":
+        return sorted(valores, key=lambda x: int(re.search(r"(\d+)", str(x)).group(1)) if re.search(r"(\d+)", str(x)) else 999)
+    return sorted(valores, key=normalizar_texto)
+
+
+def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataFrame:
+    if valor and valor != "Todos" and coluna in df.columns:
+        return df[df[coluna].astype(str) == str(valor)].copy()
+    return df
+
+
+def _status_climatizacao_grupo(valor) -> str:
+    texto = normalizar_texto(valor)
+    if not texto:
+        return "Sem informação"
+    if "rota" in texto:
+        return "Em rota"
+    if "andamento" in texto:
+        return "Em andamento"
+    if texto in {"sim", "climatizada", "climatizado", "concluida", "concluido"} or "climatizad" in texto:
+        return "Climatizadas"
+    return "Outros"
+
+
+def renderizar_consulta_unidade_escolar():
+    st.markdown("""
+    <style>
+    .consulta-hero{background:linear-gradient(135deg,#001F49,#003B73);color:white;padding:1.25rem 1.4rem;border-radius:16px;margin:.2rem 0 1rem;box-shadow:0 8px 24px rgba(0,31,73,.16)}
+    .consulta-hero h2{margin:0 0 .3rem;font-size:1.45rem}.consulta-hero p{margin:0;opacity:.9}
+    .consulta-card{background:#fff;border:1px solid #D9E4F2;border-radius:14px;padding:1rem 1.05rem;min-height:102px;box-shadow:0 3px 10px rgba(0,31,73,.06)}
+    .consulta-card small{display:block;color:#667B93;font-weight:700;margin-bottom:.35rem}.consulta-card b{font-size:1.65rem;color:#003B73}.consulta-card span{display:block;color:#71849A;font-size:.8rem;margin-top:.2rem}
+    .ficha-bloco{background:#FFFFFF;border:1px solid #D9E4F2;border-radius:14px;padding:1rem 1.1rem;margin-bottom:.8rem;box-shadow:0 3px 10px rgba(0,31,73,.05)}
+    .ficha-bloco h4{margin:0 0 .65rem;color:#003B73}.ficha-item{margin:.35rem 0}.ficha-item strong{color:#354B65}
+    </style>
+    <div class="consulta-hero"><h2>Consulta por Unidade Escolar</h2><p>Pesquisa operacional das unidades escolares, situação da climatização, infraestrutura elétrica e responsáveis técnicos.</p></div>
+    """, unsafe_allow_html=True)
+
+    try:
+        base = carregar_dados_consulta_unidade()
+    except Exception as erro:
+        st.error("Não foi possível carregar as planilhas publicadas da consulta por unidade escolar.")
+        st.caption("As outras áreas do sistema continuam independentes desta fonte de dados.")
+        st.exception(erro)
+        return
+
+    if base.empty:
+        st.info("A planilha foi carregada, mas não foram encontrados registros de unidades escolares.")
+        return
+
+    c_busca, c_rapido, c_reset = st.columns([2.3, 1.4, .8])
+    with c_busca:
+        busca = st.text_input("Pesquisar escola", placeholder="Nome da escola, Código INEP, município ou UC", key="consulta_busca")
+    with c_rapido:
+        filtro_rapido = st.selectbox("Filtro rápido", ["Todas as escolas", "Climatizadas", "Em andamento", "Em rota", "Sem UC", "Sem informação de padrão de entrada"], key="consulta_rapido")
+    with c_reset:
+        st.write("")
+        st.write("")
+        if st.button("Limpar filtros", use_container_width=True, key="consulta_limpar"):
+            for chave in list(st.session_state.keys()):
+                if chave.startswith("consulta_") and chave != "consulta_limpar":
+                    del st.session_state[chave]
+            st.rerun()
+
+    filtrada = base.copy()
+    if busca.strip():
+        termo = normalizar_texto(busca)
+        filtrada = filtrada[filtrada["_BUSCA"].str.contains(re.escape(termo), na=False)].copy()
+
+    if filtro_rapido == "Climatizadas":
+        filtrada = filtrada[filtrada["Climatização"].apply(_status_climatizacao_grupo) == "Climatizadas"]
+    elif filtro_rapido == "Em andamento":
+        filtrada = filtrada[filtrada["Climatização"].apply(_status_climatizacao_grupo) == "Em andamento"]
+    elif filtro_rapido == "Em rota":
+        filtrada = filtrada[filtrada["Climatização"].apply(_status_climatizacao_grupo) == "Em rota"]
+    elif filtro_rapido == "Sem UC":
+        filtrada = filtrada[~filtrada["UC"].apply(_valor_informado)]
+    elif filtro_rapido == "Sem informação de padrão de entrada":
+        filtrada = filtrada[~filtrada["Padrão de Entrada"].apply(_valor_informado)]
+
+    st.markdown("#### Filtros")
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        gre = st.selectbox("GRE", ["Todos"] + _opcoes_coluna(filtrada, "GRE"), key="consulta_gre")
+    filtrada = _aplicar_filtro_exato(filtrada, "GRE", gre)
+    with f2:
+        municipio = st.selectbox("Município", ["Todos"] + _opcoes_coluna(filtrada, "Município"), key="consulta_municipio")
+    filtrada = _aplicar_filtro_exato(filtrada, "Município", municipio)
+    with f3:
+        climatizacao = st.selectbox("Climatização", ["Todos"] + _opcoes_coluna(filtrada, "Climatização"), key="consulta_climatizacao")
+    filtrada = _aplicar_filtro_exato(filtrada, "Climatização", climatizacao)
+    with f4:
+        status = st.selectbox("Status", ["Todos"] + _opcoes_coluna(filtrada, "Status"), key="consulta_status")
+    filtrada = _aplicar_filtro_exato(filtrada, "Status", status)
+
+    f5, f6, f7, f8 = st.columns(4)
+    with f5:
+        servico = st.selectbox("Serviços Elétricos", ["Todos"] + _opcoes_coluna(filtrada, "Serviços Elétricos"), key="consulta_servico_eletrico")
+    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricos", servico)
+    with f6:
+        padrao = st.selectbox("Padrão de Entrada", ["Todos"] + _opcoes_coluna(filtrada, "Padrão de Entrada"), key="consulta_padrao")
+    filtrada = _aplicar_filtro_exato(filtrada, "Padrão de Entrada", padrao)
+    with f7:
+        resp_eletrica = st.selectbox("Responsável Técnico de Elétrica", ["Todos"] + _opcoes_coluna(filtrada, "Responsável Técnico de Elétrica"), key="consulta_resp_eletrica")
+    filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Elétrica", resp_eletrica)
+    with f8:
+        resp_civil = st.selectbox("Responsável Técnico de Civil", ["Todos"] + _opcoes_coluna(filtrada, "Responsável Técnico de Civil"), key="consulta_resp_civil")
+    filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Civil", resp_civil)
+
+    total = len(filtrada)
+    grupos = filtrada["Climatização"].apply(_status_climatizacao_grupo) if total else pd.Series(dtype="object")
+    qtd_clim = int((grupos == "Climatizadas").sum()) if total else 0
+    qtd_and = int((grupos == "Em andamento").sum()) if total else 0
+    qtd_rota = int((grupos == "Em rota").sum()) if total else 0
+    sem_padrao = int((~filtrada["Padrão de Entrada"].apply(_valor_informado)).sum()) if total else 0
+    sem_uc = int((~filtrada["UC"].apply(_valor_informado)).sum()) if total else 0
+
+    cards = [
+        ("Escolas encontradas", total, "resultado do recorte atual"),
+        ("Climatizadas", qtd_clim, f"{(qtd_clim/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
+        ("Em andamento", qtd_and, f"{(qtd_and/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
+        ("Em rota", qtd_rota, f"{(qtd_rota/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
+        ("Sem padrão informado", sem_padrao, "registros sem informação"),
+        ("Sem UC", sem_uc, "registros sem informação"),
+    ]
+    cols = st.columns(6)
+    for col, (titulo, numero, detalhe) in zip(cols, cards):
+        detalhe = detalhe.replace(".", ",") if "%" in detalhe else detalhe
+        col.markdown(f'<div class="consulta-card"><small>{escape(str(titulo))}</small><b>{_fmt_num_br(numero)}</b><span>{escape(str(detalhe))}</span></div>', unsafe_allow_html=True)
+
+    st.markdown("#### Unidades escolares")
+    if filtrada.empty:
+        st.info("Nenhuma unidade escolar atende à combinação de filtros selecionada.")
+        return
+
+    tabela = filtrada[["Unidade Escolar", "Município", "GRE", "Climatização", "Status", "Serviços Elétricos", "Padrão de Entrada", "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]].copy()
+    for coluna in tabela.columns:
+        tabela[coluna] = tabela[coluna].apply(_texto_consulta)
+    st.dataframe(tabela, use_container_width=True, hide_index=True, height=min(520, 42 + 35 * min(len(tabela), 13)))
+
+    st.download_button("Baixar resultado filtrado em CSV", data=tabela.to_csv(index=False).encode("utf-8-sig"), file_name="consulta_unidades_escolares.csv", mime="text/csv", key="consulta_download")
+
+    st.markdown("#### Ficha individual da unidade escolar")
+    opcoes_escola, mapa_escolas = [], {}
+    for idx, linha_item in filtrada.iterrows():
+        rotulo = str(linha_item.get("Unidade Escolar", "")).strip()
+        if _valor_informado(linha_item.get("Código INEP", "")):
+            rotulo += f' · INEP {linha_item.get("Código INEP", "")}'
+        if _valor_informado(linha_item.get("Município", "")):
+            rotulo += f' · {linha_item.get("Município", "")}'
+        chave = f"{idx}::{rotulo}"
+        opcoes_escola.append(chave)
+        mapa_escolas[chave] = idx
+
+    escolha = st.selectbox("Selecione uma unidade escolar", opcoes_escola, format_func=lambda x: x.split("::", 1)[1], key="consulta_escola_selecionada")
+    linha = filtrada.loc[mapa_escolas[escolha]]
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(f'''<div class="ficha-bloco"><h4>Identificação</h4>
+        <div class="ficha-item"><strong>Unidade Escolar:</strong> {escape(_texto_consulta(linha.get("Unidade Escolar")))}</div>
+        <div class="ficha-item"><strong>Código INEP:</strong> {escape(_texto_consulta(linha.get("Código INEP")))}</div>
+        <div class="ficha-item"><strong>Município:</strong> {escape(_texto_consulta(linha.get("Município")))}</div>
+        <div class="ficha-item"><strong>GRE:</strong> {escape(_texto_consulta(linha.get("GRE")))}</div>
+        <div class="ficha-item"><strong>UC:</strong> {escape(_texto_consulta(linha.get("UC")))}</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="ficha-bloco"><h4>Responsáveis Técnicos</h4>
+        <div class="ficha-item"><strong>Elétrica:</strong> {escape(_texto_consulta(linha.get("Responsável Técnico de Elétrica")))}</div>
+        <div class="ficha-item"><strong>Civil:</strong> {escape(_texto_consulta(linha.get("Responsável Técnico de Civil")))}</div></div>''', unsafe_allow_html=True)
+    with c2:
+        st.markdown(f'''<div class="ficha-bloco"><h4>Situação da Climatização</h4>
+        <div class="ficha-item"><strong>Climatização:</strong> {escape(_texto_consulta(linha.get("Climatização")))}</div>
+        <div class="ficha-item"><strong>Data da Climatização:</strong> {escape(_texto_consulta(linha.get("Data da Climatização")))}</div>
+        <div class="ficha-item"><strong>Status:</strong> {escape(_texto_consulta(linha.get("Status")))}</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="ficha-bloco"><h4>Situação Elétrica</h4>
+        <div class="ficha-item"><strong>Serviços Elétricos:</strong> {escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div>
+        <div class="ficha-item"><strong>Padrão de Entrada:</strong> {escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div>
+        <div class="ficha-item"><strong>Servidor Responsável:</strong> {escape(_texto_consulta(linha.get("Servidor Responsável")))}</div></div>''', unsafe_allow_html=True)
+
 
 
 # ============================================================
@@ -6968,7 +7342,7 @@ def renderizar():
 
         pagina = st.radio(
             "Navegação",
-            ["📊 Dashboard", "🖨️ Relatório para impressão"],
+            ["📊 Dashboard", "🖨️ Relatório para impressão", "🏫 Consulta por Unidade Escolar"],
             horizontal=True,
             label_visibility="collapsed",
             key="pagina_principal",
@@ -6976,7 +7350,7 @@ def renderizar():
 
         if pagina == "📊 Dashboard":
             components.html(html, height=7600, scrolling=True)
-        else:
+        elif pagina == "🖨️ Relatório para impressão":
             renderizar_gerador_relatorio(
                 base,
                 setor,
@@ -6984,6 +7358,8 @@ def renderizar():
                 acompanhamento,
                 config,
             )
+        else:
+            renderizar_consulta_unidade_escolar()
     except Exception as erro:
         st.error(
             "Erro ao montar o dashboard. Verifique se as abas publicadas continuam "
