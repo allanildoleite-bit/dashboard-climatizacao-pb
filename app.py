@@ -1684,46 +1684,130 @@ def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataF
     return df[mascara].copy()
 
 
+def renderizar_cabecalho_padrao(titulo: str):
+    """Cabeçalho institucional padronizado conforme o cabeçalho do Dashboard."""
+    st.markdown(f"""
+    <style>
+    .geobs-page-header {{
+        min-height:126px;
+        padding:18px 28px;
+        border-radius:22px;
+        color:#FFFFFF;
+        background:
+            radial-gradient(circle at 0% 0%, rgba(93,167,242,.35), transparent 28%),
+            linear-gradient(90deg, #001F49, #003B73 55%, #0059A8);
+        box-shadow:0 14px 34px rgba(0,31,73,.22);
+        display:grid;
+        grid-template-columns:250px 1fr 250px;
+        align-items:center;
+        gap:22px;
+        overflow:visible;
+        box-sizing:border-box;
+        width:100%;
+        margin:.15rem 0 1rem 0;
+    }}
+    .geobs-page-logo-box {{
+        height:82px;
+        background:rgba(255,255,255,.96);
+        border:1px solid rgba(255,255,255,.74);
+        border-radius:18px;
+        padding:8px 14px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        box-shadow:0 10px 24px rgba(0,31,73,.20);
+        overflow:hidden;
+        box-sizing:border-box;
+    }}
+    .geobs-page-logo-gov {{
+        width:100%;
+        max-width:220px;
+        max-height:64px;
+        object-fit:contain;
+    }}
+    .geobs-page-logo-geobs {{
+        width:100%;
+        max-width:205px;
+        max-height:64px;
+        object-fit:contain;
+        object-position:center;
+    }}
+    .geobs-page-header-text {{
+        min-width:0;
+        text-align:center;
+        padding:0 8px;
+    }}
+    .geobs-page-title {{
+        font-size:27px;
+        line-height:1.12;
+        font-weight:950;
+        letter-spacing:-0.6px;
+        text-transform:uppercase;
+        margin:0;
+        color:#FFFFFF;
+    }}
+    .geobs-page-subtitle {{
+        margin-top:8px;
+        font-size:15px;
+        font-weight:650;
+        opacity:.94;
+        color:#FFFFFF;
+    }}
+    @media(max-width:900px) {{
+        .geobs-page-header {{
+            grid-template-columns:1fr;
+            padding:18px;
+            gap:12px;
+        }}
+        .geobs-page-logo-box {{
+            width:min(250px, 100%);
+            margin:0 auto;
+        }}
+        .geobs-page-title {{font-size:22px;}}
+        .geobs-page-subtitle {{font-size:13px;}}
+    }}
+    </style>
+    <div class="geobs-page-header">
+        <div class="geobs-page-logo-box">
+            <img class="geobs-page-logo-gov" src="{GOV_LOGO}" alt="Governo da Paraíba">
+        </div>
+        <div class="geobs-page-header-text">
+            <div class="geobs-page-title">{escape(titulo)}</div>
+            <div class="geobs-page-subtitle">Secretaria de Estado da Educação - Gerência de Obras</div>
+        </div>
+        <div class="geobs-page-logo-box">
+            <img class="geobs-page-logo-geobs" src="{GEOBS_LOGO}" alt="GEOBS - Gerência de Obras">
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # CONSULTA_UI_BUILD = "v19-reset-labels"
 # CONSULTA_UI_BUILD = "v22-eletrica-planilha-geral"
 def renderizar_consulta_unidade_escolar():
-    st.markdown(f"""
+    renderizar_cabecalho_padrao("Consulta por Unidade Escolar")
+
+    st.markdown("""
     <style>
-    .consulta-banner{{background:linear-gradient(135deg,#0A4F9D 0%,#003B73 100%);border-radius:20px;padding:20px 24px;margin:.15rem 0 .9rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
-    .consulta-banner-grid{{display:grid;grid-template-columns:180px 1fr 165px;align-items:center;gap:22px}}
-    .consulta-logo-box{{background:rgba(255,255,255,.97);border-radius:14px;min-height:88px;display:flex;align-items:center;justify-content:center;padding:10px 12px}}
-    .consulta-logo-box img{{max-width:100%;max-height:70px;object-fit:contain}}
-    .consulta-banner-title{{font-size:1.92rem;font-weight:900;line-height:1.12;text-align:center;margin:0 0 7px;letter-spacing:.025em;text-transform:uppercase}}
-    .consulta-banner-subtitle{{font-size:1rem;opacity:.98;text-align:center;margin:0;font-weight:600}}
-    .consulta-ficha{{background:#fff;border:1px solid #D9E4F2;border-radius:16px;padding:0;box-shadow:0 4px 12px rgba(0,31,73,.05);overflow:hidden;margin-bottom:.85rem}}
-    .consulta-ficha-topo{{background:#0A4F9D;padding:11px 15px;color:#fff}}
-    .consulta-ficha-topo h4{{margin:0;font-size:1rem;font-weight:800}}
-    .consulta-ficha-corpo{{padding:11px 15px 10px}}
-    .consulta-linha{{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EDF3FA}}
-    .consulta-linha:last-child{{border-bottom:none}}
-    .consulta-linha .rotulo{{min-width:175px;color:#526C87;font-weight:700}}
-    .consulta-linha .conteudo{{color:#153554;font-weight:600;flex:1}}
-    .consulta-resumo-escola{{background:#F8FBFF;border:1px solid #D8E6F6;border-left:5px solid #0A4F9D;border-radius:14px;padding:11px 13px;margin:.6rem 0 .85rem;color:#173B63}}
-    .consulta-resumo-escola strong{{font-size:1.04rem;color:#073E75}}
-    .consulta-pill{{display:inline-block;background:#EAF3FF;color:#0A4F9D;border:1px solid #CADCF2;border-radius:999px;padding:4px 9px;font-size:.79rem;font-weight:700;margin:5px 5px 0 0}}
-    .consulta-instrucao{{font-size:.82rem;color:#5B7188;margin:-.18rem 0 .45rem}}
-    .consulta-resp-header{{background:linear-gradient(90deg,#F5F9FE,#EDF5FF);border:1px solid #D6E5F5;border-left:5px solid #0A4F9D;border-radius:14px;padding:12px 14px;margin:.65rem 0 .85rem;color:#153554}}
-    .consulta-resp-header strong{{color:#073E75;font-size:1.06rem}}
-    div[data-testid="stSelectbox"] label p, div[data-testid="stTextInput"] label p{{color:#294F75 !important;font-weight:750 !important}}
-    div[data-baseweb="select"] > div, div[data-testid="stTextInput"] input{{background:#FFFFFF !important;color:#173B63 !important;border-color:#CAD9E9 !important}}
-    div[data-baseweb="select"] span{{color:#173B63 !important}}
-    @media(max-width:900px){{.consulta-banner-grid{{grid-template-columns:1fr}}.consulta-linha{{display:block}}.consulta-linha .rotulo{{display:block;min-width:unset;margin-bottom:4px}}}}
+    .consulta-ficha{background:#fff;border:1px solid #D9E4F2;border-radius:16px;padding:0;box-shadow:0 4px 12px rgba(0,31,73,.05);overflow:hidden;margin-bottom:.85rem}
+    .consulta-ficha-topo{background:#0A4F9D;padding:11px 15px;color:#fff}
+    .consulta-ficha-topo h4{margin:0;font-size:1rem;font-weight:800}
+    .consulta-ficha-corpo{padding:11px 15px 10px}
+    .consulta-linha{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EDF3FA}
+    .consulta-linha:last-child{border-bottom:none}
+    .consulta-linha .rotulo{min-width:175px;color:#526C87;font-weight:700}
+    .consulta-linha .conteudo{color:#153554;font-weight:600;flex:1}
+    .consulta-resumo-escola{background:#F8FBFF;border:1px solid #D8E6F6;border-left:5px solid #0A4F9D;border-radius:14px;padding:11px 13px;margin:.6rem 0 .85rem;color:#173B63}
+    .consulta-resumo-escola strong{font-size:1.04rem;color:#073E75}
+    .consulta-pill{display:inline-block;background:#EAF3FF;color:#0A4F9D;border:1px solid #CADCF2;border-radius:999px;padding:4px 9px;font-size:.79rem;font-weight:700;margin:5px 5px 0 0}
+    .consulta-instrucao{font-size:.82rem;color:#5B7188;margin:-.18rem 0 .45rem}
+    .consulta-resp-header{background:linear-gradient(90deg,#F5F9FE,#EDF5FF);border:1px solid #D6E5F5;border-left:5px solid #0A4F9D;border-radius:14px;padding:12px 14px;margin:.65rem 0 .85rem;color:#153554}
+    .consulta-resp-header strong{color:#073E75;font-size:1.06rem}
+    div[data-testid="stSelectbox"] label p, div[data-testid="stTextInput"] label p{color:#294F75 !important;font-weight:750 !important}
+    div[data-baseweb="select"] > div, div[data-testid="stTextInput"] input{background:#FFFFFF !important;color:#173B63 !important;border-color:#CAD9E9 !important}
+    div[data-baseweb="select"] span{color:#173B63 !important}
+    @media(max-width:900px){.consulta-linha{display:block}.consulta-linha .rotulo{display:block;min-width:unset;margin-bottom:4px}}
     </style>
-    <div class="consulta-banner">
-      <div class="consulta-banner-grid">
-        <div class="consulta-logo-box"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
-        <div>
-          <div class="consulta-banner-title">CONSULTA DAS UNIDADES ESCOLARES</div>
-          <div class="consulta-banner-subtitle">Secretaria de Estado da Educação - Gerência de Obras</div>
-        </div>
-        <div class="consulta-logo-box"><img src="{GEOBS_LOGO}" alt="GEOBS"></div>
-      </div>
-    </div>
     """, unsafe_allow_html=True)
 
     try:
@@ -5324,13 +5408,12 @@ def renderizar_gerador_relatorio(
     config: dict,
 ):
     """Exibe o gerador de relatório com filtros dependentes e documento adaptativo."""
+    renderizar_cabecalho_padrao("Relatório Gerencial de Climatização Escolar")
     st.markdown(
         """
         <style>
-        .report-generator-heading {margin:0 0 .15rem;color:#001F49;font-size:1.12rem;line-height:1.1;font-weight:850;}
-        .report-generator-note {margin:0 0 .65rem;color:#5E6B7C;font-size:.86rem;line-height:1.3;}
+        .report-generator-note {margin:-.15rem 0 .75rem;color:#5E6B7C;font-size:.86rem;line-height:1.3;}
         </style>
-        <div class="report-generator-heading">🖨️ Relatório para impressão</div>
         <div class="report-generator-note">Selecione o recorte. O conteúdo, os gráficos e a paginação são reorganizados automaticamente conforme os filtros.</div>
         """,
         unsafe_allow_html=True,
