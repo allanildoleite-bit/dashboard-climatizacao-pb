@@ -477,7 +477,7 @@ def tratar_base_geral(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    col_gre = achar_coluna(df, ["GRE"], obrigatoria=True)
+    col_gre = achar_coluna(df, ["GRE", "Gerência Regional", "Gerencia Regional", "GERÊNCIA", "GERENCIA", "Regional"], obrigatoria=True)
     col_local = achar_coluna(df, ["Localização", "Localizacao", "Município", "Municipio", "Cidade"], obrigatoria=False)
     col_clim = achar_coluna(df, ["Climatizadas"], obrigatoria=True)
     col_and = achar_coluna(df, ["Em andamento"], obrigatoria=True)
@@ -672,6 +672,123 @@ def filtrar_responsaveis_por_area(dados: pd.DataFrame, area_desejada: str) -> pd
     return dados[dados.apply(corresponde, axis=1)].copy()
 
 
+
+def preparar_cabecalho_responsaveis_civil(df: pd.DataFrame) -> pd.DataFrame:
+    """Localiza o cabeçalho real da planilha Civil publicada.
+
+    A aba Civil pode conter título, células mescladas ou linhas introdutórias
+    antes da tabela. Aqui procuramos uma linha que contenha simultaneamente
+    uma identificação da GRE e uma identificação de responsável/Civil.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df.copy()
+
+    dados = df.copy()
+    dados.columns = [" ".join(str(c).strip().split()) for c in dados.columns]
+
+    termos_gre = {
+        "gre", "gerencia regional", "gerência regional",
+        "gerencia", "gerência", "regional"
+    }
+    termos_resp = {
+        "responsavel", "responsável", "responsavel tecnico",
+        "responsável técnico", "responsavel civil",
+        "responsável civil", "civil", "engenheiro civil",
+        "eng civil", "tecnico civil", "técnico civil"
+    }
+
+    def linha_tem_grupo(valores, termos):
+        celulas = [normalizar_texto(v) for v in valores if _valor_informado(v)]
+        for celula in celulas:
+            for termo in termos:
+                termo_n = normalizar_texto(termo)
+                if celula == termo_n or (termo_n and termo_n in celula):
+                    return True
+        return False
+
+    # Se o pandas já leu o cabeçalho corretamente, preserva.
+    colunas = list(dados.columns)
+    if linha_tem_grupo(colunas, termos_gre) and linha_tem_grupo(colunas, termos_resp):
+        return dados
+
+    # Recoloca o cabeçalho atual na matriz e procura até 50 linhas.
+    matriz = [list(dados.columns)] + dados.astype(object).values.tolist()
+    limite = min(len(matriz), 50)
+
+    melhor_indice = None
+    melhor_pontos = -1
+
+    for i in range(limite):
+        linha = matriz[i]
+        tem_gre = linha_tem_grupo(linha, termos_gre)
+        tem_resp = linha_tem_grupo(linha, termos_resp)
+
+        # GRE é requisito; responsável/Civil aumenta a confiança.
+        pontos = (3 if tem_gre else 0) + (3 if tem_resp else 0)
+
+        # Bônus quando a mesma linha contém "Civil".
+        if linha_tem_grupo(linha, {"civil"}):
+            pontos += 2
+
+        if pontos > melhor_pontos:
+            melhor_pontos = pontos
+            melhor_indice = i
+
+    if melhor_indice is not None and melhor_pontos >= 6:
+        cabecalho = _nomes_colunas_unicos(matriz[melhor_indice])
+        linhas = matriz[melhor_indice + 1:]
+        corrigido = pd.DataFrame(linhas, columns=cabecalho)
+        corrigido = corrigido.dropna(how="all").reset_index(drop=True)
+        return corrigido
+
+    # Se não localizou com segurança, devolve como veio. O erro posterior
+    # exibirá as colunas recebidas para facilitar o diagnóstico.
+    return dados
+
+
+def tratar_responsaveis_civil(df: pd.DataFrame) -> pd.DataFrame:
+    """Tratamento específico da nova fonte Civil por GRE.
+
+    Como esta planilha é, por definição, a fonte institucional da área Civil,
+    seus registros não precisam conter uma coluna explícita com a palavra
+    "Civil". Depois de identificar GRE e responsável, todos os registros dessa
+    fonte são classificados como Civil.
+    """
+    preparado = preparar_cabecalho_responsaveis_civil(df)
+
+    try:
+        dados = tratar_responsaveis(preparado)
+    except ValueError as erro:
+        colunas_recebidas = ", ".join(str(c) for c in preparado.columns[:30])
+        raise ValueError(
+            "Não foi possível identificar a coluna da GRE na planilha de responsáveis Civil. "
+            f"Colunas recebidas: {colunas_recebidas}"
+        ) from erro
+
+    if dados is None or dados.empty:
+        return dados
+
+    # A própria origem da planilha define a área técnica.
+    dados = dados.copy()
+    dados["Área"] = "Civil"
+
+    # Preserva eventual cargo/formação real; apenas preenche quando ausente
+    # ou quando o parser precisou usar um rótulo genérico.
+    if "Tipo Profissional" not in dados.columns:
+        dados["Tipo Profissional"] = "Eng. Civil / Técnico"
+    else:
+        tipo_normalizado = dados["Tipo Profissional"].astype(str).apply(normalizar_texto)
+        mascara_generica = tipo_normalizado.isin({
+            "", "nan", "none", "nao informado", "não informado"
+        })
+        dados.loc[mascara_generica, "Tipo Profissional"] = "Eng. Civil / Técnico"
+
+    if "Equipe" not in dados.columns:
+        dados["Equipe"] = "GEOBS"
+
+    return dados
+
+
 def carregar_responsaveis_institucionais() -> pd.DataFrame:
     """Combina as duas fontes corretas sem alterar a origem da Elétrica."""
     eletrica = tratar_responsaveis(
@@ -679,10 +796,8 @@ def carregar_responsaveis_institucionais() -> pd.DataFrame:
     )
     eletrica = filtrar_responsaveis_por_area(eletrica, "eletrica")
 
-    civil = tratar_responsaveis(
-        ler_csv_publicado(RESPONSAVEIS_CIVIL_URL, "Responsáveis - Civil")
-    )
-    civil = filtrar_responsaveis_por_area(civil, "civil")
+    civil_raw = ler_csv_publicado(RESPONSAVEIS_CIVIL_URL, "Responsáveis - Civil")
+    civil = tratar_responsaveis_civil(civil_raw)
 
     partes = [df for df in [eletrica, civil] if df is not None and not df.empty]
     if not partes:
