@@ -1156,73 +1156,8 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     dados["Climatização"] = _serie_texto(df, col_climatizacao)
     dados["Data da Climatização"] = _serie_texto(df, col_data_clim)
     dados["Status"] = _serie_texto(df, col_status)
-
-    # ------------------------------------------------------------
-    # INSTALAÇÕES ELÉTRICAS x ENTRADA DE ENERGIA
-    # ------------------------------------------------------------
-    # A Entrada de Energia representa COMO a escola é alimentada:
-    # Padrão T1, T2, T3, T4, T5 ou Subestação.
-    # Em algumas versões da Planilha Geral essa informação pode estar
-    # registrada na coluna de serviços elétricos. Por isso, a classificação
-    # é identificada pelo próprio conteúdo da célula e direcionada para
-    # "Entrada de Energia", sem inventar ou alterar o valor da planilha.
-    serie_instalacoes = _serie_texto(df, col_instalacoes_eletricas)
-    serie_entrada = _serie_texto(df, col_entrada_energia)
-
-    def _eh_classificacao_entrada_energia(valor) -> bool:
-        if not _valor_informado(valor):
-            return False
-        texto = normalizar_texto(valor)
-
-        # Padrões T1 a T5. Aceita tanto "Padrão T2" quanto "T2" quando
-        # o conteúdo da célula é exclusivamente essa classificação.
-        if re.search(r"\bpadrao\s*t\s*[1-5]\b", texto):
-            return True
-        if re.fullmatch(r"t\s*[1-5]", texto):
-            return True
-
-        # Qualquer registro explicitamente identificado como subestação é
-        # alimentação da escola; a potência permanece exatamente como está
-        # escrita na Planilha Geral.
-        if "subestacao" in texto:
-            return True
-
-        return False
-
-    def _resolver_entrada_energia(valor_entrada, valor_instalacao) -> str:
-        # 1) Prioridade para a coluna própria de entrada de energia quando ela
-        # já contém uma classificação de alimentação.
-        if _eh_classificacao_entrada_energia(valor_entrada):
-            return str(valor_entrada).strip()
-
-        # 2) Se a classificação estiver registrada na coluna de instalações
-        # elétricas, ela deve aparecer aqui (ex.: PADRÃO T2).
-        if _eh_classificacao_entrada_energia(valor_instalacao):
-            return str(valor_instalacao).strip()
-
-        # 3) Mantém eventual informação existente na coluna específica, sem
-        # criar classificação quando a base não a fornece.
-        if _valor_informado(valor_entrada):
-            return str(valor_entrada).strip()
-
-        return ""
-
-    def _resolver_instalacao_eletrica(valor_instalacao) -> str:
-        # Uma classificação como PADRÃO T2 ou SUBESTAÇÃO descreve a forma de
-        # alimentação da escola, e não o serviço executado. Portanto, ela não
-        # deve ser repetida no campo de serviço de instalação elétrica.
-        if _eh_classificacao_entrada_energia(valor_instalacao):
-            return ""
-        return str(valor_instalacao).strip() if _valor_informado(valor_instalacao) else ""
-
-    dados["Entrada de Energia"] = [
-        _resolver_entrada_energia(entrada, instalacao)
-        for entrada, instalacao in zip(serie_entrada, serie_instalacoes)
-    ]
-    dados["Instalações Elétricas"] = [
-        _resolver_instalacao_eletrica(instalacao)
-        for instalacao in serie_instalacoes
-    ]
+    dados["Instalações Elétricas"] = _serie_texto(df, col_instalacoes_eletricas)
+    dados["Entrada de Energia"] = _serie_texto(df, col_entrada_energia)
 
     # Padronização solicitada apenas para o status antigo. Os demais status
     # permanecem exatamente como constam na Planilha Geral.
