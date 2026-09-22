@@ -1565,6 +1565,7 @@ def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataF
     return df[mascara].copy()
 
 
+# CONSULTA_UI_BUILD = "v19-reset-labels"
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
@@ -1632,13 +1633,10 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     # PESQUISA INTELIGENTE - ESCOLA, RESPONSÁVEL, UC OU INEP
     # ========================================================
-    if "consulta_entidade_aberta" not in st.session_state:
-        st.session_state["consulta_entidade_aberta"] = None
-    if "consulta_origem_entidade" not in st.session_state:
-        st.session_state["consulta_origem_entidade"] = None
 
-    def _voltar_lista_consulta():
-        """Retorna ao estado principal antes da nova instanciação dos widgets."""
+    # Reset seguro da consulta. O botão "Voltar à lista" apenas marca a flag;
+    # a limpeza acontece aqui, antes da criação de qualquer widget.
+    if st.session_state.pop("consulta_reset_pendente", False):
         st.session_state["consulta_entidade_aberta"] = None
         st.session_state["consulta_origem_entidade"] = None
         st.session_state["consulta_resultado_busca"] = None
@@ -1656,6 +1654,14 @@ def renderizar_consulta_unidade_escolar():
             "consulta_resp_civil",
         ]:
             st.session_state[chave_filtro] = "Todos"
+    if "consulta_entidade_aberta" not in st.session_state:
+        st.session_state["consulta_entidade_aberta"] = None
+    if "consulta_origem_entidade" not in st.session_state:
+        st.session_state["consulta_origem_entidade"] = None
+
+    def _voltar_lista_consulta():
+        """Agenda o retorno completo à lista sem alterar widgets já instanciados."""
+        st.session_state["consulta_reset_pendente"] = True
 
     nomes_resp = set()
     for coluna in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
@@ -1988,7 +1994,6 @@ def renderizar_consulta_unidade_escolar():
                 ):
                     st.session_state["consulta_entidade_aberta"] = None
                     st.session_state["consulta_origem_entidade"] = None
-                    st.session_state["consulta_resultado_busca"] = None
                     st.rerun()
         except Exception:
             pass
@@ -2012,7 +2017,6 @@ def renderizar_consulta_unidade_escolar():
             elif st.session_state.get("consulta_origem_entidade") == "grade":
                 st.session_state["consulta_entidade_aberta"] = None
                 st.session_state["consulta_origem_entidade"] = None
-                st.session_state["consulta_resultado_busca"] = None
         except Exception:
             pass
         st.caption("Para habilitar a abertura por duplo clique, mantenha `streamlit-aggrid` no requirements.txt.")
@@ -2105,6 +2109,9 @@ def renderizar_consulta_unidade_escolar():
         </div>
         """, unsafe_allow_html=True)
 
+        ROTULO_RESPONSAVEL_ELETRICA = "Elétrica"
+        ROTULO_PADRAO_ENTRADA_ENERGIA = "Padrão de Entrada de Energia"
+
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(f"""
@@ -2123,7 +2130,7 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-ficha">
               <div class="consulta-ficha-topo"><h4>Responsáveis Técnicos</h4></div>
               <div class="consulta-ficha-corpo">
-                <div class="consulta-linha"><div class="rotulo">Elétrica</div><div class="conteudo">{escape(nome_eletrica if nome_eletrica else "Não há informações")}</div></div>
+                <div class="consulta-linha"><div class="rotulo">{ROTULO_RESPONSAVEL_ELETRICA}</div><div class="conteudo">{escape(nome_eletrica if nome_eletrica else "Não há informações")}</div></div>
                 <div class="consulta-linha"><div class="rotulo">Civil</div><div class="conteudo">{escape(nome_civil if nome_civil else "Não há informações")}</div></div>
               </div>
             </div>
@@ -2145,7 +2152,7 @@ def renderizar_consulta_unidade_escolar():
               <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
               <div class="consulta-ficha-corpo">
                 <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
-                <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">{ROTULO_PADRAO_ENTRADA_ENERGIA}</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
               </div>
             </div>
             """, unsafe_allow_html=True)
