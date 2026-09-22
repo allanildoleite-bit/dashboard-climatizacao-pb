@@ -1110,20 +1110,27 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     col_climatizacao = achar_coluna(df, ["CLIMATIZAÇÃO", "Climatizacao", "Climatização", "Situação da Climatização", "Situacao da Climatizacao"], obrigatoria=False)
     col_data_clim = achar_coluna(df, ["DATA DA CLIMATIZAÇÃO", "Data da Climatização", "Data da Climatizacao"], obrigatoria=False)
     col_status = achar_coluna(df, ["Status", "STATUS"], obrigatoria=False)
-    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricas", "Servicos Eletricos"], obrigatoria=False)
+    col_servicos = achar_coluna(df, ["Serviços de Elétrica", "Servicos de Eletrica", "Serviço de Elétrica", "Servico de Eletrica", "Serviços Elétricos", "Servicos Eletricos"], obrigatoria=False)
     col_padrao = achar_coluna(df, ["Padrão de Entrada", "Padrao de Entrada", "Padrão Entrada", "Padrao Entrada", "Padrão de Ligação", "Padrao de Ligacao"], obrigatoria=False)
 
     dados = pd.DataFrame(index=df.index)
     dados["GRE"] = _serie_texto(df, col_gre).apply(lambda x: padronizar_gre(x) or (str(x).strip() if _valor_informado(x) else ""))
     dados["Código INEP"] = _serie_texto(df, col_inep).apply(_normalizar_inep)
     dados["UC"] = _serie_texto(df, col_uc).apply(_normalizar_uc)
-    dados["Unidade Escolar"] = _serie_texto(df, col_escola)
+    # O nome da escola é exibido exatamente como está na planilha geral.
+    # Não aplicar title(), abreviações ou substituições vindas das bases de responsáveis.
+    if col_escola and col_escola in df.columns:
+        dados["Unidade Escolar"] = df[col_escola].apply(
+            lambda valor: str(valor).strip() if _valor_informado(valor) else ""
+        )
+    else:
+        dados["Unidade Escolar"] = ""
     dados["Município"] = _serie_texto(df, col_municipio)
     dados["Servidor Responsável"] = _serie_texto(df, col_servidor)
     dados["Climatização"] = _serie_texto(df, col_climatizacao)
     dados["Data da Climatização"] = _serie_texto(df, col_data_clim)
     dados["Status"] = _serie_texto(df, col_status)
-    dados["Serviços Elétricas"] = _serie_texto(df, col_servicos)
+    dados["Serviços Elétricos"] = _serie_texto(df, col_servicos)
     dados["Padrão de Entrada"] = _serie_texto(df, col_padrao)
 
     dados = dados[dados["Unidade Escolar"].apply(_valor_informado)].copy()
@@ -1359,52 +1366,6 @@ def _status_climatizacao_grupo(valor) -> str:
 
 
 
-def _sincronizar_selecao_consulta(selected_rows):
-    """Sincroniza a seleção da grade com o quadro informativo.
-
-    Se houver uma escola selecionada, abre a ficha.
-    Se a seleção for removida, fecha a ficha e mantém a lista geral visível.
-    """
-    if selected_rows is None:
-        selected_rows = []
-
-    try:
-        import pandas as _pd
-        if isinstance(selected_rows, _pd.DataFrame):
-            if selected_rows.empty:
-                st.session_state["consulta_entidade_aberta"] = None
-                st.session_state["consulta_resultado_busca"] = None
-                return None
-            registro = selected_rows.iloc[0].to_dict()
-        elif isinstance(selected_rows, list):
-            if len(selected_rows) == 0:
-                st.session_state["consulta_entidade_aberta"] = None
-                st.session_state["consulta_resultado_busca"] = None
-                return None
-            registro = selected_rows[0] if isinstance(selected_rows[0], dict) else {}
-        elif isinstance(selected_rows, dict):
-            registro = selected_rows
-        else:
-            registro = {}
-    except Exception:
-        registro = {}
-
-    indice = registro.get("_indice_base")
-    if indice is None or str(indice).strip() == "":
-        st.session_state["consulta_entidade_aberta"] = None
-        st.session_state["consulta_resultado_busca"] = None
-        return None
-
-    try:
-        indice = int(indice)
-    except Exception:
-        pass
-
-    st.session_state["consulta_entidade_aberta"] = ("escola", indice)
-    st.session_state["consulta_resultado_busca"] = ("escola", indice)
-    return indice
-
-
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
@@ -1474,6 +1435,8 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     if "consulta_entidade_aberta" not in st.session_state:
         st.session_state["consulta_entidade_aberta"] = None
+    if "consulta_origem_entidade" not in st.session_state:
+        st.session_state["consulta_origem_entidade"] = None
 
     nomes_resp = set()
     for coluna in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
@@ -1568,6 +1531,7 @@ def renderizar_consulta_unidade_escolar():
                 unicos_exatos.append(item)
         if len(unicos_exatos) == 1:
             st.session_state["consulta_entidade_aberta"] = unicos_exatos[0]
+            st.session_state["consulta_origem_entidade"] = "pesquisa"
 
     if termo_busca and opcoes_resultado:
         chave_resultado = "consulta_resultado_busca"
@@ -1586,6 +1550,7 @@ def renderizar_consulta_unidade_escolar():
             nova_entidade = (tipo, valor)
             if st.session_state.get("consulta_entidade_aberta") != nova_entidade:
                 st.session_state["consulta_entidade_aberta"] = nova_entidade
+                st.session_state["consulta_origem_entidade"] = "pesquisa"
                 st.rerun()
     elif termo_busca:
         st.caption("Nenhum resultado encontrado para a pesquisa informada.")
@@ -1595,9 +1560,29 @@ def renderizar_consulta_unidade_escolar():
     if entidade_aberta:
         col_ficha_titulo, col_fechar_ficha = st.columns([6, 1])
         with col_fechar_ficha:
-            if st.button("Fechar ficha", key="consulta_fechar_ficha", use_container_width=True):
+            if st.button("Voltar à lista", key="consulta_fechar_ficha", use_container_width=True):
+                # Fecha a ficha e volta ao estado principal da consulta.
                 st.session_state["consulta_entidade_aberta"] = None
+                st.session_state["consulta_origem_entidade"] = None
                 st.session_state["consulta_resultado_busca"] = None
+
+                # Se a ficha foi aberta pela pesquisa, limpa também a busca para
+                # que a lista completa de escolas reapareça imediatamente.
+                st.session_state["consulta_texto_busca"] = ""
+                st.session_state["consulta_termo_anterior"] = ""
+
+                for chave_filtro in [
+                    "consulta_gre",
+                    "consulta_municipio",
+                    "consulta_climatizacao",
+                    "consulta_status",
+                    "consulta_servico_eletrico",
+                    "consulta_padrao",
+                    "consulta_resp_eletrica",
+                    "consulta_resp_civil",
+                ]:
+                    st.session_state[chave_filtro] = "Todos"
+
                 st.rerun()
 
     # ========================================================
@@ -1636,10 +1621,10 @@ def renderizar_consulta_unidade_escolar():
 
     f5, f6, f7, f8 = st.columns(4)
     with f5:
-        servico = selectbox_consulta_seguro("Serviços Elétricas", _opcoes_coluna(filtrada, "Serviços Elétricas"), "consulta_servico_eletrico")
-    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricas", servico)
+        servico = selectbox_consulta_seguro("Serviços Elétricos", _opcoes_coluna(filtrada, "Serviços Elétricos"), "consulta_servico_eletrico")
+    filtrada = _aplicar_filtro_exato(filtrada, "Serviços Elétricos", servico)
     with f6:
-        padrao = selectbox_consulta_seguro("Padrão de Entrada", _opcoes_coluna(filtrada, "Padrão de Entrada"), "consulta_padrao")
+        padrao = selectbox_consulta_seguro("Padrão de Entrada de Energia", _opcoes_coluna(filtrada, "Padrão de Entrada"), "consulta_padrao")
     filtrada = _aplicar_filtro_exato(filtrada, "Padrão de Entrada", padrao)
     with f7:
         resp_eletrica = selectbox_consulta_seguro("Responsável Técnico de Elétrica", _opcoes_coluna(filtrada, "Responsável Técnico de Elétrica"), "consulta_resp_eletrica")
@@ -1662,7 +1647,7 @@ def renderizar_consulta_unidade_escolar():
     # ========================================================
     tabela = filtrada[[
         "Unidade Escolar", "Município", "GRE", "Climatização", "Status",
-        "Serviços Elétricas", "Padrão de Entrada",
+        "Serviços Elétricos", "Padrão de Entrada",
         "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"
     ]].copy()
 
@@ -1675,7 +1660,6 @@ def renderizar_consulta_unidade_escolar():
 
     tabela_exibicao = tabela.copy()
     tabela_exibicao.insert(0, "_indice_base", filtrada.index.astype(int))
-    tabela_exibicao.insert(1, "_dblclick", 0)
 
     st.markdown(
         '<div class="consulta-instrucao">Dê dois cliques em uma unidade escolar para abrir a ficha. A ficha permanece apenas como consulta e não limita os filtros nem a listagem.</div>',
@@ -1686,20 +1670,20 @@ def renderizar_consulta_unidade_escolar():
 
     if AGGRID_DISPONIVEL:
         tabela_grid = tabela_exibicao.rename(columns={
+            "Padrão de Entrada": "Padrão de Entrada de Energia",
             "Responsável Técnico de Elétrica": "Responsável - Elétrica",
             "Responsável Técnico de Civil": "Responsável - Civil",
         })
         gb = GridOptionsBuilder.from_dataframe(tabela_grid)
         gb.configure_default_column(sortable=True, filter=False, resizable=True, wrapText=False, autoHeight=False)
         gb.configure_column("_indice_base", hide=True)
-        gb.configure_column("_dblclick", hide=True)
         gb.configure_column("Unidade Escolar", minWidth=270, flex=2.1)
         gb.configure_column("Município", minWidth=145, flex=1.0)
         gb.configure_column("GRE", minWidth=85, maxWidth=105)
         gb.configure_column("Climatização", minWidth=165, flex=1.15)
         gb.configure_column("Status", minWidth=180, flex=1.25)
-        gb.configure_column("Serviços Elétricas", minWidth=175, flex=1.15)
-        gb.configure_column("Padrão de Entrada", minWidth=145, flex=1.0)
+        gb.configure_column("Serviços Elétricos", minWidth=175, flex=1.15)
+        gb.configure_column("Padrão de Entrada de Energia", minWidth=165, flex=1.05)
         gb.configure_column("Responsável - Elétrica", minWidth=170, flex=1.1)
         gb.configure_column("Responsável - Civil", minWidth=170, flex=1.1)
         gb.configure_selection("single", use_checkbox=False)
@@ -1709,8 +1693,11 @@ def renderizar_consulta_unidade_escolar():
         grid_options["headerHeight"] = 39
         grid_options["onCellDoubleClicked"] = JsCode("""
             function(params) {
-                params.node.setSelected(true, true);
-                params.node.setDataValue('_dblclick', Date.now());
+                // Duplo clique funciona como alternância:
+                // 1º duplo clique abre a ficha;
+                // novo duplo clique na mesma linha remove a seleção e fecha a ficha.
+                const jaSelecionada = params.node.isSelected();
+                params.node.setSelected(!jaSelecionada, true);
             }
         """)
         grid_options["getRowStyle"] = JsCode("""
@@ -1761,25 +1748,49 @@ def renderizar_consulta_unidade_escolar():
                 key="consulta_grid_unidades",
             )
 
+        # Sincroniza a ficha diretamente com a seleção real do AgGrid.
+        # Quando nenhuma linha permanece selecionada, uma ficha aberta pela
+        # própria grade é fechada automaticamente.
         try:
-            dados_retorno = resposta_grid.data if hasattr(resposta_grid, "data") else resposta_grid.get("data")
-            if isinstance(dados_retorno, pd.DataFrame) and "_dblclick" in dados_retorno.columns:
-                clicadas = dados_retorno[pd.to_numeric(dados_retorno["_dblclick"], errors="coerce").fillna(0) > 0]
-                if not clicadas.empty:
-                    linha_click = clicadas.sort_values("_dblclick").iloc[-1]
-                    indice_duplo_clique = int(linha_click["_indice_base"])
-        except Exception:
-            indice_duplo_clique = None
+            selecionadas = (
+                resposta_grid.selected_rows
+                if hasattr(resposta_grid, "selected_rows")
+                else resposta_grid.get("selected_rows", [])
+            )
 
-        if indice_duplo_clique is None:
-            try:
-                selecionadas = resposta_grid.selected_rows if hasattr(resposta_grid, "selected_rows") else resposta_grid.get("selected_rows", [])
-                if isinstance(selecionadas, pd.DataFrame) and not selecionadas.empty:
-                    indice_duplo_clique = int(selecionadas.iloc[0]["_indice_base"])
-                elif isinstance(selecionadas, list) and selecionadas:
-                    indice_duplo_clique = int(selecionadas[0].get("_indice_base"))
-            except Exception:
-                pass
+            indice_selecionado_grade = None
+
+            if isinstance(selecionadas, pd.DataFrame):
+                if not selecionadas.empty and "_indice_base" in selecionadas.columns:
+                    indice_selecionado_grade = int(selecionadas.iloc[0]["_indice_base"])
+            elif isinstance(selecionadas, list) and selecionadas:
+                primeira = selecionadas[0]
+                if isinstance(primeira, dict) and primeira.get("_indice_base") is not None:
+                    indice_selecionado_grade = int(primeira.get("_indice_base"))
+
+            if indice_selecionado_grade is not None:
+                nova_entidade_grade = ("escola", indice_selecionado_grade)
+                if (
+                    st.session_state.get("consulta_entidade_aberta") != nova_entidade_grade
+                    or st.session_state.get("consulta_origem_entidade") != "grade"
+                ):
+                    st.session_state["consulta_entidade_aberta"] = nova_entidade_grade
+                    st.session_state["consulta_origem_entidade"] = "grade"
+                    st.rerun()
+            else:
+                # Só fecha automaticamente se a ficha tiver sido aberta pela grade.
+                # Uma ficha aberta pela barra de pesquisa não é apagada só porque
+                # a grade está sem linha selecionada.
+                if (
+                    st.session_state.get("consulta_origem_entidade") == "grade"
+                    and st.session_state.get("consulta_entidade_aberta") is not None
+                ):
+                    st.session_state["consulta_entidade_aberta"] = None
+                    st.session_state["consulta_origem_entidade"] = None
+                    st.session_state["consulta_resultado_busca"] = None
+                    st.rerun()
+        except Exception:
+            pass
     else:
         evento_tabela = st.dataframe(
             tabela,
@@ -1796,6 +1807,11 @@ def renderizar_consulta_unidade_escolar():
                 posicao = int(linhas_sel[0])
                 if 0 <= posicao < len(filtrada):
                     indice_duplo_clique = int(filtrada.index[posicao])
+                    st.session_state["consulta_origem_entidade"] = "grade"
+            elif st.session_state.get("consulta_origem_entidade") == "grade":
+                st.session_state["consulta_entidade_aberta"] = None
+                st.session_state["consulta_origem_entidade"] = None
+                st.session_state["consulta_resultado_busca"] = None
         except Exception:
             pass
         st.caption("Para habilitar a abertura por duplo clique, mantenha `streamlit-aggrid` no requirements.txt.")
@@ -1804,6 +1820,7 @@ def renderizar_consulta_unidade_escolar():
         nova_entidade = ("escola", indice_duplo_clique)
         if st.session_state.get("consulta_entidade_aberta") != nova_entidade:
             st.session_state["consulta_entidade_aberta"] = nova_entidade
+            st.session_state["consulta_origem_entidade"] = "grade"
             st.rerun()
 
     with painel_placeholder.container():
@@ -1926,7 +1943,7 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-ficha">
               <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
               <div class="consulta-ficha-corpo">
-                <div class="consulta-linha"><div class="rotulo">Serviços Elétricas</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricas")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
                 <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
               </div>
             </div>
