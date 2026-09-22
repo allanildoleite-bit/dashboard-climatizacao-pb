@@ -1136,6 +1136,7 @@ def tratar_consulta_escolas(df: pd.DataFrame) -> pd.DataFrame:
     dados = dados[dados["Unidade Escolar"].apply(_valor_informado)].copy()
     dados = dados[~dados["Unidade Escolar"].str.upper().str.contains(r"^TOTAL$|^TOTAIS$", na=False, regex=True)].copy()
     dados["_INEP_KEY"] = dados["Código INEP"].apply(_normalizar_inep)
+    dados["_UC_KEY"] = dados["UC"].apply(_normalizar_uc)
     dados["_GRE_KEY"] = dados["GRE"].apply(lambda x: padronizar_gre(x) or normalizar_texto(x))
     dados["_ESCOLA_KEY"] = dados["Unidade Escolar"].apply(normalizar_texto)
     dados["_BUSCA"] = dados.apply(
@@ -1222,6 +1223,128 @@ def tratar_consulta_responsaveis(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(registros)
 
 
+
+def tratar_consulta_responsaveis_civil_por_escola(df: pd.DataFrame) -> pd.DataFrame:
+    """Lê a planilha Civil preservando o vínculo individual escola-responsável.
+
+    Diferentemente da Elétrica, a Civil NÃO é resolvida apenas pela GRE.
+    Cada linha da planilha Civil deve manter o vínculo da respectiva escola,
+    usando preferencialmente INEP, UC ou nome da unidade escolar.
+    """
+    preparado = preparar_cabecalho_responsaveis_civil(df)
+    preparado.columns = [str(c).strip() for c in preparado.columns]
+
+    col_inep = achar_coluna(
+        preparado,
+        ["CÓD. INEP", "COD. INEP", "Cód. INEP", "Código INEP", "Codigo INEP", "INEP"],
+        obrigatoria=False,
+    )
+    col_uc = achar_coluna(
+        preparado,
+        ["UC", "Unidade Consumidora", "Nº UC", "Numero UC", "Número UC"],
+        obrigatoria=False,
+    )
+    col_gre = achar_coluna(
+        preparado,
+        ["GRE", "Gerência Regional", "Gerencia Regional", "Regional"],
+        obrigatoria=False,
+    )
+    col_escola = achar_coluna(
+        preparado,
+        [
+            "UNIDADE ESCOLAR", "Unidade Escolar", "Escola", "Nome da Escola",
+            "Nome da Unidade", "Unidade de Ensino", "Instituição", "Instituicao"
+        ],
+        obrigatoria=False,
+    )
+
+    # Primeiro procura uma coluna explicitamente Civil.
+    col_resp = None
+    candidatos_civil = []
+    for coluna in preparado.columns:
+        nome = normalizar_texto(coluna)
+        if "civil" in nome and any(
+            termo in nome for termo in ["respons", "tecnico", "engenheiro", "fiscal", "profissional", "nome"]
+        ):
+            pontos = 10
+            if "respons" in nome:
+                pontos += 5
+            if "tecnico" in nome:
+                pontos += 2
+            candidatos_civil.append((pontos, coluna))
+
+    if candidatos_civil:
+        col_resp = sorted(candidatos_civil, reverse=True)[0][1]
+
+    if not col_resp:
+        col_resp = achar_coluna(
+            preparado,
+            [
+                "Responsável Técnico Civil", "Responsavel Tecnico Civil",
+                "Responsável Civil", "Responsavel Civil",
+                "Responsável Técnico", "Responsavel Tecnico",
+                "Responsável", "Responsavel",
+                "Engenheiro Civil", "Engenheiro", "Técnico", "Tecnico",
+                "Fiscal", "Nome"
+            ],
+            obrigatoria=False,
+        )
+
+    if not col_resp:
+        colunas_recebidas = ", ".join(str(c) for c in preparado.columns[:40])
+        raise ValueError(
+            "Não foi possível identificar a coluna do responsável Civil na planilha informada. "
+            f"Colunas recebidas: {colunas_recebidas}"
+        )
+
+    if not any([col_inep, col_uc, col_escola]):
+        colunas_recebidas = ", ".join(str(c) for c in preparado.columns[:40])
+        raise ValueError(
+            "A planilha Civil precisa identificar cada escola por INEP, UC ou nome da unidade escolar. "
+            f"Colunas recebidas: {colunas_recebidas}"
+        )
+
+    registros = []
+    for _, row in preparado.iterrows():
+        responsavel = _formatar_nome_pessoa(row.get(col_resp, ""))
+        if not responsavel:
+            continue
+
+        inep = _normalizar_inep(row.get(col_inep, "")) if col_inep else ""
+        uc = _normalizar_uc(row.get(col_uc, "")) if col_uc else ""
+        escola = (
+            str(row.get(col_escola, "")).strip()
+            if col_escola and _valor_informado(row.get(col_escola, ""))
+            else ""
+        )
+        gre_bruto = row.get(col_gre, "") if col_gre else ""
+        gre = padronizar_gre(gre_bruto) or (
+            str(gre_bruto).strip() if _valor_informado(gre_bruto) else ""
+        )
+
+        # Só cria vínculo se houver alguma identificação individual da escola.
+        if not (inep or uc or escola):
+            continue
+
+        registros.append({
+            "_INEP_KEY": inep,
+            "_UC_KEY": uc,
+            "_GRE_KEY": padronizar_gre(gre) or normalizar_texto(gre),
+            "_ESCOLA_KEY": normalizar_texto(escola),
+            "Responsável Técnico de Elétrica": "",
+            "Responsável Técnico de Civil": responsavel,
+        })
+
+    return pd.DataFrame(
+        registros,
+        columns=[
+            "_INEP_KEY", "_UC_KEY", "_GRE_KEY", "_ESCOLA_KEY",
+            "Responsável Técnico de Elétrica", "Responsável Técnico de Civil",
+        ],
+    )
+
+
+
 def _mapa_responsaveis(resp: pd.DataFrame, chave: str, coluna_resp: str) -> dict:
     mapa = {}
     if resp.empty or chave not in resp.columns or coluna_resp not in resp.columns:
@@ -1238,27 +1361,78 @@ def _mapa_responsaveis(resp: pd.DataFrame, chave: str, coluna_resp: str) -> dict
     return mapa
 
 
-def combinar_consulta_escolas_responsaveis(escolas: pd.DataFrame, resp: pd.DataFrame) -> pd.DataFrame:
+def combinar_consulta_escolas_responsaveis(
+    escolas: pd.DataFrame,
+    resp_eletrica: pd.DataFrame,
+    resp_civil: pd.DataFrame,
+) -> pd.DataFrame:
+    """Combina as fontes respeitando a granularidade de cada área.
+
+    Elétrica: mantém a lógica já validada por GRE.
+    Civil: vínculo individual por INEP, UC ou nome da escola; nunca agrega
+    todos os responsáveis da mesma GRE em uma única unidade.
+    """
     dados = escolas.copy()
-    for coluna_resp in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
-        mapa_inep = _mapa_responsaveis(resp, "_INEP_KEY", coluna_resp)
-        mapa_escola = _mapa_responsaveis(resp, "_ESCOLA_KEY", coluna_resp)
-        mapa_gre = _mapa_responsaveis(resp, "_GRE_KEY", coluna_resp)
 
-        def resolver(linha):
-            # A planilha de responsáveis representa carteiras por GRE.
-            gre = str(linha.get("_GRE_KEY", ""))
-            inep = str(linha.get("_INEP_KEY", ""))
-            escola = str(linha.get("_ESCOLA_KEY", ""))
-            if gre and gre in mapa_gre:
-                return _formatar_nome_pessoa(mapa_gre[gre])
-            if inep and inep in mapa_inep:
-                return _formatar_nome_pessoa(mapa_inep[inep])
-            if escola and escola in mapa_escola:
-                return _formatar_nome_pessoa(mapa_escola[escola])
-            return ""
+    # -------------------------
+    # ELÉTRICA — por GRE
+    # -------------------------
+    mapa_eletrica_gre = _mapa_responsaveis(
+        resp_eletrica, "_GRE_KEY", "Responsável Técnico de Elétrica"
+    )
+    mapa_eletrica_inep = _mapa_responsaveis(
+        resp_eletrica, "_INEP_KEY", "Responsável Técnico de Elétrica"
+    )
+    mapa_eletrica_escola = _mapa_responsaveis(
+        resp_eletrica, "_ESCOLA_KEY", "Responsável Técnico de Elétrica"
+    )
 
-        dados[coluna_resp] = dados.apply(resolver, axis=1)
+    def resolver_eletrica(linha):
+        gre = str(linha.get("_GRE_KEY", ""))
+        inep = str(linha.get("_INEP_KEY", ""))
+        escola = str(linha.get("_ESCOLA_KEY", ""))
+
+        # Mantém o comportamento anterior da Elétrica.
+        if gre and gre in mapa_eletrica_gre:
+            return _formatar_nome_pessoa(mapa_eletrica_gre[gre])
+        if inep and inep in mapa_eletrica_inep:
+            return _formatar_nome_pessoa(mapa_eletrica_inep[inep])
+        if escola and escola in mapa_eletrica_escola:
+            return _formatar_nome_pessoa(mapa_eletrica_escola[escola])
+        return ""
+
+    dados["Responsável Técnico de Elétrica"] = dados.apply(resolver_eletrica, axis=1)
+
+    # -------------------------
+    # CIVIL — por ESCOLA
+    # -------------------------
+    mapa_civil_inep = _mapa_responsaveis(
+        resp_civil, "_INEP_KEY", "Responsável Técnico de Civil"
+    )
+    mapa_civil_uc = _mapa_responsaveis(
+        resp_civil, "_UC_KEY", "Responsável Técnico de Civil"
+    )
+    mapa_civil_escola = _mapa_responsaveis(
+        resp_civil, "_ESCOLA_KEY", "Responsável Técnico de Civil"
+    )
+
+    def resolver_civil(linha):
+        inep = str(linha.get("_INEP_KEY", ""))
+        uc = str(linha.get("_UC_KEY", ""))
+        escola = str(linha.get("_ESCOLA_KEY", ""))
+
+        # Ordem de maior segurança: INEP > UC > nome exato normalizado.
+        if inep and inep in mapa_civil_inep:
+            return _formatar_nome_pessoa(mapa_civil_inep[inep])
+        if uc and uc in mapa_civil_uc:
+            return _formatar_nome_pessoa(mapa_civil_uc[uc])
+        if escola and escola in mapa_civil_escola:
+            return _formatar_nome_pessoa(mapa_civil_escola[escola])
+
+        # Deliberadamente NÃO há fallback pela GRE.
+        return ""
+
+    dados["Responsável Técnico de Civil"] = dados.apply(resolver_civil, axis=1)
     return dados
 
 
@@ -1266,7 +1440,7 @@ def _responsaveis_principais_para_consulta(responsaveis: pd.DataFrame) -> pd.Dat
     """Converte a base de responsáveis já usada pelo dashboard em vínculos por GRE."""
     if responsaveis is None or responsaveis.empty:
         return pd.DataFrame(columns=[
-            "_INEP_KEY", "_GRE_KEY", "_ESCOLA_KEY",
+            "_INEP_KEY", "_UC_KEY", "_GRE_KEY", "_ESCOLA_KEY",
             "Responsável Técnico de Elétrica", "Responsável Técnico de Civil",
         ])
 
@@ -1295,6 +1469,7 @@ def _responsaveis_principais_para_consulta(responsaveis: pd.DataFrame) -> pd.Dat
 
         registros.append({
             "_INEP_KEY": "",
+            "_UC_KEY": "",
             "_GRE_KEY": padronizar_gre(gre) or normalizar_texto(gre),
             "_ESCOLA_KEY": "",
             "Responsável Técnico de Elétrica": eletrica,
@@ -1309,15 +1484,25 @@ def carregar_dados_consulta_unidade():
     escolas_raw = ler_csv_publicado(CONSULTA_ESCOLAS_URL, "Consulta - Planilha Geral")
     escolas = tratar_consulta_escolas(escolas_raw)
 
-    # Os responsáveis da consulta individual usam a MESMA base institucional
-    # já utilizada pelo dashboard. O vínculo é feito pela GRE e preserva as
-    # áreas Civil e Elétrica separadamente.
+    # ELÉTRICA: preserva a fonte e a lógica já utilizadas anteriormente.
     responsaveis_dashboard = carregar_responsaveis_institucionais()
-    responsaveis = _responsaveis_principais_para_consulta(responsaveis_dashboard)
-    dados = combinar_consulta_escolas_responsaveis(escolas, responsaveis)
+    apenas_eletrica = filtrar_responsaveis_por_area(responsaveis_dashboard, "eletrica")
+    resp_eletrica = _responsaveis_principais_para_consulta(apenas_eletrica)
 
-    # A busca textual precisa localizar também o responsável técnico. Assim,
-    # pesquisar um nome retorna todas as escolas das GREs vinculadas a ele.
+    # CIVIL: lê diretamente a planilha nova e mantém o vínculo ESCOLA x RESPONSÁVEL.
+    civil_raw = ler_csv_publicado(
+        CONSULTA_RESPONSAVEIS_CIVIL_URL,
+        "Consulta - Responsáveis Civil por Escola",
+    )
+    resp_civil = tratar_consulta_responsaveis_civil_por_escola(civil_raw)
+
+    dados = combinar_consulta_escolas_responsaveis(
+        escolas,
+        resp_eletrica=resp_eletrica,
+        resp_civil=resp_civil,
+    )
+
+    # A busca textual localiza escola, INEP, UC e os dois responsáveis técnicos.
     dados["_BUSCA"] = dados.apply(
         lambda r: normalizar_texto(" | ".join([
             str(r.get("Unidade Escolar", "")),
@@ -1327,29 +1512,10 @@ def carregar_dados_consulta_unidade():
             str(r.get("GRE", "")),
             str(r.get("Responsável Técnico de Elétrica", "")),
             str(r.get("Responsável Técnico de Civil", "")),
-        ])), axis=1
+        ])),
+        axis=1,
     )
     return dados
-
-
-def _opcoes_coluna(df: pd.DataFrame, coluna: str) -> List[str]:
-    if coluna not in df.columns or df.empty:
-        return []
-    valores = []
-    for valor in df[coluna].tolist():
-        if _valor_informado(valor):
-            texto = str(valor).strip()
-            if texto not in valores:
-                valores.append(texto)
-    if coluna == "GRE":
-        return sorted(valores, key=lambda x: int(re.search(r"(\d+)", str(x)).group(1)) if re.search(r"(\d+)", str(x)) else 999)
-    return sorted(valores, key=normalizar_texto)
-
-
-def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataFrame:
-    if valor and valor != "Todos" and coluna in df.columns:
-        return df[df[coluna].astype(str) == str(valor)].copy()
-    return df
 
 
 def _status_climatizacao_grupo(valor) -> str:
@@ -1437,6 +1603,26 @@ def renderizar_consulta_unidade_escolar():
         st.session_state["consulta_entidade_aberta"] = None
     if "consulta_origem_entidade" not in st.session_state:
         st.session_state["consulta_origem_entidade"] = None
+
+    def _voltar_lista_consulta():
+        """Retorna ao estado principal antes da nova instanciação dos widgets."""
+        st.session_state["consulta_entidade_aberta"] = None
+        st.session_state["consulta_origem_entidade"] = None
+        st.session_state["consulta_resultado_busca"] = None
+        st.session_state["consulta_texto_busca"] = ""
+        st.session_state["consulta_termo_anterior"] = ""
+
+        for chave_filtro in [
+            "consulta_gre",
+            "consulta_municipio",
+            "consulta_climatizacao",
+            "consulta_status",
+            "consulta_servico_eletrico",
+            "consulta_padrao",
+            "consulta_resp_eletrica",
+            "consulta_resp_civil",
+        ]:
+            st.session_state[chave_filtro] = "Todos"
 
     nomes_resp = set()
     for coluna in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
@@ -1560,30 +1746,12 @@ def renderizar_consulta_unidade_escolar():
     if entidade_aberta:
         col_ficha_titulo, col_fechar_ficha = st.columns([6, 1])
         with col_fechar_ficha:
-            if st.button("Voltar à lista", key="consulta_fechar_ficha", use_container_width=True):
-                # Fecha a ficha e volta ao estado principal da consulta.
-                st.session_state["consulta_entidade_aberta"] = None
-                st.session_state["consulta_origem_entidade"] = None
-                st.session_state["consulta_resultado_busca"] = None
-
-                # Se a ficha foi aberta pela pesquisa, limpa também a busca para
-                # que a lista completa de escolas reapareça imediatamente.
-                st.session_state["consulta_texto_busca"] = ""
-                st.session_state["consulta_termo_anterior"] = ""
-
-                for chave_filtro in [
-                    "consulta_gre",
-                    "consulta_municipio",
-                    "consulta_climatizacao",
-                    "consulta_status",
-                    "consulta_servico_eletrico",
-                    "consulta_padrao",
-                    "consulta_resp_eletrica",
-                    "consulta_resp_civil",
-                ]:
-                    st.session_state[chave_filtro] = "Todos"
-
-                st.rerun()
+            st.button(
+                "Voltar à lista",
+                key="consulta_fechar_ficha",
+                use_container_width=True,
+                on_click=_voltar_lista_consulta,
+            )
 
     # ========================================================
     # FILTROS COMPLEMENTARES
