@@ -1097,16 +1097,57 @@ def _status_climatizacao_grupo(valor) -> str:
 
 
 def renderizar_consulta_unidade_escolar():
-    st.markdown("""
+    st.markdown(f"""
     <style>
-    .consulta-hero{background:linear-gradient(135deg,#001F49,#003B73);color:white;padding:1.25rem 1.4rem;border-radius:16px;margin:.2rem 0 1rem;box-shadow:0 8px 24px rgba(0,31,73,.16)}
-    .consulta-hero h2{margin:0 0 .3rem;font-size:1.45rem}.consulta-hero p{margin:0;opacity:.9}
-    .consulta-card{background:#fff;border:1px solid #D9E4F2;border-radius:14px;padding:1rem 1.05rem;min-height:102px;box-shadow:0 3px 10px rgba(0,31,73,.06)}
-    .consulta-card small{display:block;color:#667B93;font-weight:700;margin-bottom:.35rem}.consulta-card b{font-size:1.65rem;color:#003B73}.consulta-card span{display:block;color:#71849A;font-size:.8rem;margin-top:.2rem}
-    .ficha-bloco{background:#FFFFFF;border:1px solid #D9E4F2;border-radius:14px;padding:1rem 1.1rem;margin-bottom:.8rem;box-shadow:0 3px 10px rgba(0,31,73,.05)}
-    .ficha-bloco h4{margin:0 0 .65rem;color:#003B73}.ficha-item{margin:.35rem 0}.ficha-item strong{color:#354B65}
+    .consulta-banner{{background:linear-gradient(135deg,#0A4F9D 0%,#003B73 100%);border-radius:20px;padding:14px 18px;margin:.15rem 0 1rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
+    .consulta-banner-grid{{display:grid;grid-template-columns:150px 1fr 140px;align-items:center;gap:16px}}
+    .consulta-logo-box{{background:rgba(255,255,255,.94);border-radius:14px;min-height:74px;display:flex;align-items:center;justify-content:center;padding:8px 10px}}
+    .consulta-logo-box img{{max-width:100%;max-height:58px;object-fit:contain}}
+    .consulta-banner-title{{font-size:1.55rem;font-weight:800;line-height:1.15;text-align:center;margin:0 0 4px 0}}
+    .consulta-banner-subtitle{{font-size:.95rem;opacity:.96;text-align:center;margin:0}}
+    .consulta-callout{{background:#F4F8FD;border:1px solid #D6E3F3;border-left:5px solid #0A4F9D;border-radius:14px;padding:12px 14px;margin:0 0 1rem 0;color:#163B63}}
+    .consulta-secao{{font-size:1.05rem;font-weight:800;color:#0B3E75;margin:.65rem 0 .55rem 0}}
+    .consulta-secao::after{{content:'';display:block;width:68px;height:4px;background:#2E7DDB;border-radius:6px;margin-top:6px}}
+    .consulta-card{{background:#fff;border:1px solid #D9E4F2;border-radius:16px;padding:1rem 1.05rem;min-height:108px;box-shadow:0 4px 12px rgba(0,31,73,.06);position:relative;overflow:hidden}}
+    .consulta-card::after{{content:'';position:absolute;right:-12px;bottom:-16px;width:78px;height:78px;border-radius:50%;background:rgba(10,79,157,.07)}}
+    .consulta-card .tag{{display:block;color:#506B87;font-weight:800;font-size:.78rem;letter-spacing:.02em;text-transform:uppercase;margin-bottom:.38rem}}
+    .consulta-card .valor{{display:block;font-size:2rem;line-height:1;color:#0A4F9D;font-weight:900;margin-bottom:.25rem}}
+    .consulta-card .detalhe{{display:block;color:#617A95;font-size:.84rem}}
+    .consulta-card.card-em-andamento{{border-left:5px solid #5EA0EC}}
+    .consulta-card.card-em-rota{{border-left:5px solid #EF4444}}
+    .consulta-card.card-destaque{{border-left:5px solid #0A4F9D}}
+    .consulta-card.card-neutro{{border-left:5px solid #A9C4E6}}
+    .consulta-ficha{{background:#fff;border:1px solid #D9E4F2;border-radius:18px;padding:0;box-shadow:0 4px 12px rgba(0,31,73,.05);overflow:hidden;margin-bottom:.85rem}}
+    .consulta-ficha-topo{{background:linear-gradient(90deg,#0A4F9D 0%,#0E63C5 100%);padding:12px 16px;color:#fff}}
+    .consulta-ficha-topo h4{{margin:0;font-size:1.02rem;font-weight:800}}
+    .consulta-ficha-corpo{{padding:14px 16px 12px 16px}}
+    .consulta-linha{{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #EDF3FA}}
+    .consulta-linha:last-child{{border-bottom:none}}
+    .consulta-linha .rotulo{{min-width:170px;color:#4B6582;font-weight:700}}
+    .consulta-linha .conteudo{{color:#153554;font-weight:600;flex:1}}
+    .consulta-resumo-escola{{background:#F8FBFF;border:1px solid #D8E6F6;border-radius:14px;padding:12px 14px;margin-bottom:1rem;color:#173B63}}
+    .consulta-pill{{display:inline-block;background:#E7F1FF;color:#0A4F9D;border:1px solid #C8DBF4;border-radius:999px;padding:4px 10px;font-size:.8rem;font-weight:700;margin:4px 6px 0 0}}
+    .consulta-vazio{{background:#FFF8E8;border:1px solid #F6E1A6;border-radius:14px;padding:12px 14px;color:#715B14}}
+    @media (max-width: 900px){{
+        .consulta-banner-grid{{grid-template-columns:1fr;}}
+        .consulta-banner-title,.consulta-banner-subtitle{{text-align:center}}
+        .consulta-linha{{display:block}}
+        .consulta-linha .rotulo{{display:block;min-width:unset;margin-bottom:4px}}
+    }}
     </style>
-    <div class="consulta-hero"><h2>Consulta por Unidade Escolar</h2><p>Pesquisa operacional das unidades escolares, situação da climatização, infraestrutura elétrica e responsáveis técnicos.</p></div>
+    <div class="consulta-banner">
+        <div class="consulta-banner-grid">
+            <div class="consulta-logo-box"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
+            <div>
+                <div class="consulta-banner-title">Consulta por Unidade Escolar</div>
+                <div class="consulta-banner-subtitle">Painel individualizado para pesquisar escolas, visualizar a situação da climatização, infraestrutura elétrica e responsáveis técnicos.</div>
+            </div>
+            <div class="consulta-logo-box"><img src="{GEOBS_LOGO}" alt="GEOBS"></div>
+        </div>
+    </div>
+    <div class="consulta-callout">
+        Utilize os filtros para refinar o recorte e, em seguida, pesquise a unidade escolar no campo de seleção. À medida que o nome é digitado, a lista apresenta as opções correspondentes para escolha rápida.
+    </div>
     """, unsafe_allow_html=True)
 
     try:
@@ -1121,15 +1162,23 @@ def renderizar_consulta_unidade_escolar():
         st.info("A planilha foi carregada, mas não foram encontrados registros de unidades escolares.")
         return
 
-    c_busca, c_rapido, c_reset = st.columns([2.3, 1.4, .8])
+    c_busca, c_rapido, c_reset = st.columns([2.2, 1.3, .75])
     with c_busca:
-        busca = st.text_input("Pesquisar escola", placeholder="Nome da escola, Código INEP, município ou UC", key="consulta_busca")
+        busca = st.text_input(
+            "Busca textual no recorte",
+            placeholder="Nome da escola, INEP, município, UC ou responsável técnico",
+            key="consulta_busca"
+        )
     with c_rapido:
-        filtro_rapido = st.selectbox("Filtro rápido", ["Todas as escolas", "Climatizadas", "Em andamento", "Em rota", "Sem UC", "Sem informação de padrão de entrada"], key="consulta_rapido")
+        filtro_rapido = st.selectbox(
+            "Filtro rápido",
+            ["Todas as escolas", "Climatizadas", "Em andamento", "Em rota", "Sem UC", "Sem informação de padrão de entrada"],
+            key="consulta_rapido"
+        )
     with c_reset:
         st.write("")
         st.write("")
-        if st.button("Limpar filtros", use_container_width=True, key="consulta_limpar"):
+        if st.button("Limpar", use_container_width=True, key="consulta_limpar"):
             for chave in list(st.session_state.keys()):
                 if chave.startswith("consulta_") and chave != "consulta_limpar":
                     del st.session_state[chave]
@@ -1151,7 +1200,7 @@ def renderizar_consulta_unidade_escolar():
     elif filtro_rapido == "Sem informação de padrão de entrada":
         filtrada = filtrada[~filtrada["Padrão de Entrada"].apply(_valor_informado)]
 
-    st.markdown("#### Filtros")
+    st.markdown('<div class="consulta-secao">Refinamento do recorte</div>', unsafe_allow_html=True)
     f1, f2, f3, f4 = st.columns(4)
     with f1:
         gre = st.selectbox("GRE", ["Todos"] + _opcoes_coluna(filtrada, "GRE"), key="consulta_gre")
@@ -1188,67 +1237,133 @@ def renderizar_consulta_unidade_escolar():
     sem_padrao = int((~filtrada["Padrão de Entrada"].apply(_valor_informado)).sum()) if total else 0
     sem_uc = int((~filtrada["UC"].apply(_valor_informado)).sum()) if total else 0
 
+    st.markdown('<div class="consulta-secao">Síntese do recorte filtrado</div>', unsafe_allow_html=True)
     cards = [
-        ("Escolas encontradas", total, "resultado do recorte atual"),
-        ("Climatizadas", qtd_clim, f"{(qtd_clim/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
-        ("Em andamento", qtd_and, f"{(qtd_and/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
-        ("Em rota", qtd_rota, f"{(qtd_rota/total*100):.1f}% do recorte" if total else "0,0% do recorte"),
-        ("Sem padrão informado", sem_padrao, "registros sem informação"),
-        ("Sem UC", sem_uc, "registros sem informação"),
+        ("Escolas encontradas", total, "resultado do recorte atual", "card-destaque"),
+        ("Climatizadas", qtd_clim, f"{(qtd_clim/total*100):.1f}% do recorte" if total else "0,0% do recorte", "card-destaque"),
+        ("Em andamento", qtd_and, f"{(qtd_and/total*100):.1f}% do recorte" if total else "0,0% do recorte", "card-em-andamento"),
+        ("Em rota", qtd_rota, f"{(qtd_rota/total*100):.1f}% do recorte" if total else "0,0% do recorte", "card-em-rota"),
+        ("Sem padrão informado", sem_padrao, "registros sem informação", "card-neutro"),
+        ("Sem UC", sem_uc, "registros sem informação", "card-neutro"),
     ]
     cols = st.columns(6)
-    for col, (titulo, numero, detalhe) in zip(cols, cards):
+    for col, (titulo, numero, detalhe, classe) in zip(cols, cards):
         detalhe = detalhe.replace(".", ",") if "%" in detalhe else detalhe
-        col.markdown(f'<div class="consulta-card"><small>{escape(str(titulo))}</small><b>{_fmt_num_br(numero)}</b><span>{escape(str(detalhe))}</span></div>', unsafe_allow_html=True)
+        col.markdown(
+            f'<div class="consulta-card {classe}"><span class="tag">{escape(str(titulo))}</span><span class="valor">{_fmt_num_br(numero)}</span><span class="detalhe">{escape(str(detalhe))}</span></div>',
+            unsafe_allow_html=True
+        )
 
-    st.markdown("#### Unidades escolares")
     if filtrada.empty:
-        st.info("Nenhuma unidade escolar atende à combinação de filtros selecionada.")
+        st.markdown('<div class="consulta-secao">Consulta individual da unidade</div>', unsafe_allow_html=True)
+        st.markdown('<div class="consulta-vazio">Nenhuma unidade escolar atende à combinação de filtros selecionada. Ajuste os filtros para visualizar a ficha individual da escola.</div>', unsafe_allow_html=True)
         return
 
-    tabela = filtrada[["Unidade Escolar", "Município", "GRE", "Climatização", "Status", "Serviços Elétricos", "Padrão de Entrada", "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]].copy()
-    for coluna in tabela.columns:
-        tabela[coluna] = tabela[coluna].apply(_texto_consulta)
-    st.dataframe(tabela, use_container_width=True, hide_index=True, height=min(520, 42 + 35 * min(len(tabela), 13)))
+    st.markdown('<div class="consulta-secao">Consulta individual da unidade</div>', unsafe_allow_html=True)
 
-    st.download_button("Baixar resultado filtrado em CSV", data=tabela.to_csv(index=False).encode("utf-8-sig"), file_name="consulta_unidades_escolares.csv", mime="text/csv", key="consulta_download")
-
-    st.markdown("#### Ficha individual da unidade escolar")
-    opcoes_escola, mapa_escolas = [], {}
-    for idx, linha_item in filtrada.iterrows():
+    def _rotulo_escola(idx, linha_item):
         rotulo = str(linha_item.get("Unidade Escolar", "")).strip()
         if _valor_informado(linha_item.get("Código INEP", "")):
             rotulo += f' · INEP {linha_item.get("Código INEP", "")}'
         if _valor_informado(linha_item.get("Município", "")):
             rotulo += f' · {linha_item.get("Município", "")}'
-        chave = f"{idx}::{rotulo}"
-        opcoes_escola.append(chave)
-        mapa_escolas[chave] = idx
+        if _valor_informado(linha_item.get("GRE", "")):
+            rotulo += f' · {linha_item.get("GRE", "")}'
+        return f"{idx}::{rotulo}"
 
-    escolha = st.selectbox("Selecione uma unidade escolar", opcoes_escola, format_func=lambda x: x.split("::", 1)[1], key="consulta_escola_selecionada")
-    linha = filtrada.loc[mapa_escolas[escolha]]
+    opcoes_escola = [_rotulo_escola(idx, linha_item) for idx, linha_item in filtrada.iterrows()]
+    opcoes_escola = sorted(opcoes_escola, key=lambda item: normalizar_texto(item.split("::", 1)[1]))
+    mapa_escolas = {item: int(item.split("::", 1)[0]) for item in opcoes_escola}
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f'''<div class="ficha-bloco"><h4>Identificação</h4>
-        <div class="ficha-item"><strong>Unidade Escolar:</strong> {escape(_texto_consulta(linha.get("Unidade Escolar")))}</div>
-        <div class="ficha-item"><strong>Código INEP:</strong> {escape(_texto_consulta(linha.get("Código INEP")))}</div>
-        <div class="ficha-item"><strong>Município:</strong> {escape(_texto_consulta(linha.get("Município")))}</div>
-        <div class="ficha-item"><strong>GRE:</strong> {escape(_texto_consulta(linha.get("GRE")))}</div>
-        <div class="ficha-item"><strong>UC:</strong> {escape(_texto_consulta(linha.get("UC")))}</div></div>''', unsafe_allow_html=True)
-        st.markdown(f'''<div class="ficha-bloco"><h4>Responsáveis Técnicos</h4>
-        <div class="ficha-item"><strong>Elétrica:</strong> {escape(_texto_consulta(linha.get("Responsável Técnico de Elétrica")))}</div>
-        <div class="ficha-item"><strong>Civil:</strong> {escape(_texto_consulta(linha.get("Responsável Técnico de Civil")))}</div></div>''', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'''<div class="ficha-bloco"><h4>Situação da Climatização</h4>
-        <div class="ficha-item"><strong>Climatização:</strong> {escape(_texto_consulta(linha.get("Climatização")))}</div>
-        <div class="ficha-item"><strong>Data da Climatização:</strong> {escape(_texto_consulta(linha.get("Data da Climatização")))}</div>
-        <div class="ficha-item"><strong>Status:</strong> {escape(_texto_consulta(linha.get("Status")))}</div></div>''', unsafe_allow_html=True)
-        st.markdown(f'''<div class="ficha-bloco"><h4>Situação Elétrica</h4>
-        <div class="ficha-item"><strong>Serviços Elétricos:</strong> {escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div>
-        <div class="ficha-item"><strong>Padrão de Entrada:</strong> {escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div>
-        <div class="ficha-item"><strong>Servidor Responsável:</strong> {escape(_texto_consulta(linha.get("Servidor Responsável")))}</div></div>''', unsafe_allow_html=True)
+    escolha = st.selectbox(
+        "Pesquisar e selecionar unidade escolar",
+        options=opcoes_escola,
+        index=None,
+        placeholder="Digite o nome da escola para localizar opções do recorte",
+        format_func=lambda x: x.split("::", 1)[1],
+        key="consulta_escola_selecionada"
+    )
 
+    if not escolha:
+        st.markdown(
+            '<div class="consulta-vazio">Selecione uma unidade escolar no campo acima para exibir a ficha individual detalhada. O campo aceita digitação para busca rápida por nome, INEP, município ou GRE.</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        linha = filtrada.loc[mapa_escolas[escolha]]
+        grupo_clim = _status_climatizacao_grupo(linha.get("Climatização", ""))
+        resumo_html = f'''
+        <div class="consulta-resumo-escola">
+            <strong>{escape(_texto_consulta(linha.get("Unidade Escolar")))}</strong><br>
+            <span class="consulta-pill">INEP: {escape(_texto_consulta(linha.get("Código INEP")))}</span>
+            <span class="consulta-pill">Município: {escape(_texto_consulta(linha.get("Município")))}</span>
+            <span class="consulta-pill">GRE: {escape(_texto_consulta(linha.get("GRE")))}</span>
+            <span class="consulta-pill">Climatização: {escape(_texto_consulta(linha.get("Climatização")))}</span>
+            <span class="consulta-pill">Status: {escape(_texto_consulta(linha.get("Status")))}</span>
+            <span class="consulta-pill">Grupo: {escape(grupo_clim)}</span>
+        </div>
+        '''
+        st.markdown(resumo_html, unsafe_allow_html=True)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f'''
+            <div class="consulta-ficha">
+                <div class="consulta-ficha-topo"><h4>Identificação da Unidade</h4></div>
+                <div class="consulta-ficha-corpo">
+                    <div class="consulta-linha"><div class="rotulo">Unidade Escolar</div><div class="conteudo">{escape(_texto_consulta(linha.get("Unidade Escolar")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Código INEP</div><div class="conteudo">{escape(_texto_consulta(linha.get("Código INEP")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Município</div><div class="conteudo">{escape(_texto_consulta(linha.get("Município")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">GRE</div><div class="conteudo">{escape(_texto_consulta(linha.get("GRE")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">UC</div><div class="conteudo">{escape(_texto_consulta(linha.get("UC")))}</div></div>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div class="consulta-ficha">
+                <div class="consulta-ficha-topo"><h4>Responsáveis Técnicos</h4></div>
+                <div class="consulta-ficha-corpo">
+                    <div class="consulta-linha"><div class="rotulo">Responsável de Elétrica</div><div class="conteudo">{escape(_texto_consulta(linha.get("Responsável Técnico de Elétrica")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Responsável de Civil</div><div class="conteudo">{escape(_texto_consulta(linha.get("Responsável Técnico de Civil")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Servidor Responsável</div><div class="conteudo">{escape(_texto_consulta(linha.get("Servidor Responsável")))}</div></div>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'''
+            <div class="consulta-ficha">
+                <div class="consulta-ficha-topo"><h4>Situação da Climatização</h4></div>
+                <div class="consulta-ficha-corpo">
+                    <div class="consulta-linha"><div class="rotulo">Climatização</div><div class="conteudo">{escape(_texto_consulta(linha.get("Climatização")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Data da Climatização</div><div class="conteudo">{escape(_texto_consulta(linha.get("Data da Climatização")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Status</div><div class="conteudo">{escape(_texto_consulta(linha.get("Status")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Grupo de Situação</div><div class="conteudo">{escape(grupo_clim)}</div></div>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div class="consulta-ficha">
+                <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
+                <div class="consulta-ficha-corpo">
+                    <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Padrão de Entrada</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
+                    <div class="consulta-linha"><div class="rotulo">Observação de Consulta</div><div class="conteudo">{escape("Não há informações" if not _valor_informado(linha.get("Padrão de Entrada")) and not _valor_informado(linha.get("UC")) else "Informações consolidadas a partir das planilhas publicadas.")}</div></div>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+    st.markdown('<div class="consulta-secao">Relação de unidades do recorte</div>', unsafe_allow_html=True)
+    tabela = filtrada[["Unidade Escolar", "Município", "GRE", "Climatização", "Status", "Serviços Elétricos", "Padrão de Entrada", "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]].copy()
+    for coluna in tabela.columns:
+        tabela[coluna] = tabela[coluna].apply(_texto_consulta)
+    st.dataframe(tabela, use_container_width=True, hide_index=True, height=min(520, 42 + 35 * min(len(tabela), 13)))
+    st.download_button(
+        "Baixar resultado filtrado em CSV",
+        data=tabela.to_csv(index=False).encode("utf-8-sig"),
+        file_name="consulta_unidades_escolares.csv",
+        mime="text/csv",
+        key="consulta_download"
+    )
 
 
 # ============================================================
