@@ -1643,6 +1643,12 @@ def renderizar_consulta_unidade_escolar():
         st.session_state["consulta_texto_busca"] = ""
         st.session_state["consulta_termo_anterior"] = ""
 
+        # Força a recriação da grade. Sem isso, o AgGrid preserva a linha
+        # selecionada e reabre imediatamente a mesma ficha após "Voltar à lista".
+        st.session_state["consulta_grid_nonce"] = (
+            int(st.session_state.get("consulta_grid_nonce", 0)) + 1
+        )
+
         for chave_filtro in [
             "consulta_gre",
             "consulta_municipio",
@@ -1658,6 +1664,8 @@ def renderizar_consulta_unidade_escolar():
         st.session_state["consulta_entidade_aberta"] = None
     if "consulta_origem_entidade" not in st.session_state:
         st.session_state["consulta_origem_entidade"] = None
+    if "consulta_grid_nonce" not in st.session_state:
+        st.session_state["consulta_grid_nonce"] = 0
 
     def _voltar_lista_consulta():
         """Agenda o retorno completo à lista sem alterar widgets já instanciados."""
@@ -1786,7 +1794,7 @@ def renderizar_consulta_unidade_escolar():
         col_ficha_titulo, col_fechar_ficha = st.columns([6, 1])
         with col_fechar_ficha:
             st.button(
-                "Voltar à lista",
+                "Voltar à lista de escolas",
                 key="consulta_fechar_ficha",
                 use_container_width=True,
                 on_click=_voltar_lista_consulta,
@@ -1939,7 +1947,7 @@ def renderizar_consulta_unidade_escolar():
                 height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
                 theme="streamlit",
                 custom_css=custom_css,
-                key="consulta_grid_unidades",
+                key=f"consulta_grid_unidades_{st.session_state.get('consulta_grid_nonce', 0)}",
             )
         except TypeError:
             resposta_grid = AgGrid(
@@ -1952,7 +1960,7 @@ def renderizar_consulta_unidade_escolar():
                 height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
                 theme="streamlit",
                 custom_css=custom_css,
-                key="consulta_grid_unidades",
+                key=f"consulta_grid_unidades_{st.session_state.get('consulta_grid_nonce', 0)}",
             )
 
         # Sincroniza a ficha diretamente com a seleção real do AgGrid.
@@ -2005,7 +2013,7 @@ def renderizar_consulta_unidade_escolar():
             height=min(520, 42 + 35 * min(len(tabela), 12)),
             on_select="rerun",
             selection_mode="single-row",
-            key="consulta_tabela_unidades_fallback",
+            key=f"consulta_tabela_unidades_fallback_{st.session_state.get('consulta_grid_nonce', 0)}",
         )
         try:
             linhas_sel = evento_tabela.selection.rows
