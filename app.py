@@ -1534,7 +1534,7 @@ def _status_climatizacao_grupo(valor) -> str:
 
 
 def _opcoes_coluna(df: pd.DataFrame, coluna: str):
-    """Retorna opções únicas, válidas e ordenadas para os filtros da consulta."""
+    """Retorna opções únicas e ordenadas para os filtros da consulta."""
     if df is None or df.empty or coluna not in df.columns:
         return []
 
@@ -1544,6 +1544,15 @@ def _opcoes_coluna(df: pd.DataFrame, coluna: str):
             texto = str(valor).strip()
             if texto and texto not in valores:
                 valores.append(texto)
+
+    # GRE precisa de ordenação numérica: 1ª, 2ª, 3ª ... 16ª.
+    if normalizar_texto(coluna) == "gre":
+        def chave_gre(valor):
+            encontrado = re.search(r"(\d+)", str(valor))
+            if encontrado:
+                return (0, int(encontrado.group(1)), normalizar_texto(valor))
+            return (1, 999, normalizar_texto(valor))
+        return sorted(valores, key=chave_gre)
 
     return sorted(valores, key=lambda x: normalizar_texto(x))
 
@@ -1566,6 +1575,7 @@ def _aplicar_filtro_exato(df: pd.DataFrame, coluna: str, valor: str) -> pd.DataF
 
 
 # CONSULTA_UI_BUILD = "v19-reset-labels"
+# CONSULTA_UI_BUILD = "v21-rotulos-gre"
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
@@ -2117,9 +2127,6 @@ def renderizar_consulta_unidade_escolar():
         </div>
         """, unsafe_allow_html=True)
 
-        ROTULO_RESPONSAVEL_ELETRICA = "Elétrica"
-        ROTULO_PADRAO_ENTRADA_ENERGIA = "Padrão de Entrada de Energia"
-
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(f"""
@@ -2138,7 +2145,7 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-ficha">
               <div class="consulta-ficha-topo"><h4>Responsáveis Técnicos</h4></div>
               <div class="consulta-ficha-corpo">
-                <div class="consulta-linha"><div class="rotulo">{ROTULO_RESPONSAVEL_ELETRICA}</div><div class="conteudo">{escape(nome_eletrica if nome_eletrica else "Não há informações")}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Elétrica</div><div class="conteudo">{escape(nome_eletrica if nome_eletrica else "Não há informações")}</div></div>
                 <div class="consulta-linha"><div class="rotulo">Civil</div><div class="conteudo">{escape(nome_civil if nome_civil else "Não há informações")}</div></div>
               </div>
             </div>
@@ -2160,7 +2167,7 @@ def renderizar_consulta_unidade_escolar():
               <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
               <div class="consulta-ficha-corpo">
                 <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
-                <div class="consulta-linha"><div class="rotulo">{ROTULO_PADRAO_ENTRADA_ENERGIA}</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
               </div>
             </div>
             """, unsafe_allow_html=True)
