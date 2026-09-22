@@ -17,6 +17,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
+    AGGRID_DISPONIVEL = True
+except ImportError:
+    AGGRID_DISPONIVEL = False
+
 
 # ============================================================
 # DEPENDÊNCIAS OPCIONAIS PARA O RELATÓRIO EM PDF
@@ -1076,13 +1082,77 @@ def combinar_consulta_escolas_responsaveis(escolas: pd.DataFrame, resp: pd.DataF
     return dados
 
 
+def _responsaveis_principais_para_consulta(responsaveis: pd.DataFrame) -> pd.DataFrame:
+    """Converte a base de responsáveis já usada pelo dashboard em vínculos por GRE."""
+    if responsaveis is None or responsaveis.empty:
+        return pd.DataFrame(columns=[
+            "_INEP_KEY", "_GRE_KEY", "_ESCOLA_KEY",
+            "Responsável Técnico de Elétrica", "Responsável Técnico de Civil",
+        ])
+
+    registros = []
+    for _, row in responsaveis.iterrows():
+        gre = padronizar_gre(row.get("GRE", "")) or ""
+        if not gre:
+            continue
+
+        nome = _formatar_nome_pessoa(row.get("Responsável Técnico", ""))
+        if not nome:
+            continue
+
+        area = inferir_area_tecnica(
+            row.get("Área", ""),
+            row.get("Tipo Profissional", ""),
+            row.get("Equipe", ""),
+            row.get("Responsável Técnico", ""),
+        ) or str(row.get("Área", "")).strip()
+        area_n = normalizar_texto(area)
+
+        eletrica = nome if "eletr" in area_n else ""
+        civil = nome if "civil" in area_n else ""
+        if not eletrica and not civil:
+            continue
+
+        registros.append({
+            "_INEP_KEY": "",
+            "_GRE_KEY": padronizar_gre(gre) or normalizar_texto(gre),
+            "_ESCOLA_KEY": "",
+            "Responsável Técnico de Elétrica": eletrica,
+            "Responsável Técnico de Civil": civil,
+        })
+
+    return pd.DataFrame(registros)
+
+
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
 def carregar_dados_consulta_unidade():
     escolas_raw = ler_csv_publicado(CONSULTA_ESCOLAS_URL, "Consulta - Planilha Geral")
-    responsaveis_raw = ler_csv_publicado(CONSULTA_RESPONSAVEIS_URL, "Consulta - Responsáveis")
     escolas = tratar_consulta_escolas(escolas_raw)
-    responsaveis = tratar_consulta_responsaveis(responsaveis_raw)
-    return combinar_consulta_escolas_responsaveis(escolas, responsaveis)
+
+    # Os responsáveis da consulta individual usam a MESMA base institucional
+    # já utilizada pelo dashboard. O vínculo é feito pela GRE e preserva as
+    # áreas Civil e Elétrica separadamente.
+    responsaveis_dashboard = tratar_responsaveis(
+        ler_csv_publicado(RESPONSAVEIS_URL, "Responsáveis por GRE")
+    )
+    responsaveis = _responsaveis_principais_para_consulta(responsaveis_dashboard)
+    dados = combinar_consulta_escolas_responsaveis(escolas, responsaveis)
+
+    # A busca textual precisa localizar também o responsável técnico. Assim,
+    # pesquisar um nome retorna todas as escolas das GREs vinculadas a ele.
+    dados["_BUSCA"] = dados.apply(
+        lambda r: normalizar_texto(" | ".join([
+            str(r.get("Unidade Escolar", "")),
+            str(r.get("Código INEP", "")),
+            str(r.get("UC", "")),
+            str(r.get("Município", "")),
+            str(r.get("GRE", "")),
+            str(r.get("Responsável Técnico de Elétrica", "")),
+            str(r.get("Responsável Técnico de Civil", "")),
+            str(r.get("Servidor Responsável", "")),
+        ])), axis=1
+    )
+    return dados
 
 
 def _opcoes_coluna(df: pd.DataFrame, coluna: str) -> List[str]:
@@ -1119,41 +1189,42 @@ def _status_climatizacao_grupo(valor) -> str:
 
 
 def renderizar_consulta_unidade_escolar():
-    st.markdown(f'''
+    st.markdown(f"""
     <style>
-    .consulta-banner{{background:linear-gradient(135deg,#0B559F 0%,#003B73 100%);border-radius:20px;padding:14px 18px;margin:.15rem 0 1rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
+    .consulta-banner{{background:linear-gradient(135deg,#0A4F9D 0%,#003B73 100%);border-radius:20px;padding:14px 18px;margin:.15rem 0 .9rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
     .consulta-banner-grid{{display:grid;grid-template-columns:150px 1fr 140px;align-items:center;gap:16px}}
-    .consulta-logo-box{{background:rgba(255,255,255,.96);border-radius:14px;min-height:74px;display:flex;align-items:center;justify-content:center;padding:8px 10px}}
+    .consulta-logo-box{{background:rgba(255,255,255,.97);border-radius:14px;min-height:74px;display:flex;align-items:center;justify-content:center;padding:8px 10px}}
     .consulta-logo-box img{{max-width:100%;max-height:58px;object-fit:contain}}
-    .consulta-banner-title{{font-size:1.55rem;font-weight:850;line-height:1.15;text-align:center;margin:0 0 5px 0;letter-spacing:.01em}}
-    .consulta-banner-subtitle{{font-size:.91rem;opacity:.96;text-align:center;margin:0;font-weight:500}}
-    .consulta-hint{{background:#F7FAFE;border:1px solid #D8E6F6;border-left:4px solid #0A4F9D;border-radius:12px;padding:9px 12px;margin:.15rem 0 .85rem;color:#244B73;font-size:.88rem}}
+    .consulta-banner-title{{font-size:1.58rem;font-weight:850;line-height:1.15;text-align:center;margin:0 0 5px;letter-spacing:.01em}}
+    .consulta-banner-subtitle{{font-size:.91rem;opacity:.97;text-align:center;margin:0;font-weight:500}}
     .consulta-ficha{{background:#fff;border:1px solid #D9E4F2;border-radius:16px;padding:0;box-shadow:0 4px 12px rgba(0,31,73,.05);overflow:hidden;margin-bottom:.85rem}}
     .consulta-ficha-topo{{background:#0A4F9D;padding:11px 15px;color:#fff}}
     .consulta-ficha-topo h4{{margin:0;font-size:1rem;font-weight:800}}
-    .consulta-ficha-corpo{{padding:11px 15px 10px 15px}}
+    .consulta-ficha-corpo{{padding:11px 15px 10px}}
     .consulta-linha{{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EDF3FA}}
     .consulta-linha:last-child{{border-bottom:none}}
     .consulta-linha .rotulo{{min-width:170px;color:#526C87;font-weight:700}}
     .consulta-linha .conteudo{{color:#153554;font-weight:600;flex:1}}
-    .consulta-resumo-escola{{background:#F8FBFF;border:1px solid #D8E6F6;border-radius:14px;padding:11px 13px;margin:.45rem 0 .85rem;color:#173B63}}
-    .consulta-pill{{display:inline-block;background:#EAF3FF;color:#0A4F9D;border:1px solid #CADCF2;border-radius:999px;padding:4px 9px;font-size:.79rem;font-weight:700;margin:4px 5px 0 0}}
+    .consulta-resumo-escola{{background:#F8FBFF;border:1px solid #D8E6F6;border-left:5px solid #0A4F9D;border-radius:14px;padding:11px 13px;margin:.6rem 0 .85rem;color:#173B63}}
+    .consulta-resumo-escola strong{{font-size:1.04rem;color:#073E75}}
+    .consulta-pill{{display:inline-block;background:#EAF3FF;color:#0A4F9D;border:1px solid #CADCF2;border-radius:999px;padding:4px 9px;font-size:.79rem;font-weight:700;margin:5px 5px 0 0}}
+    .consulta-instrucao{{font-size:.82rem;color:#5B7188;margin:-.18rem 0 .45rem}}
     div[data-testid="stSelectbox"] label p, div[data-testid="stTextInput"] label p{{color:#294F75 !important;font-weight:750 !important}}
     div[data-baseweb="select"] > div, div[data-testid="stTextInput"] input{{background:#FFFFFF !important;color:#173B63 !important;border-color:#CAD9E9 !important}}
     div[data-baseweb="select"] span{{color:#173B63 !important}}
-    @media (max-width:900px){{.consulta-banner-grid{{grid-template-columns:1fr}}.consulta-linha{{display:block}}.consulta-linha .rotulo{{display:block;min-width:unset;margin-bottom:4px}}}}
+    @media(max-width:900px){{.consulta-banner-grid{{grid-template-columns:1fr}}.consulta-linha{{display:block}}.consulta-linha .rotulo{{display:block;min-width:unset;margin-bottom:4px}}}}
     </style>
     <div class="consulta-banner">
       <div class="consulta-banner-grid">
         <div class="consulta-logo-box"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
         <div>
-          <div class="consulta-banner-title">Consulta Integrada das Unidades Escolares</div>
-          <div class="consulta-banner-subtitle">Acompanhamento da climatização, da infraestrutura elétrica e dos responsáveis técnicos das escolas da rede estadual da Paraíba.</div>
+          <div class="consulta-banner-title">Consulta das Unidades Escolares</div>
+          <div class="consulta-banner-subtitle">Localize uma escola ou responsável técnico e consulte a situação da climatização, da infraestrutura elétrica e os vínculos técnicos da unidade.</div>
         </div>
         <div class="consulta-logo-box"><img src="{GEOBS_LOGO}" alt="GEOBS"></div>
       </div>
     </div>
-    ''', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
     try:
         base = carregar_dados_consulta_unidade()
@@ -1167,10 +1238,33 @@ def renderizar_consulta_unidade_escolar():
         st.info("A planilha foi carregada, mas não foram encontrados registros de unidades escolares.")
         return
 
+    # Busca principal: nome da escola, responsável, UC ou INEP.
+    b1, b2 = st.columns([5.4, .7])
+    with b1:
+        busca = st.text_input(
+            "Pesquisar",
+            placeholder="Digite o nome da escola, responsável técnico, UC ou código INEP...",
+            key="consulta_busca",
+        )
+    with b2:
+        st.write("")
+        st.write("")
+        if st.button("Limpar", use_container_width=True, key="consulta_limpar"):
+            for chave in list(st.session_state.keys()):
+                if chave.startswith("consulta_") and chave != "consulta_limpar":
+                    del st.session_state[chave]
+            st.rerun()
+
+    filtrada = base.copy()
+    if busca.strip():
+        termo = normalizar_texto(busca)
+        filtrada = filtrada[filtrada["_BUSCA"].str.contains(re.escape(termo), na=False)].copy()
+
+    # Filtros complementares, mantidos com os títulos visíveis.
     f1, f2, f3, f4 = st.columns(4)
     with f1:
-        gre = st.selectbox("Gerência Regional de Educação (GRE)", ["Todos"] + _opcoes_coluna(base, "GRE"), key="consulta_gre")
-    filtrada = _aplicar_filtro_exato(base.copy(), "GRE", gre)
+        gre = st.selectbox("Gerência Regional de Educação (GRE)", ["Todos"] + _opcoes_coluna(filtrada, "GRE"), key="consulta_gre")
+    filtrada = _aplicar_filtro_exato(filtrada, "GRE", gre)
     with f2:
         municipio = st.selectbox("Município", ["Todos"] + _opcoes_coluna(filtrada, "Município"), key="consulta_municipio")
     filtrada = _aplicar_filtro_exato(filtrada, "Município", municipio)
@@ -1195,126 +1289,187 @@ def renderizar_consulta_unidade_escolar():
         resp_civil = st.selectbox("Responsável Técnico de Civil", ["Todos"] + _opcoes_coluna(filtrada, "Responsável Técnico de Civil"), key="consulta_resp_civil")
     filtrada = _aplicar_filtro_exato(filtrada, "Responsável Técnico de Civil", resp_civil)
 
-    b1, b2 = st.columns([5.2, .8])
-    with b1:
-        busca = st.text_input("Busca no recorte", placeholder="Digite escola, INEP, município ou UC", key="consulta_busca")
-    with b2:
-        st.write("")
-        st.write("")
-        if st.button("Limpar", use_container_width=True, key="consulta_limpar"):
-            for chave in list(st.session_state.keys()):
-                if chave.startswith("consulta_") and chave != "consulta_limpar":
-                    del st.session_state[chave]
-            st.rerun()
-
-    if busca.strip():
-        termo = normalizar_texto(busca)
-        filtrada = filtrada[filtrada["_BUSCA"].str.contains(re.escape(termo), na=False)].copy()
-
     if filtrada.empty:
-        st.info("Nenhuma unidade escolar atende à combinação de filtros selecionada.")
+        st.info("Nenhuma unidade escolar corresponde à pesquisa e aos filtros selecionados.")
         return
-
-    def _rotulo_escola(idx, linha_item):
-        rotulo = _texto_consulta(linha_item.get("Unidade Escolar", ""))
-        if _valor_informado(linha_item.get("Código INEP", "")):
-            rotulo += f' · INEP {_texto_consulta(linha_item.get("Código INEP", ""))}'
-        if _valor_informado(linha_item.get("Município", "")):
-            rotulo += f' · {_texto_consulta(linha_item.get("Município", ""))}'
-        return f"{idx}::{rotulo}"
-
-    opcoes_escola = [_rotulo_escola(idx, linha_item) for idx, linha_item in filtrada.iterrows()]
-    opcoes_escola = sorted(opcoes_escola, key=lambda item: normalizar_texto(item.split("::", 1)[1]))
-    mapa_escolas = {item: int(item.split("::", 1)[0]) for item in opcoes_escola}
-
-    escolha = st.selectbox(
-        "Pesquisar e selecionar a unidade escolar",
-        options=opcoes_escola,
-        index=None,
-        placeholder="Comece a digitar o nome da escola...",
-        format_func=lambda x: x.split("::", 1)[1],
-        key="consulta_escola_selecionada",
-    )
-
-    st.markdown('<div class="consulta-hint">Digite e selecione uma escola ou clique em uma linha da tabela para abrir a ficha.</div>', unsafe_allow_html=True)
 
     tabela = filtrada[[
         "Unidade Escolar", "Município", "GRE", "Climatização", "Status",
-        "Serviços Elétricos", "Padrão de Entrada", "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"
+        "Serviços Elétricos", "Padrão de Entrada",
+        "Responsável Técnico de Elétrica", "Responsável Técnico de Civil"
     ]].copy()
+
     for coluna in tabela.columns:
         tabela[coluna] = tabela[coluna].apply(_texto_consulta)
     for coluna in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
-        tabela[coluna] = tabela[coluna].apply(lambda x: _formatar_nome_pessoa(x) if _valor_informado(x) else "Não há informações")
+        tabela[coluna] = tabela[coluna].apply(
+            lambda x: _formatar_nome_pessoa(x) if _valor_informado(x) else "Não há informações"
+        )
 
-    estilos = tabela.style.set_properties(**{
-        "background-color": "#FFFFFF",
-        "color": "#153554",
-        "border-color": "#DCE6F1",
-        "font-size": "12px",
-    }).set_table_styles([
-        {"selector": "th", "props": [("background-color", "#0A4F9D"), ("color", "white"), ("font-weight", "700"), ("border-color", "#DCE6F1")]},
-        {"selector": "tr:nth-child(even) td", "props": [("background-color", "#F4F8FD")]},
-    ])
+    # Guardamos o índice real da base sem exibi-lo na tabela.
+    tabela_exibicao = tabela.copy()
+    tabela_exibicao.insert(0, "_indice_base", filtrada.index.astype(int))
 
-    evento_tabela = None
-    try:
+    st.markdown(
+        '<div class="consulta-instrucao">Dê dois cliques em uma unidade escolar para abrir a ficha detalhada.</div>',
+        unsafe_allow_html=True,
+    )
+
+    indice_selecionado = None
+
+    if AGGRID_DISPONIVEL:
+        tabela_grid = tabela_exibicao.rename(columns={
+            "Responsável Técnico de Elétrica": "Responsável - Elétrica",
+            "Responsável Técnico de Civil": "Responsável - Civil",
+        })
+        gb = GridOptionsBuilder.from_dataframe(tabela_grid)
+        gb.configure_default_column(
+            sortable=True,
+            filter=False,
+            resizable=True,
+            wrapText=False,
+            autoHeight=False,
+        )
+        gb.configure_column("_indice_base", hide=True)
+        gb.configure_column("Unidade Escolar", minWidth=270, flex=2.1)
+        gb.configure_column("Município", minWidth=145, flex=1.0)
+        gb.configure_column("GRE", minWidth=85, maxWidth=105)
+        gb.configure_column("Climatização", minWidth=165, flex=1.15)
+        gb.configure_column("Status", minWidth=180, flex=1.25)
+        gb.configure_column("Serviços Elétricos", minWidth=175, flex=1.15)
+        gb.configure_column("Padrão de Entrada", minWidth=145, flex=1.0)
+        gb.configure_column("Responsável - Elétrica", minWidth=170, flex=1.1)
+        gb.configure_column("Responsável - Civil", minWidth=170, flex=1.1)
+        gb.configure_selection("single", use_checkbox=False)
+        grid_options = gb.build()
+        grid_options["suppressRowClickSelection"] = True
+        grid_options["rowHeight"] = 42
+        grid_options["headerHeight"] = 39
+        grid_options["onRowDoubleClicked"] = JsCode("""
+            function(event) {
+                event.node.setSelected(true, true);
+            }
+        """)
+        grid_options["getRowStyle"] = JsCode("""
+            function(params) {
+                if (params.node.rowIndex % 2 === 1) {
+                    return {'backgroundColor': '#F4F8FD', 'color': '#073E75'};
+                }
+                return {'backgroundColor': '#FFFFFF', 'color': '#073E75'};
+            }
+        """)
+
+        custom_css = {
+            ".ag-root-wrapper": {
+                "border": "1px solid #D6E3F2 !important",
+                "border-radius": "12px !important",
+                "overflow": "hidden !important",
+                "box-shadow": "0 2px 8px rgba(0,31,73,.05) !important",
+            },
+            ".ag-header": {
+                "background-color": "#0A4F9D !important",
+                "border-bottom": "none !important",
+            },
+            ".ag-header-cell": {
+                "background-color": "#0A4F9D !important",
+                "color": "#FFFFFF !important",
+                "font-weight": "700 !important",
+                "font-size": "12px !important",
+                "border-right": "1px solid rgba(255,255,255,.10) !important",
+            },
+            ".ag-header-cell-text": {
+                "color": "#FFFFFF !important",
+            },
+            ".ag-cell": {
+                "font-size": "12px !important",
+                "display": "flex !important",
+                "align-items": "center !important",
+                "border-right": "none !important",
+                "border-bottom": "1px solid #E2EBF5 !important",
+            },
+            ".ag-row-hover": {
+                "background-color": "#E8F2FD !important",
+            },
+            ".ag-row-selected": {
+                "background-color": "#DCEEFF !important",
+                "border-left": "4px solid #0A4F9D !important",
+            },
+        }
+
+        resposta_grid = AgGrid(
+            tabela_grid,
+            gridOptions=grid_options,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            allow_unsafe_jscode=True,
+            fit_columns_on_grid_load=False,
+            height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
+            theme="streamlit",
+            custom_css=custom_css,
+            key="consulta_grid_unidades",
+        )
+        selecionadas = resposta_grid.get("selected_rows", []) if isinstance(resposta_grid, dict) else []
+        if isinstance(selecionadas, pd.DataFrame):
+            if not selecionadas.empty:
+                indice_selecionado = int(selecionadas.iloc[0]["_indice_base"])
+        elif isinstance(selecionadas, list) and selecionadas:
+            indice_selecionado = int(selecionadas[0].get("_indice_base"))
+    else:
+        # Fallback sem dependência extra. Continua funcional, mas a seleção é
+        # feita por um clique porque o st.dataframe não expõe evento de duplo clique.
         evento_tabela = st.dataframe(
-            estilos,
+            tabela,
             use_container_width=True,
             hide_index=True,
             height=min(520, 42 + 35 * min(len(tabela), 12)),
             on_select="rerun",
             selection_mode="single-row",
-            key="consulta_tabela_unidades",
+            key="consulta_tabela_unidades_fallback",
         )
-    except TypeError:
-        st.dataframe(estilos, use_container_width=True, hide_index=True, height=min(520, 42 + 35 * min(len(tabela), 12)))
-
-    indice_selecionado = mapa_escolas.get(escolha) if escolha else None
-    if evento_tabela is not None:
         try:
             linhas_sel = evento_tabela.selection.rows
             if linhas_sel:
                 posicao = int(linhas_sel[0])
                 if 0 <= posicao < len(filtrada):
-                    indice_selecionado = filtrada.index[posicao]
+                    indice_selecionado = int(filtrada.index[posicao])
         except Exception:
             pass
+        st.caption("Para habilitar a tabela azul e branca com abertura por duplo clique, adicione `streamlit-aggrid` ao arquivo requirements.txt.")
 
     if indice_selecionado is None:
         return
 
-    linha = filtrada.loc[indice_selecionado]
+    linha = base.loc[indice_selecionado]
     grupo_clim = _status_climatizacao_grupo(linha.get("Climatização", ""))
     nome_eletrica = _formatar_nome_pessoa(linha.get("Responsável Técnico de Elétrica", ""))
     nome_civil = _formatar_nome_pessoa(linha.get("Responsável Técnico de Civil", ""))
 
-    st.markdown(f'''
+    st.markdown(f"""
     <div class="consulta-resumo-escola">
       <strong>{escape(_texto_consulta(linha.get("Unidade Escolar")))}</strong><br>
       <span class="consulta-pill">INEP: {escape(_texto_consulta(linha.get("Código INEP")))}</span>
+      <span class="consulta-pill">UC: {escape(_texto_consulta(linha.get("UC")))}</span>
       <span class="consulta-pill">Município: {escape(_texto_consulta(linha.get("Município")))}</span>
       <span class="consulta-pill">GRE: {escape(_texto_consulta(linha.get("GRE")))}</span>
       <span class="consulta-pill">Climatização: {escape(_texto_consulta(linha.get("Climatização")))}</span>
     </div>
-    ''', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f'''
+        st.markdown(f"""
         <div class="consulta-ficha">
           <div class="consulta-ficha-topo"><h4>Identificação da Unidade</h4></div>
           <div class="consulta-ficha-corpo">
             <div class="consulta-linha"><div class="rotulo">Unidade Escolar</div><div class="conteudo">{escape(_texto_consulta(linha.get("Unidade Escolar")))}</div></div>
             <div class="consulta-linha"><div class="rotulo">Código INEP</div><div class="conteudo">{escape(_texto_consulta(linha.get("Código INEP")))}</div></div>
+            <div class="consulta-linha"><div class="rotulo">UC</div><div class="conteudo">{escape(_texto_consulta(linha.get("UC")))}</div></div>
             <div class="consulta-linha"><div class="rotulo">Município</div><div class="conteudo">{escape(_texto_consulta(linha.get("Município")))}</div></div>
             <div class="consulta-linha"><div class="rotulo">GRE</div><div class="conteudo">{escape(_texto_consulta(linha.get("GRE")))}</div></div>
-            <div class="consulta-linha"><div class="rotulo">UC</div><div class="conteudo">{escape(_texto_consulta(linha.get("UC")))}</div></div>
           </div>
         </div>
-        ''', unsafe_allow_html=True)
-        st.markdown(f'''
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
         <div class="consulta-ficha">
           <div class="consulta-ficha-topo"><h4>Responsáveis Técnicos</h4></div>
           <div class="consulta-ficha-corpo">
@@ -1323,9 +1478,9 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-linha"><div class="rotulo">Servidor Responsável</div><div class="conteudo">{escape(_formatar_nome_pessoa(linha.get("Servidor Responsável", "")) if _valor_informado(linha.get("Servidor Responsável", "")) else "Não há informações")}</div></div>
           </div>
         </div>
-        ''', unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     with c2:
-        st.markdown(f'''
+        st.markdown(f"""
         <div class="consulta-ficha">
           <div class="consulta-ficha-topo"><h4>Situação da Climatização</h4></div>
           <div class="consulta-ficha-corpo">
@@ -1335,8 +1490,8 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-linha"><div class="rotulo">Situação Geral</div><div class="conteudo">{escape(grupo_clim)}</div></div>
           </div>
         </div>
-        ''', unsafe_allow_html=True)
-        st.markdown(f'''
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
         <div class="consulta-ficha">
           <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
           <div class="consulta-ficha-corpo">
@@ -1344,7 +1499,7 @@ def renderizar_consulta_unidade_escolar():
             <div class="consulta-linha"><div class="rotulo">Padrão de Entrada</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
           </div>
         </div>
-        ''', unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
     st.download_button(
         "Baixar resultado filtrado em CSV",
