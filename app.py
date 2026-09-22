@@ -64,13 +64,14 @@ except ImportError:
 
 BASE_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1725253212&single=true&output=csv"
 SETORIZACAO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1067652461&single=true&output=csv"
-RESPONSAVEIS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=231019302&single=true&output=csv"
+RESPONSAVEIS_ELETRICA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=231019302&single=true&output=csv"
+RESPONSAVEIS_CIVIL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=2070229368&single=true&output=csv"
 ACOMPANHAMENTO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1974682974&single=true&output=csv"
 CONFIG_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=274650779&single=true&output=csv"
 
-# Fontes exclusivas da terceira aba: Consulta por Unidade Escolar.
+# Fontes da terceira aba: escolas + responsáveis técnicos por fontes separadas.
 CONSULTA_ESCOLAS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=1046000686&single=true&output=csv"
-CONSULTA_RESPONSAVEIS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=2070229368&single=true&output=csv"
+CONSULTA_RESPONSAVEIS_CIVIL_URL = RESPONSAVEIS_CIVIL_URL
 
 REFRESH_SECONDS = 150
 
@@ -644,6 +645,62 @@ def tratar_responsaveis(df: pd.DataFrame) -> pd.DataFrame:
 
     return dados.sort_values(["Área", "Responsável Técnico", "Ordem"])
 
+
+def filtrar_responsaveis_por_area(dados: pd.DataFrame, area_desejada: str) -> pd.DataFrame:
+    """Mantém somente os responsáveis da área solicitada.
+
+    A fonte de Elétrica e a fonte de Civil são independentes. Isso evita que
+    registros civis eventualmente presentes na planilha elétrica, ou vice-versa,
+    sejam misturados no dashboard e na consulta individual.
+    """
+    if dados is None or dados.empty:
+        return dados.copy() if isinstance(dados, pd.DataFrame) else pd.DataFrame()
+
+    alvo = normalizar_texto(area_desejada)
+
+    def corresponde(linha):
+        area = normalizar_texto(linha.get("Área", ""))
+        tipo = normalizar_texto(linha.get("Tipo Profissional", ""))
+        equipe = normalizar_texto(linha.get("Equipe", ""))
+        conjunto = f"{area} {tipo} {equipe}"
+        if alvo == "eletrica":
+            return ("eletr" in conjunto) or ("eletrotec" in conjunto)
+        if alvo == "civil":
+            return "civil" in conjunto
+        return alvo in conjunto
+
+    return dados[dados.apply(corresponde, axis=1)].copy()
+
+
+def carregar_responsaveis_institucionais() -> pd.DataFrame:
+    """Combina as duas fontes corretas sem alterar a origem da Elétrica."""
+    eletrica = tratar_responsaveis(
+        ler_csv_publicado(RESPONSAVEIS_ELETRICA_URL, "Responsáveis - Elétrica")
+    )
+    eletrica = filtrar_responsaveis_por_area(eletrica, "eletrica")
+
+    civil = tratar_responsaveis(
+        ler_csv_publicado(RESPONSAVEIS_CIVIL_URL, "Responsáveis - Civil")
+    )
+    civil = filtrar_responsaveis_por_area(civil, "civil")
+
+    partes = [df for df in [eletrica, civil] if df is not None and not df.empty]
+    if not partes:
+        return pd.DataFrame(columns=[
+            "GRE", "Localização", "Responsável Técnico",
+            "Área", "Tipo Profissional", "Equipe", "Ordem", "GRE_Label"
+        ])
+
+    dados = pd.concat(partes, ignore_index=True)
+    dados = dados.drop_duplicates(
+        subset=["GRE", "Responsável Técnico", "Área", "Tipo Profissional"],
+        keep="first"
+    )
+    if "Ordem" in dados.columns:
+        dados = dados.sort_values(["Área", "Responsável Técnico", "Ordem"])
+    return dados.reset_index(drop=True)
+
+
 def tratar_acompanhamento(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -774,7 +831,8 @@ def obter_data_atualizacao_base(config: dict) -> str:
 def carregar_dados():
     base = tratar_base_geral(ler_csv_publicado(BASE_GERAL_URL, "Base Geral"))
     setor = tratar_setorizacao(ler_csv_publicado(SETORIZACAO_URL, "Setorização"))
-    responsaveis = tratar_responsaveis(ler_csv_publicado(RESPONSAVEIS_URL, "Responsáveis"))
+    # Elétrica permanece na fonte já utilizada; Civil vem da nova planilha informada.
+    responsaveis = carregar_responsaveis_institucionais()
     acompanhamento = tratar_acompanhamento(ler_csv_publicado(ACOMPANHAMENTO_URL, "Acompanhamento"))
     config = tratar_config(ler_csv_publicado(CONFIG_URL, "Configuração"))
 
@@ -1132,9 +1190,7 @@ def carregar_dados_consulta_unidade():
     # Os responsáveis da consulta individual usam a MESMA base institucional
     # já utilizada pelo dashboard. O vínculo é feito pela GRE e preserva as
     # áreas Civil e Elétrica separadamente.
-    responsaveis_dashboard = tratar_responsaveis(
-        ler_csv_publicado(RESPONSAVEIS_URL, "Responsáveis por GRE")
-    )
+    responsaveis_dashboard = carregar_responsaveis_institucionais()
     responsaveis = _responsaveis_principais_para_consulta(responsaveis_dashboard)
     dados = combinar_consulta_escolas_responsaveis(escolas, responsaveis)
 
@@ -1149,7 +1205,6 @@ def carregar_dados_consulta_unidade():
             str(r.get("GRE", "")),
             str(r.get("Responsável Técnico de Elétrica", "")),
             str(r.get("Responsável Técnico de Civil", "")),
-            str(r.get("Servidor Responsável", "")),
         ])), axis=1
     )
     return dados
@@ -1191,12 +1246,12 @@ def _status_climatizacao_grupo(valor) -> str:
 def renderizar_consulta_unidade_escolar():
     st.markdown(f"""
     <style>
-    .consulta-banner{{background:linear-gradient(135deg,#0A4F9D 0%,#003B73 100%);border-radius:20px;padding:14px 18px;margin:.15rem 0 .9rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
-    .consulta-banner-grid{{display:grid;grid-template-columns:150px 1fr 140px;align-items:center;gap:16px}}
-    .consulta-logo-box{{background:rgba(255,255,255,.97);border-radius:14px;min-height:74px;display:flex;align-items:center;justify-content:center;padding:8px 10px}}
-    .consulta-logo-box img{{max-width:100%;max-height:58px;object-fit:contain}}
-    .consulta-banner-title{{font-size:1.58rem;font-weight:850;line-height:1.15;text-align:center;margin:0 0 5px;letter-spacing:.01em}}
-    .consulta-banner-subtitle{{font-size:.91rem;opacity:.97;text-align:center;margin:0;font-weight:500}}
+    .consulta-banner{{background:linear-gradient(135deg,#0A4F9D 0%,#003B73 100%);border-radius:20px;padding:20px 24px;margin:.15rem 0 .9rem;box-shadow:0 10px 24px rgba(0,31,73,.15);color:#fff}}
+    .consulta-banner-grid{{display:grid;grid-template-columns:180px 1fr 165px;align-items:center;gap:22px}}
+    .consulta-logo-box{{background:rgba(255,255,255,.97);border-radius:14px;min-height:88px;display:flex;align-items:center;justify-content:center;padding:10px 12px}}
+    .consulta-logo-box img{{max-width:100%;max-height:70px;object-fit:contain}}
+    .consulta-banner-title{{font-size:1.92rem;font-weight:900;line-height:1.12;text-align:center;margin:0 0 7px;letter-spacing:.025em;text-transform:uppercase}}
+    .consulta-banner-subtitle{{font-size:1rem;opacity:.98;text-align:center;margin:0;font-weight:600}}
     .consulta-ficha{{background:#fff;border:1px solid #D9E4F2;border-radius:16px;padding:0;box-shadow:0 4px 12px rgba(0,31,73,.05);overflow:hidden;margin-bottom:.85rem}}
     .consulta-ficha-topo{{background:#0A4F9D;padding:11px 15px;color:#fff}}
     .consulta-ficha-topo h4{{margin:0;font-size:1rem;font-weight:800}}
@@ -1220,8 +1275,8 @@ def renderizar_consulta_unidade_escolar():
       <div class="consulta-banner-grid">
         <div class="consulta-logo-box"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
         <div>
-          <div class="consulta-banner-title">Consulta das Unidades Escolares</div>
-          <div class="consulta-banner-subtitle">Pesquise escolas, unidades consumidoras, códigos INEP e responsáveis técnicos para consultar os vínculos e a situação atual de cada unidade.</div>
+          <div class="consulta-banner-title">CONSULTA DAS UNIDADES ESCOLARES</div>
+          <div class="consulta-banner-subtitle">Secretaria de Estado da Educação - Gerência de Obras</div>
         </div>
         <div class="consulta-logo-box"><img src="{GEOBS_LOGO}" alt="GEOBS"></div>
       </div>
@@ -1670,7 +1725,6 @@ def renderizar_consulta_unidade_escolar():
               <div class="consulta-ficha-corpo">
                 <div class="consulta-linha"><div class="rotulo">Elétrica</div><div class="conteudo">{escape(nome_eletrica if nome_eletrica else "Não há informações")}</div></div>
                 <div class="consulta-linha"><div class="rotulo">Civil</div><div class="conteudo">{escape(nome_civil if nome_civil else "Não há informações")}</div></div>
-                <div class="consulta-linha"><div class="rotulo">Servidor Responsável</div><div class="conteudo">{escape(_formatar_nome_pessoa(linha.get("Servidor Responsável", "")) if _valor_informado(linha.get("Servidor Responsável", "")) else "Não há informações")}</div></div>
               </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1691,7 +1745,7 @@ def renderizar_consulta_unidade_escolar():
               <div class="consulta-ficha-topo"><h4>Infraestrutura Elétrica</h4></div>
               <div class="consulta-ficha-corpo">
                 <div class="consulta-linha"><div class="rotulo">Serviços Elétricos</div><div class="conteudo">{escape(_texto_consulta(linha.get("Serviços Elétricos")))}</div></div>
-                <div class="consulta-linha"><div class="rotulo">Padrão de Entrada</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Padrão de Entrada de Energia</div><div class="conteudo">{escape(_texto_consulta(linha.get("Padrão de Entrada")))}</div></div>
               </div>
             </div>
             """, unsafe_allow_html=True)
