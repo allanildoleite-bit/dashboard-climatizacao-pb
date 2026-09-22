@@ -1203,12 +1203,14 @@ def renderizar_consulta_unidade_escolar():
     .consulta-ficha-corpo{{padding:11px 15px 10px}}
     .consulta-linha{{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EDF3FA}}
     .consulta-linha:last-child{{border-bottom:none}}
-    .consulta-linha .rotulo{{min-width:170px;color:#526C87;font-weight:700}}
+    .consulta-linha .rotulo{{min-width:175px;color:#526C87;font-weight:700}}
     .consulta-linha .conteudo{{color:#153554;font-weight:600;flex:1}}
     .consulta-resumo-escola{{background:#F8FBFF;border:1px solid #D8E6F6;border-left:5px solid #0A4F9D;border-radius:14px;padding:11px 13px;margin:.6rem 0 .85rem;color:#173B63}}
     .consulta-resumo-escola strong{{font-size:1.04rem;color:#073E75}}
     .consulta-pill{{display:inline-block;background:#EAF3FF;color:#0A4F9D;border:1px solid #CADCF2;border-radius:999px;padding:4px 9px;font-size:.79rem;font-weight:700;margin:5px 5px 0 0}}
     .consulta-instrucao{{font-size:.82rem;color:#5B7188;margin:-.18rem 0 .45rem}}
+    .consulta-resp-header{{background:linear-gradient(90deg,#F5F9FE,#EDF5FF);border:1px solid #D6E5F5;border-left:5px solid #0A4F9D;border-radius:14px;padding:12px 14px;margin:.65rem 0 .85rem;color:#153554}}
+    .consulta-resp-header strong{{color:#073E75;font-size:1.06rem}}
     div[data-testid="stSelectbox"] label p, div[data-testid="stTextInput"] label p{{color:#294F75 !important;font-weight:750 !important}}
     div[data-baseweb="select"] > div, div[data-testid="stTextInput"] input{{background:#FFFFFF !important;color:#173B63 !important;border-color:#CAD9E9 !important}}
     div[data-baseweb="select"] span{{color:#173B63 !important}}
@@ -1219,7 +1221,7 @@ def renderizar_consulta_unidade_escolar():
         <div class="consulta-logo-box"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
         <div>
           <div class="consulta-banner-title">Consulta das Unidades Escolares</div>
-          <div class="consulta-banner-subtitle">Localize uma escola ou responsável técnico e consulte a situação da climatização, da infraestrutura elétrica e os vínculos técnicos da unidade.</div>
+          <div class="consulta-banner-subtitle">Pesquise escolas, unidades consumidoras, códigos INEP e responsáveis técnicos para consultar os vínculos e a situação atual de cada unidade.</div>
         </div>
         <div class="consulta-logo-box"><img src="{GEOBS_LOGO}" alt="GEOBS"></div>
       </div>
@@ -1238,15 +1240,64 @@ def renderizar_consulta_unidade_escolar():
         st.info("A planilha foi carregada, mas não foram encontrados registros de unidades escolares.")
         return
 
-    # Busca principal: nome da escola, responsável, UC ou INEP.
-    b1, b2 = st.columns([5.4, .7])
-    with b1:
-        busca = st.text_input(
-            "Pesquisar",
-            placeholder="Digite o nome da escola, responsável técnico, UC ou código INEP...",
-            key="consulta_busca",
+    def nomes_em_campo(valor):
+        if not _valor_informado(valor):
+            return []
+        return [_formatar_nome_pessoa(p.strip()) for p in re.split(r"\s*/\s*|\s*;\s*|\s*,\s*", str(valor)) if p.strip()]
+
+    def responsavel_na_linha(linha, nome):
+        alvo = normalizar_texto(nome)
+        nomes = []
+        nomes.extend(nomes_em_campo(linha.get("Responsável Técnico de Elétrica", "")))
+        nomes.extend(nomes_em_campo(linha.get("Responsável Técnico de Civil", "")))
+        return any(normalizar_texto(n) == alvo for n in nomes)
+
+    # ========================================================
+    # PESQUISA RÁPIDA - ESCOLA OU RESPONSÁVEL
+    # ========================================================
+    opcoes_busca = []
+    mapa_busca = {}
+
+    for idx, linha in base.iterrows():
+        escola = _texto_consulta(linha.get("Unidade Escolar"))
+        inep = _texto_consulta(linha.get("Código INEP"))
+        uc = _texto_consulta(linha.get("UC"))
+        municipio = _texto_consulta(linha.get("Município"))
+        rotulo = f"Escola · {escola} · INEP {inep} · UC {uc} · {municipio}"
+        chave = f"ESCOLA::{idx}::{rotulo}"
+        opcoes_busca.append(chave)
+        mapa_busca[chave] = ("escola", int(idx))
+
+    nomes_resp = set()
+    for coluna in ["Responsável Técnico de Elétrica", "Responsável Técnico de Civil"]:
+        if coluna in base.columns:
+            for valor in base[coluna].tolist():
+                for nome in nomes_em_campo(valor):
+                    if nome:
+                        nomes_resp.add(nome)
+
+    for nome in sorted(nomes_resp, key=normalizar_texto):
+        g_responsavel = base[base.apply(lambda r: responsavel_na_linha(r, nome), axis=1)]
+        gres = sorted(set(str(v).strip() for v in g_responsavel["GRE"].dropna().tolist() if str(v).strip()), key=lambda x: int(re.search(r"(\d+)", x).group(1)) if re.search(r"(\d+)", x) else 999)
+        gre_txt = ", ".join(gres) if gres else "GRE não informada"
+        rotulo = f"Responsável · {nome} · {gre_txt}"
+        chave = f"RESP::{normalizar_texto(nome)}::{rotulo}"
+        opcoes_busca.append(chave)
+        mapa_busca[chave] = ("responsavel", nome)
+
+    opcoes_busca = sorted(opcoes_busca, key=lambda x: normalizar_texto(x.split("::", 2)[-1]))
+
+    c_busca, c_limpar = st.columns([5.4, .7])
+    with c_busca:
+        escolha_busca = st.selectbox(
+            "Pesquisar escola, responsável técnico, UC ou código INEP",
+            options=opcoes_busca,
+            index=None,
+            placeholder="Comece a digitar para localizar...",
+            format_func=lambda x: x.split("::", 2)[-1],
+            key="consulta_busca_entidade",
         )
-    with b2:
+    with c_limpar:
         st.write("")
         st.write("")
         if st.button("Limpar", use_container_width=True, key="consulta_limpar"):
@@ -1255,12 +1306,24 @@ def renderizar_consulta_unidade_escolar():
                     del st.session_state[chave]
             st.rerun()
 
-    filtrada = base.copy()
-    if busca.strip():
-        termo = normalizar_texto(busca)
-        filtrada = filtrada[filtrada["_BUSCA"].str.contains(re.escape(termo), na=False)].copy()
+    entidade_aberta = None
+    if escolha_busca:
+        entidade_aberta = mapa_busca.get(escolha_busca)
 
-    # Filtros complementares, mantidos com os títulos visíveis.
+    # ========================================================
+    # FILTROS COMPLEMENTARES
+    # ========================================================
+    filtrada = base.copy()
+
+    if entidade_aberta and entidade_aberta[0] == "responsavel":
+        nome_resp = entidade_aberta[1]
+        filtrada = filtrada[filtrada.apply(lambda r: responsavel_na_linha(r, nome_resp), axis=1)].copy()
+    elif entidade_aberta and entidade_aberta[0] == "escola":
+        indice_escola_busca = entidade_aberta[1]
+        if indice_escola_busca in filtrada.index:
+            # Mantém a escola localizada visível e abre sua ficha automaticamente.
+            filtrada = filtrada.loc[[indice_escola_busca]].copy()
+
     f1, f2, f3, f4 = st.columns(4)
     with f1:
         gre = st.selectbox("Gerência Regional de Educação (GRE)", ["Todos"] + _opcoes_coluna(filtrada, "GRE"), key="consulta_gre")
@@ -1293,6 +1356,9 @@ def renderizar_consulta_unidade_escolar():
         st.info("Nenhuma unidade escolar corresponde à pesquisa e aos filtros selecionados.")
         return
 
+    # ========================================================
+    # TABELA PRINCIPAL
+    # ========================================================
     tabela = filtrada[[
         "Unidade Escolar", "Município", "GRE", "Climatização", "Status",
         "Serviços Elétricos", "Padrão de Entrada",
@@ -1306,16 +1372,16 @@ def renderizar_consulta_unidade_escolar():
             lambda x: _formatar_nome_pessoa(x) if _valor_informado(x) else "Não há informações"
         )
 
-    # Guardamos o índice real da base sem exibi-lo na tabela.
     tabela_exibicao = tabela.copy()
     tabela_exibicao.insert(0, "_indice_base", filtrada.index.astype(int))
+    tabela_exibicao.insert(1, "_dblclick", 0)
 
     st.markdown(
-        '<div class="consulta-instrucao">Dê dois cliques em uma unidade escolar para abrir a ficha detalhada.</div>',
+        '<div class="consulta-instrucao">Dê dois cliques em uma escola para abrir a ficha individual. Pela pesquisa acima, a ficha abre automaticamente ao selecionar uma escola ou responsável.</div>',
         unsafe_allow_html=True,
     )
 
-    indice_selecionado = None
+    indice_duplo_clique = None
 
     if AGGRID_DISPONIVEL:
         tabela_grid = tabela_exibicao.rename(columns={
@@ -1323,14 +1389,9 @@ def renderizar_consulta_unidade_escolar():
             "Responsável Técnico de Civil": "Responsável - Civil",
         })
         gb = GridOptionsBuilder.from_dataframe(tabela_grid)
-        gb.configure_default_column(
-            sortable=True,
-            filter=False,
-            resizable=True,
-            wrapText=False,
-            autoHeight=False,
-        )
+        gb.configure_default_column(sortable=True, filter=False, resizable=True, wrapText=False, autoHeight=False)
         gb.configure_column("_indice_base", hide=True)
+        gb.configure_column("_dblclick", hide=True)
         gb.configure_column("Unidade Escolar", minWidth=270, flex=2.1)
         gb.configure_column("Município", minWidth=145, flex=1.0)
         gb.configure_column("GRE", minWidth=85, maxWidth=105)
@@ -1345,9 +1406,10 @@ def renderizar_consulta_unidade_escolar():
         grid_options["suppressRowClickSelection"] = True
         grid_options["rowHeight"] = 42
         grid_options["headerHeight"] = 39
-        grid_options["onRowDoubleClicked"] = JsCode("""
-            function(event) {
-                event.node.setSelected(true, true);
+        grid_options["onCellDoubleClicked"] = JsCode("""
+            function(params) {
+                params.node.setSelected(true, true);
+                params.node.setDataValue('_dblclick', Date.now());
             }
         """)
         grid_options["getRowStyle"] = JsCode("""
@@ -1360,63 +1422,64 @@ def renderizar_consulta_unidade_escolar():
         """)
 
         custom_css = {
-            ".ag-root-wrapper": {
-                "border": "1px solid #D6E3F2 !important",
-                "border-radius": "12px !important",
-                "overflow": "hidden !important",
-                "box-shadow": "0 2px 8px rgba(0,31,73,.05) !important",
-            },
-            ".ag-header": {
-                "background-color": "#0A4F9D !important",
-                "border-bottom": "none !important",
-            },
-            ".ag-header-cell": {
-                "background-color": "#0A4F9D !important",
-                "color": "#FFFFFF !important",
-                "font-weight": "700 !important",
-                "font-size": "12px !important",
-                "border-right": "1px solid rgba(255,255,255,.10) !important",
-            },
-            ".ag-header-cell-text": {
-                "color": "#FFFFFF !important",
-            },
-            ".ag-cell": {
-                "font-size": "12px !important",
-                "display": "flex !important",
-                "align-items": "center !important",
-                "border-right": "none !important",
-                "border-bottom": "1px solid #E2EBF5 !important",
-            },
-            ".ag-row-hover": {
-                "background-color": "#E8F2FD !important",
-            },
-            ".ag-row-selected": {
-                "background-color": "#DCEEFF !important",
-                "border-left": "4px solid #0A4F9D !important",
-            },
+            ".ag-root-wrapper": {"border": "1px solid #D6E3F2 !important", "border-radius": "12px !important", "overflow": "hidden !important", "box-shadow": "0 2px 8px rgba(0,31,73,.05) !important"},
+            ".ag-header": {"background-color": "#0A4F9D !important", "border-bottom": "none !important"},
+            ".ag-header-cell": {"background-color": "#0A4F9D !important", "color": "#FFFFFF !important", "font-weight": "700 !important", "font-size": "12px !important", "border-right": "1px solid rgba(255,255,255,.10) !important"},
+            ".ag-header-cell-text": {"color": "#FFFFFF !important"},
+            ".ag-cell": {"font-size": "12px !important", "display": "flex !important", "align-items": "center !important", "border-right": "none !important", "border-bottom": "1px solid #E2EBF5 !important"},
+            ".ag-row-hover": {"background-color": "#E8F2FD !important"},
+            ".ag-row-selected": {"background-color": "#DCEEFF !important", "border-left": "4px solid #0A4F9D !important"},
         }
 
-        resposta_grid = AgGrid(
-            tabela_grid,
-            gridOptions=grid_options,
-            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
-            allow_unsafe_jscode=True,
-            fit_columns_on_grid_load=False,
-            height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
-            theme="streamlit",
-            custom_css=custom_css,
-            key="consulta_grid_unidades",
-        )
-        selecionadas = resposta_grid.get("selected_rows", []) if isinstance(resposta_grid, dict) else []
-        if isinstance(selecionadas, pd.DataFrame):
-            if not selecionadas.empty:
-                indice_selecionado = int(selecionadas.iloc[0]["_indice_base"])
-        elif isinstance(selecionadas, list) and selecionadas:
-            indice_selecionado = int(selecionadas[0].get("_indice_base"))
+        # Nas versões atuais do streamlit-aggrid, update_on permite que o
+        # Streamlit seja atualizado especificamente no duplo clique.
+        try:
+            resposta_grid = AgGrid(
+                tabela_grid,
+                gridOptions=grid_options,
+                data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                update_on=["cellDoubleClicked"],
+                allow_unsafe_jscode=True,
+                fit_columns_on_grid_load=False,
+                height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
+                theme="streamlit",
+                custom_css=custom_css,
+                key="consulta_grid_unidades",
+            )
+        except TypeError:
+            resposta_grid = AgGrid(
+                tabela_grid,
+                gridOptions=grid_options,
+                data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                update_mode=GridUpdateMode.SELECTION_CHANGED,
+                allow_unsafe_jscode=True,
+                fit_columns_on_grid_load=False,
+                height=min(545, 48 + 42 * min(len(tabela_grid), 12)),
+                theme="streamlit",
+                custom_css=custom_css,
+                key="consulta_grid_unidades",
+            )
+
+        try:
+            dados_retorno = resposta_grid.data if hasattr(resposta_grid, "data") else resposta_grid.get("data")
+            if isinstance(dados_retorno, pd.DataFrame) and "_dblclick" in dados_retorno.columns:
+                clicadas = dados_retorno[pd.to_numeric(dados_retorno["_dblclick"], errors="coerce").fillna(0) > 0]
+                if not clicadas.empty:
+                    linha_click = clicadas.sort_values("_dblclick").iloc[-1]
+                    indice_duplo_clique = int(linha_click["_indice_base"])
+        except Exception:
+            indice_duplo_clique = None
+
+        if indice_duplo_clique is None:
+            try:
+                selecionadas = resposta_grid.selected_rows if hasattr(resposta_grid, "selected_rows") else resposta_grid.get("selected_rows", [])
+                if isinstance(selecionadas, pd.DataFrame) and not selecionadas.empty:
+                    indice_duplo_clique = int(selecionadas.iloc[0]["_indice_base"])
+                elif isinstance(selecionadas, list) and selecionadas:
+                    indice_duplo_clique = int(selecionadas[0].get("_indice_base"))
+            except Exception:
+                pass
     else:
-        # Fallback sem dependência extra. Continua funcional, mas a seleção é
-        # feita por um clique porque o st.dataframe não expõe evento de duplo clique.
         evento_tabela = st.dataframe(
             tabela,
             use_container_width=True,
@@ -1431,15 +1494,78 @@ def renderizar_consulta_unidade_escolar():
             if linhas_sel:
                 posicao = int(linhas_sel[0])
                 if 0 <= posicao < len(filtrada):
-                    indice_selecionado = int(filtrada.index[posicao])
+                    indice_duplo_clique = int(filtrada.index[posicao])
         except Exception:
             pass
-        st.caption("Para habilitar a tabela azul e branca com abertura por duplo clique, adicione `streamlit-aggrid` ao arquivo requirements.txt.")
+        st.caption("Para habilitar a abertura por duplo clique, mantenha `streamlit-aggrid` no requirements.txt.")
 
-    if indice_selecionado is None:
+    if indice_duplo_clique is not None:
+        entidade_aberta = ("escola", indice_duplo_clique)
+
+    # ========================================================
+    # QUADRO INFORMATIVO - ESCOLA OU RESPONSÁVEL
+    # ========================================================
+    if entidade_aberta is None:
         return
 
-    linha = base.loc[indice_selecionado]
+    if entidade_aberta[0] == "responsavel":
+        nome_resp = entidade_aberta[1]
+        escolas_resp = base[base.apply(lambda r: responsavel_na_linha(r, nome_resp), axis=1)].copy()
+        if escolas_resp.empty:
+            return
+
+        areas = []
+        if escolas_resp["Responsável Técnico de Elétrica"].apply(lambda v: normalizar_texto(nome_resp) in [normalizar_texto(n) for n in nomes_em_campo(v)]).any():
+            areas.append("Elétrica")
+        if escolas_resp["Responsável Técnico de Civil"].apply(lambda v: normalizar_texto(nome_resp) in [normalizar_texto(n) for n in nomes_em_campo(v)]).any():
+            areas.append("Civil")
+        gres = sorted(set(str(v).strip() for v in escolas_resp["GRE"].dropna().tolist() if str(v).strip()), key=lambda x: int(re.search(r"(\d+)", x).group(1)) if re.search(r"(\d+)", x) else 999)
+        municipios = sorted(set(str(v).strip() for v in escolas_resp["Município"].dropna().tolist() if str(v).strip()), key=normalizar_texto)
+        grupos = escolas_resp["Climatização"].apply(_status_climatizacao_grupo)
+        qtd_clim = int((grupos == "Climatizadas").sum())
+        qtd_and = int((grupos == "Em andamento").sum())
+        qtd_rota = int((grupos == "Em rota").sum())
+
+        st.markdown(f"""
+        <div class="consulta-resp-header">
+          <strong>{escape(nome_resp)}</strong><br>
+          <span class="consulta-pill">Área: {escape(' / '.join(areas) if areas else 'Não há informações')}</span>
+          <span class="consulta-pill">GREs: {escape(', '.join(gres) if gres else 'Não há informações')}</span>
+          <span class="consulta-pill">Unidades vinculadas: {_fmt_num_br(len(escolas_resp))}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        r1, r2 = st.columns(2)
+        with r1:
+            st.markdown(f"""
+            <div class="consulta-ficha">
+              <div class="consulta-ficha-topo"><h4>Vínculo Técnico</h4></div>
+              <div class="consulta-ficha-corpo">
+                <div class="consulta-linha"><div class="rotulo">Responsável</div><div class="conteudo">{escape(nome_resp)}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Área Técnica</div><div class="conteudo">{escape(' / '.join(areas) if areas else 'Não há informações')}</div></div>
+                <div class="consulta-linha"><div class="rotulo">GREs vinculadas</div><div class="conteudo">{escape(', '.join(gres) if gres else 'Não há informações')}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Municípios no recorte</div><div class="conteudo">{escape(', '.join(municipios[:12]) + (' ...' if len(municipios) > 12 else ''))}</div></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with r2:
+            st.markdown(f"""
+            <div class="consulta-ficha">
+              <div class="consulta-ficha-topo"><h4>Carteira de Unidades</h4></div>
+              <div class="consulta-ficha-corpo">
+                <div class="consulta-linha"><div class="rotulo">Total de unidades</div><div class="conteudo">{_fmt_num_br(len(escolas_resp))}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Climatizadas</div><div class="conteudo">{_fmt_num_br(qtd_clim)}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Em andamento</div><div class="conteudo">{_fmt_num_br(qtd_and)}</div></div>
+                <div class="consulta-linha"><div class="rotulo">Em rota</div><div class="conteudo">{_fmt_num_br(qtd_rota)}</div></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+        return
+
+    indice_escola = entidade_aberta[1]
+    if indice_escola not in base.index:
+        return
+    linha = base.loc[indice_escola]
     grupo_clim = _status_climatizacao_grupo(linha.get("Climatização", ""))
     nome_eletrica = _formatar_nome_pessoa(linha.get("Responsável Técnico de Elétrica", ""))
     nome_civil = _formatar_nome_pessoa(linha.get("Responsável Técnico de Civil", ""))
@@ -1500,14 +1626,6 @@ def renderizar_consulta_unidade_escolar():
           </div>
         </div>
         """, unsafe_allow_html=True)
-
-    st.download_button(
-        "Baixar resultado filtrado em CSV",
-        data=tabela.to_csv(index=False).encode("utf-8-sig"),
-        file_name="consulta_unidades_escolares.csv",
-        mime="text/csv",
-        key="consulta_download",
-    )
 
 
 # ============================================================
