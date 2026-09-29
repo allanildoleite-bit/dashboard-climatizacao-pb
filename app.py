@@ -5681,13 +5681,12 @@ body {
 @media print {
     @page {
         size: A3 landscape;
-        margin: 8mm;
+        margin: 7mm;
     }
 
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        box-sizing: border-box !important;
     }
 
     html,
@@ -5711,14 +5710,51 @@ body {
         overflow: visible !important;
     }
 
-    /* Elementos exclusivamente de tela. */
-    .dashboard-print-toolbar,
+    .dashboard-print-toolbar {
+        display: none !important;
+    }
+
+    /* Cabeçalho executivo compacto no PDF. */
+    .header {
+        min-height: 72px !important;
+        padding: 8px 16px !important;
+        border-radius: 12px !important;
+        grid-template-columns: 160px 1fr 160px !important;
+        gap: 14px !important;
+        box-shadow: none !important;
+    }
+
+    .header-logo-box {
+        height: 52px !important;
+        padding: 5px 9px !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
+
+    .logo-gov,
+    .logo-geobs {
+        max-height: 43px !important;
+        max-width: 145px !important;
+    }
+
+    .title {
+        font-size: 19px !important;
+        line-height: 1.06 !important;
+        letter-spacing: -.25px !important;
+    }
+
+    .subtitle {
+        margin-top: 4px !important;
+        font-size: 10px !important;
+    }
+
+    /* Controles de tela fora do PDF. */
     .filters,
     .period-note {
         display: none !important;
     }
 
-    /* Imprime somente a visão Geral do recorte atualmente filtrado. */
+    /* O PDF é sempre o painel executivo geral do recorte filtrado. */
     #viewGeral,
     #viewGeral.hidden {
         display: block !important;
@@ -5730,77 +5766,37 @@ body {
         display: none !important;
     }
 
-    /* =========================================================
-       PÁGINA 1 — CAPA + INDICADORES
-       ========================================================= */
-
-    .header {
-        min-height: 90px !important;
-        padding: 12px 20px !important;
-        border-radius: 14px !important;
-        grid-template-columns: 180px 1fr 180px !important;
-        gap: 18px !important;
-        box-shadow: none !important;
-    }
-
-    .header-logo-box {
-        height: 64px !important;
-        padding: 6px 10px !important;
-        border-radius: 11px !important;
-        box-shadow: none !important;
-    }
-
-    .logo-gov,
-    .logo-geobs {
-        max-height: 52px !important;
-        max-width: 160px !important;
-    }
-
-    .title {
-        font-size: 23px !important;
-        line-height: 1.08 !important;
-    }
-
-    .subtitle {
-        margin-top: 5px !important;
-        font-size: 11px !important;
-    }
-
     .print-context {
         display: block !important;
-        margin: 9px 0 14px !important;
-        padding: 8px 12px !important;
-        border: 1px solid #D8E5F3 !important;
-        border-radius: 9px !important;
+        margin: 7px 0 8px !important;
+        padding: 6px 10px !important;
+        border: 1px solid #D9E4F2 !important;
+        border-radius: 8px !important;
         background: #F7FAFE !important;
         color: #294A70 !important;
-        font-size: 10px !important;
+        font-size: 9px !important;
         font-weight: 750 !important;
+        line-height: 1.25 !important;
     }
 
+    /* KPIs em uma única faixa compacta. */
     .kpis,
     .kpis.period-simple {
         display: grid !important;
         grid-template-columns: repeat(5, 1fr) !important;
-        gap: 10px !important;
-        margin: 0 !important;
-        min-height: 145mm !important;
-        align-content: center !important;
-
-        /* Depois dos indicadores começa uma nova página. */
-        break-after: page !important;
-        page-break-after: always !important;
+        gap: 7px !important;
+        margin: 0 0 8px !important;
     }
 
     .kpi {
-        min-height: 102px !important;
-        padding: 16px 15px !important;
-        border-radius: 12px !important;
+        min-height: 67px !important;
+        padding: 8px 10px !important;
+        border-radius: 10px !important;
         box-shadow: none !important;
     }
 
     .kpi::before {
-        width: 5px !important;
+        width: 4px !important;
     }
 
     .kpi::after {
@@ -5808,367 +5804,312 @@ body {
     }
 
     .kpi-title {
-        margin-left: 5px !important;
-        font-size: 11px !important;
-    }
-
-    .kpi-value {
-        margin: 8px 0 0 5px !important;
-        font-size: 39px !important;
-        line-height: 1 !important;
-    }
-
-    .kpi-sub {
-        margin: 7px 0 0 5px !important;
+        margin-left: 4px !important;
         font-size: 9px !important;
     }
 
-    /* =========================================================
-       TODAS AS DEMAIS PÁGINAS
-       Cada .panel do Dashboard ocupa sua própria página.
-       ========================================================= */
-
-    #viewGeral .grid-main,
-    #viewGeral .grid-bottom,
-    #viewGeral .analytics-section,
-    #viewGeral .analytics-grid,
-    #viewGeral .analytics-left {
-        display: block !important;
-        margin: 0 !important;
-        padding: 0 !important;
+    .kpi-value {
+        margin: 4px 0 0 4px !important;
+        font-size: 27px !important;
+        line-height: .95 !important;
+        letter-spacing: -.5px !important;
     }
 
-    #viewGeral .panel {
-        display: block !important;
-        width: 100% !important;
-        max-width: none !important;
-        min-height: 245mm !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border-radius: 14px !important;
-        box-shadow: none !important;
-        overflow: hidden !important;
+    .kpi-sub {
+        margin: 4px 0 0 4px !important;
+        font-size: 8px !important;
+    }
 
-        break-before: page !important;
-        page-break-before: always !important;
+    /* Página 1: três blocos principais lado a lado. */
+    .grid-main,
+    .grid-main.period-simple-grid {
+        display: grid !important;
+        grid-template-columns: 1.05fr 1.18fr .82fr !important;
+        gap: 7px !important;
+        margin: 0 !important;
+        align-items: stretch !important;
+    }
+
+    .panel {
+        border-radius: 10px !important;
+        box-shadow: none !important;
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }
 
-    /* Reativa o quadro de setorização, que agora terá página própria. */
-    .grid-bottom > .panel:nth-child(2) {
-        display: block !important;
+    .panel-pad,
+    .panel-body {
+        padding: 8px !important;
     }
 
     .panel-head {
-        min-height: 17mm !important;
-        padding: 11px 16px !important;
-        font-size: 16px !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    .panel-pad {
-        padding: 15px !important;
-    }
-
-    .panel-body {
-        padding: 15px !important;
+        padding: 6px 9px !important;
+        font-size: 10px !important;
+        letter-spacing: 0 !important;
     }
 
     .chart-title {
-        margin-bottom: 8px !important;
-        font-size: 17px !important;
-        line-height: 1.15 !important;
-    }
-
-    .analytics-subtitle {
-        margin: -2px 0 9px !important;
+        margin-bottom: 4px !important;
         font-size: 10px !important;
     }
 
-    /* =========================================================
-       PÁGINA — VISÃO GERAL
-       ========================================================= */
-
-    #generalPanel .panel-body {
-        min-height: 215mm !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    #generalPanel .visao-grid {
-        width: 100% !important;
-        display: grid !important;
-        grid-template-columns: .9fr 1.1fr !important;
-        gap: 32px !important;
-        align-items: center !important;
-    }
-
-    #generalPanel .donut {
-        width: 235px !important;
-        height: 235px !important;
-        margin: 0 auto !important;
-    }
-
-    #generalPanel .donut::after {
-        inset: 63px !important;
-    }
-
-    #generalPanel .donut-center {
-        font-size: 34px !important;
-    }
-
-    #generalPanel .donut-center span {
-        font-size: 11px !important;
-    }
-
-    #generalPanel .legend {
-        max-width: 340px !important;
-        margin: 15px auto 0 !important;
-        font-size: 11px !important;
-    }
-
-    #generalPanel .legend-row {
-        padding: 5px 2px !important;
-    }
-
-    #generalPanel .big-progress,
-    #generalPanel #progressPct {
-        font-size: 55px !important;
-    }
-
-    #generalPanel .progress-track {
-        height: 32px !important;
-        margin-top: 16px !important;
-    }
-
-    #generalPanel .progress-labels {
-        margin-top: 7px !important;
-        font-size: 10px !important;
-    }
-
-    #generalPanel .info-box {
-        margin-top: 18px !important;
-        padding: 13px 15px !important;
-        font-size: 11px !important;
-        line-height: 1.35 !important;
-    }
-
-    /* =========================================================
-       PÁGINA — PANORAMA POR GRE
-       ========================================================= */
-
-    #viewGeral .grid-main > .panel:nth-child(2) {
-        padding: 18px !important;
-    }
-
-    #viewGeral .grid-main > .panel:nth-child(2) .panorama-horizontal {
-        margin-top: 13px !important;
+    .visao-grid {
+        grid-template-columns: .92fr 1.08fr !important;
         gap: 8px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(2) .gre-row {
-        grid-template-columns: 130px 1fr 60px !important;
-        gap: 10px !important;
-        min-height: 28px !important;
+    .donut {
+        width: 138px !important;
+        height: 138px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(2) .gre-name {
-        font-size: 11px !important;
+    .donut::after {
+        inset: 37px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(2) .gre-track {
-        height: 27px !important;
-        border-radius: 6px !important;
+    .donut-center {
+        font-size: 20px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(2) .legend-top {
-        margin: 10px 0 14px !important;
-        gap: 18px !important;
-        font-size: 10px !important;
+    .donut-center span {
+        margin-top: 2px !important;
+        font-size: 8px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(2) .info-box {
-        margin-top: 14px !important;
-        padding: 10px 12px !important;
-        font-size: 10px !important;
+    .legend {
+        margin-top: 5px !important;
+        font-size: 8px !important;
     }
 
-    /* =========================================================
-       PÁGINA — RANKING
-       ========================================================= */
-
-    #viewGeral .grid-main > .panel:nth-child(3) {
-        padding: 18px !important;
+    .legend-row {
+        padding: 2px 1px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(3) .rank-legend {
-        margin: 12px 0 15px !important;
-        gap: 18px !important;
-        font-size: 10px !important;
+    .dot {
+        width: 7px !important;
+        height: 7px !important;
+        margin-right: 4px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(3) .rank-row {
-        min-height: 34px !important;
-        font-size: 10px !important;
+    .big-progress {
+        font-size: 25px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(3) .rank-value b {
-        font-size: 13px !important;
+    .big-progress span,
+    #progressPct {
+        font-size: 25px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(3) .rank-value span {
+    .progress-track {
+        height: 18px !important;
+        margin-top: 7px !important;
+    }
+
+    .progress-labels {
+        margin-top: 3px !important;
+        font-size: 8px !important;
+    }
+
+    .info-box {
+        margin-top: 7px !important;
+        padding: 6px 8px !important;
+        border-radius: 8px !important;
+        font-size: 8px !important;
+        line-height: 1.2 !important;
+    }
+
+    .legend-top,
+    .rank-legend,
+    .area-legend,
+    .map-legend {
+        gap: 7px !important;
+        margin-top: 3px !important;
+        font-size: 7px !important;
+    }
+
+    .panorama-horizontal {
+        margin-top: 5px !important;
+        gap: 3px !important;
+    }
+
+    .gre-row {
+        grid-template-columns: 66px 1fr 28px !important;
+        gap: 4px !important;
+        min-height: 13px !important;
+    }
+
+    .gre-name {
+        font-size: 7px !important;
+    }
+
+    .gre-track {
+        height: 13px !important;
+        border-radius: 4px !important;
+    }
+
+    .rank-row,
+    .status-row {
+        min-height: 19px !important;
+        font-size: 7px !important;
+    }
+
+    .rank-value b {
         font-size: 9px !important;
     }
 
-    #viewGeral .grid-main > .panel:nth-child(3) .alert {
-        margin-top: 15px !important;
-        padding: 12px !important;
-        font-size: 10px !important;
+    .rank-value span {
+        margin-top: 1px !important;
+        font-size: 6px !important;
     }
 
-    /* =========================================================
-       PÁGINA — RESUMO EXECUTIVO
-       ========================================================= */
+    .alert {
+        margin-top: 6px !important;
+        padding: 6px !important;
+        border-radius: 8px !important;
+        font-size: 7px !important;
+    }
 
-    #viewGeral .grid-bottom > .panel:first-child {
+    /* Apenas o resumo executivo na base da primeira página. */
+    .grid-bottom,
+    .grid-bottom.period-simple-bottom {
         display: block !important;
-        padding: 20px !important;
+        margin-top: 7px !important;
     }
 
-    #viewGeral .grid-bottom > .panel:first-child #summary {
-        margin-top: 18px !important;
+    .grid-bottom > .panel:first-child {
+        display: block !important;
     }
 
-    #viewGeral .grid-bottom > .panel:first-child .summary-line {
-        grid-template-columns: 16px 1fr !important;
-        gap: 10px !important;
-        padding: 12px 0 !important;
-        font-size: 13px !important;
-        line-height: 1.35 !important;
+    .grid-bottom > .panel:nth-child(2) {
+        display: none !important;
     }
 
-    #viewGeral .grid-bottom > .panel:first-child .check {
-        width: 12px !important;
-        height: 12px !important;
+    .summary-line {
+        grid-template-columns: 10px 1fr !important;
+        gap: 5px !important;
+        padding: 4px 0 !important;
+        font-size: 8px !important;
+        line-height: 1.15 !important;
     }
 
-    /* =========================================================
-       PÁGINA — QUADRO DE STATUS POR SETORIZAÇÃO
-       ========================================================= */
-
-    #viewGeral .grid-bottom > .panel:nth-child(2) .panel-body {
-        min-height: 210mm !important;
+    .check {
+        width: 8px !important;
+        height: 8px !important;
     }
 
-    #viewGeral .grid-bottom > .panel:nth-child(2) .sector-grid {
-        margin-top: 14px !important;
+    /* Página 2: gráficos analíticos + mapa. */
+    .analytics-section {
+        display: block !important;
+        margin-top: 0 !important;
+        break-before: page !important;
+        page-break-before: always !important;
     }
 
-    #viewGeral .grid-bottom > .panel:nth-child(2) .sector-legend {
-        gap: 18px !important;
-        margin-bottom: 12px !important;
-        font-size: 10px !important;
+    .analytics-grid {
+        display: grid !important;
+        grid-template-columns: .88fr 1.12fr !important;
+        gap: 8px !important;
+        align-items: start !important;
     }
 
-    /* =========================================================
-       PÁGINA — GRÁFICO DE ÁREA
-       ========================================================= */
-
-    #viewGeral .analytics-left > .panel:first-child {
-        padding: 18px !important;
+    .analytics-left {
+        display: grid !important;
+        grid-template-rows: auto auto !important;
+        gap: 8px !important;
     }
 
-    #viewGeral .analytics-left > .panel:first-child .svg-chart-wrap {
-        width: 100% !important;
-        min-height: 195mm !important;
-        height: 195mm !important;
-        overflow: visible !important;
+    .analytics-subtitle {
+        margin: -1px 0 4px !important;
+        font-size: 7px !important;
     }
 
-    #viewGeral .analytics-left > .panel:first-child .svg-chart-wrap svg {
+    .svg-chart-wrap {
+        min-height: 165px !important;
+        height: 165px !important;
+        overflow: hidden !important;
+    }
+
+    .svg-chart-wrap svg {
         width: 100% !important;
         min-width: 0 !important;
-        height: 195mm !important;
+        height: 165px !important;
     }
 
-    #viewGeral .analytics-left > .panel:first-child .area-legend {
-        margin-top: 12px !important;
-        gap: 20px !important;
-        font-size: 10px !important;
+    .vertical-bars {
+        min-height: 165px !important;
+        height: 165px !important;
+        padding: 10px 8px 4px 18px !important;
+        gap: 3px !important;
+        overflow: hidden !important;
     }
 
-    /* =========================================================
-       PÁGINA — GRÁFICO DE BARRAS
-       ========================================================= */
-
-    #viewGeral .analytics-left > .panel:nth-child(2) {
-        padding: 18px !important;
+    .vertical-bar-item {
+        min-width: 0 !important;
     }
 
-    #viewGeral .analytics-left > .panel:nth-child(2) .vertical-bars {
-        min-height: 195mm !important;
-        height: 195mm !important;
-        padding: 18px 15px 10px 34px !important;
-        gap: 8px !important;
-        overflow: visible !important;
+    .vertical-bar-value {
+        margin-bottom: 2px !important;
+        font-size: 7px !important;
     }
 
-    #viewGeral .analytics-left > .panel:nth-child(2) .vertical-bar-value {
-        font-size: 10px !important;
+    .vertical-bar-column {
+        width: min(19px, 76%) !important;
     }
 
-    #viewGeral .analytics-left > .panel:nth-child(2) .vertical-bar-column {
-        width: min(30px, 80%) !important;
+    .vertical-bar-label {
+        margin-top: 3px !important;
+        min-height: 18px !important;
+        font-size: 6px !important;
     }
 
-    #viewGeral .analytics-left > .panel:nth-child(2) .vertical-bar-label {
-        margin-top: 6px !important;
-        min-height: 30px !important;
-        font-size: 8px !important;
+    .performance-summary {
+        gap: 4px !important;
+        margin: 2px 0 5px !important;
     }
 
-    /* =========================================================
-       PÁGINA — MAPA POR GRE
-       ========================================================= */
-
-    #viewGeral .performance-panel .panel-body {
-        min-height: 210mm !important;
+    .performance-summary-item {
+        padding: 4px 5px !important;
+        border-radius: 6px !important;
+        font-size: 6px !important;
     }
 
-    #viewGeral .performance-panel .performance-summary {
-        gap: 8px !important;
-        margin: 6px 0 12px !important;
+    .performance-summary-item strong {
+        font-size: 9px !important;
     }
 
-    #viewGeral .performance-panel .performance-summary-item {
-        padding: 8px 10px !important;
-        font-size: 8px !important;
-    }
-
-    #viewGeral .performance-panel .performance-summary-item strong {
-        font-size: 13px !important;
-    }
-
-    #viewGeral .performance-panel .real-map-stage {
-        width: 100% !important;
-        min-height: 175mm !important;
-        height: 175mm !important;
+    .real-map-stage {
+        min-height: 335px !important;
+        height: 335px !important;
         aspect-ratio: auto !important;
-        border-radius: 10px !important;
+        border-radius: 9px !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+    }
+
+    .real-map-stage-v2::after {
+        left: 8px !important;
+        bottom: 6px !important;
+        padding: 3px 5px !important;
+        font-size: 6px !important;
         box-shadow: none !important;
     }
 
-    #viewGeral .performance-panel .map-legend {
-        margin-top: 11px !important;
-        gap: 13px !important;
-        font-size: 8px !important;
+    .footer {
+        margin-top: 6px !important;
+        font-size: 7px !important;
     }
 
-    /* Evita uma página extra apenas para o rodapé. */
-    .footer {
-        display: none !important;
+    .footer-institucional {
+        padding: 6px 5px 0 !important;
+    }
+
+    .footer-credit {
+        font-size: 7px !important;
+    }
+
+    .footer-meta {
+        margin-top: 2px !important;
+        font-size: 6px !important;
     }
 }
 
