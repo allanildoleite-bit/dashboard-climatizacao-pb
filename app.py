@@ -5681,28 +5681,435 @@ body {
 @media print {
     @page {
         size: A3 landscape;
-        margin: 8mm;
+        margin: 7mm;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    html,
+    body {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #FFFFFF !important;
+        overflow: visible !important;
     }
 
     body {
-        background: #FFFFFF !important;
+        font-size: 10px !important;
     }
 
     .dashboard {
+        width: 100% !important;
         max-width: none !important;
+        margin: 0 !important;
         padding: 0 !important;
+        overflow: visible !important;
     }
 
     .dashboard-print-toolbar {
         display: none !important;
     }
 
-    .header,
-    .filter,
-    .kpi,
+    /* Cabeçalho executivo compacto no PDF. */
+    .header {
+        min-height: 72px !important;
+        padding: 8px 16px !important;
+        border-radius: 12px !important;
+        grid-template-columns: 160px 1fr 160px !important;
+        gap: 14px !important;
+        box-shadow: none !important;
+    }
+
+    .header-logo-box {
+        height: 52px !important;
+        padding: 5px 9px !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
+
+    .logo-gov,
+    .logo-geobs {
+        max-height: 43px !important;
+        max-width: 145px !important;
+    }
+
+    .title {
+        font-size: 19px !important;
+        line-height: 1.06 !important;
+        letter-spacing: -.25px !important;
+    }
+
+    .subtitle {
+        margin-top: 4px !important;
+        font-size: 10px !important;
+    }
+
+    /* Controles de tela fora do PDF. */
+    .filters,
+    .period-note {
+        display: none !important;
+    }
+
+    /* O PDF é sempre o painel executivo geral do recorte filtrado. */
+    #viewGeral,
+    #viewGeral.hidden {
+        display: block !important;
+    }
+
+    #viewPendencias,
+    #viewResponsaveis,
+    #viewSetorizacao {
+        display: none !important;
+    }
+
+    .print-context {
+        display: block !important;
+        margin: 7px 0 8px !important;
+        padding: 6px 10px !important;
+        border: 1px solid #D9E4F2 !important;
+        border-radius: 8px !important;
+        background: #F7FAFE !important;
+        color: #294A70 !important;
+        font-size: 9px !important;
+        font-weight: 750 !important;
+        line-height: 1.25 !important;
+    }
+
+    /* KPIs em uma única faixa compacta. */
+    .kpis,
+    .kpis.period-simple {
+        display: grid !important;
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 7px !important;
+        margin: 0 0 8px !important;
+    }
+
+    .kpi {
+        min-height: 67px !important;
+        padding: 8px 10px !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
+
+    .kpi::before {
+        width: 4px !important;
+    }
+
+    .kpi::after {
+        display: none !important;
+    }
+
+    .kpi-title {
+        margin-left: 4px !important;
+        font-size: 9px !important;
+    }
+
+    .kpi-value {
+        margin: 4px 0 0 4px !important;
+        font-size: 27px !important;
+        line-height: .95 !important;
+        letter-spacing: -.5px !important;
+    }
+
+    .kpi-sub {
+        margin: 4px 0 0 4px !important;
+        font-size: 8px !important;
+    }
+
+    /* Página 1: três blocos principais lado a lado. */
+    .grid-main,
+    .grid-main.period-simple-grid {
+        display: grid !important;
+        grid-template-columns: 1.05fr 1.18fr .82fr !important;
+        gap: 7px !important;
+        margin: 0 !important;
+        align-items: stretch !important;
+    }
+
     .panel {
-        break-inside: avoid;
-        page-break-inside: avoid;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    .panel-pad,
+    .panel-body {
+        padding: 8px !important;
+    }
+
+    .panel-head {
+        padding: 6px 9px !important;
+        font-size: 10px !important;
+        letter-spacing: 0 !important;
+    }
+
+    .chart-title {
+        margin-bottom: 4px !important;
+        font-size: 10px !important;
+    }
+
+    .visao-grid {
+        grid-template-columns: .92fr 1.08fr !important;
+        gap: 8px !important;
+    }
+
+    .donut {
+        width: 138px !important;
+        height: 138px !important;
+    }
+
+    .donut::after {
+        inset: 37px !important;
+    }
+
+    .donut-center {
+        font-size: 20px !important;
+    }
+
+    .donut-center span {
+        margin-top: 2px !important;
+        font-size: 8px !important;
+    }
+
+    .legend {
+        margin-top: 5px !important;
+        font-size: 8px !important;
+    }
+
+    .legend-row {
+        padding: 2px 1px !important;
+    }
+
+    .dot {
+        width: 7px !important;
+        height: 7px !important;
+        margin-right: 4px !important;
+    }
+
+    .big-progress {
+        font-size: 25px !important;
+    }
+
+    .big-progress span,
+    #progressPct {
+        font-size: 25px !important;
+    }
+
+    .progress-track {
+        height: 18px !important;
+        margin-top: 7px !important;
+    }
+
+    .progress-labels {
+        margin-top: 3px !important;
+        font-size: 8px !important;
+    }
+
+    .info-box {
+        margin-top: 7px !important;
+        padding: 6px 8px !important;
+        border-radius: 8px !important;
+        font-size: 8px !important;
+        line-height: 1.2 !important;
+    }
+
+    .legend-top,
+    .rank-legend,
+    .area-legend,
+    .map-legend {
+        gap: 7px !important;
+        margin-top: 3px !important;
+        font-size: 7px !important;
+    }
+
+    .panorama-horizontal {
+        margin-top: 5px !important;
+        gap: 3px !important;
+    }
+
+    .gre-row {
+        grid-template-columns: 66px 1fr 28px !important;
+        gap: 4px !important;
+        min-height: 13px !important;
+    }
+
+    .gre-name {
+        font-size: 7px !important;
+    }
+
+    .gre-track {
+        height: 13px !important;
+        border-radius: 4px !important;
+    }
+
+    .rank-row,
+    .status-row {
+        min-height: 19px !important;
+        font-size: 7px !important;
+    }
+
+    .rank-value b {
+        font-size: 9px !important;
+    }
+
+    .rank-value span {
+        margin-top: 1px !important;
+        font-size: 6px !important;
+    }
+
+    .alert {
+        margin-top: 6px !important;
+        padding: 6px !important;
+        border-radius: 8px !important;
+        font-size: 7px !important;
+    }
+
+    /* Apenas o resumo executivo na base da primeira página. */
+    .grid-bottom,
+    .grid-bottom.period-simple-bottom {
+        display: block !important;
+        margin-top: 7px !important;
+    }
+
+    .grid-bottom > .panel:first-child {
+        display: block !important;
+    }
+
+    .grid-bottom > .panel:nth-child(2) {
+        display: none !important;
+    }
+
+    .summary-line {
+        grid-template-columns: 10px 1fr !important;
+        gap: 5px !important;
+        padding: 4px 0 !important;
+        font-size: 8px !important;
+        line-height: 1.15 !important;
+    }
+
+    .check {
+        width: 8px !important;
+        height: 8px !important;
+    }
+
+    /* Página 2: gráficos analíticos + mapa. */
+    .analytics-section {
+        display: block !important;
+        margin-top: 0 !important;
+        break-before: page !important;
+        page-break-before: always !important;
+    }
+
+    .analytics-grid {
+        display: grid !important;
+        grid-template-columns: .88fr 1.12fr !important;
+        gap: 8px !important;
+        align-items: start !important;
+    }
+
+    .analytics-left {
+        display: grid !important;
+        grid-template-rows: auto auto !important;
+        gap: 8px !important;
+    }
+
+    .analytics-subtitle {
+        margin: -1px 0 4px !important;
+        font-size: 7px !important;
+    }
+
+    .svg-chart-wrap {
+        min-height: 165px !important;
+        height: 165px !important;
+        overflow: hidden !important;
+    }
+
+    .svg-chart-wrap svg {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 165px !important;
+    }
+
+    .vertical-bars {
+        min-height: 165px !important;
+        height: 165px !important;
+        padding: 10px 8px 4px 18px !important;
+        gap: 3px !important;
+        overflow: hidden !important;
+    }
+
+    .vertical-bar-item {
+        min-width: 0 !important;
+    }
+
+    .vertical-bar-value {
+        margin-bottom: 2px !important;
+        font-size: 7px !important;
+    }
+
+    .vertical-bar-column {
+        width: min(19px, 76%) !important;
+    }
+
+    .vertical-bar-label {
+        margin-top: 3px !important;
+        min-height: 18px !important;
+        font-size: 6px !important;
+    }
+
+    .performance-summary {
+        gap: 4px !important;
+        margin: 2px 0 5px !important;
+    }
+
+    .performance-summary-item {
+        padding: 4px 5px !important;
+        border-radius: 6px !important;
+        font-size: 6px !important;
+    }
+
+    .performance-summary-item strong {
+        font-size: 9px !important;
+    }
+
+    .real-map-stage {
+        min-height: 335px !important;
+        height: 335px !important;
+        aspect-ratio: auto !important;
+        border-radius: 9px !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+    }
+
+    .real-map-stage-v2::after {
+        left: 8px !important;
+        bottom: 6px !important;
+        padding: 3px 5px !important;
+        font-size: 6px !important;
+        box-shadow: none !important;
+    }
+
+    .footer {
+        margin-top: 6px !important;
+        font-size: 7px !important;
+    }
+
+    .footer-institucional {
+        padding: 6px 5px 0 !important;
+    }
+
+    .footer-credit {
+        font-size: 7px !important;
+    }
+
+    .footer-meta {
+        margin-top: 2px !important;
+        font-size: 6px !important;
     }
 }
 
@@ -7068,6 +7475,10 @@ body {
         </button>
     </div>
 
+    <div class="print-context" id="printContext" style="display:none;">
+        Recorte aplicado ao painel.
+    </div>
+
     <section class="filters">
         <div class="filter">
             <label for="periodFilter">Período</label>
@@ -7326,6 +7737,31 @@ const setorData = __SETOR_JSON__;
 const respData = __RESP_JSON__;
 const acompData = __ACOMP_JSON__;
 const configData = __CONFIG_JSON__;
+
+
+function textoOpcaoSelecionada(id) {
+    const el = document.getElementById(id);
+    if (!el || el.selectedIndex < 0) return "Todos";
+    const op = el.options[el.selectedIndex];
+    return op ? String(op.textContent || op.value || "Todos").trim() : "Todos";
+}
+
+function atualizarContextoImpressao() {
+    const destino = document.getElementById("printContext");
+    if (!destino) return;
+
+    const periodo = textoOpcaoSelecionada("periodFilter");
+    const greBtn = document.getElementById("greFilterButton");
+    const gre = greBtn ? String(greBtn.textContent || "Todas").trim() : "Todas";
+    const responsavel = textoOpcaoSelecionada("responsavelFilter");
+    const area = textoOpcaoSelecionada("areaFilter");
+
+    destino.textContent =
+        `Recorte aplicado — Período: ${periodo} | GRE: ${gre} | ` +
+        `Responsável Técnico: ${responsavel} | Área: ${area}`;
+}
+
+window.addEventListener("beforeprint", atualizarContextoImpressao);
 
 const DASHBOARD_STATE_KEY = "climatizacao_dashboard_filtros_v7";
 const PERIODOS_FIXOS = ["Todo o período"];
