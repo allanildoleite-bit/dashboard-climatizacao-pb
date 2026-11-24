@@ -9196,11 +9196,17 @@ def renderizar_quantitativo_ares():
       [data-testid="stTextInput"] input {
         color:#123A67 !important;
       }
-      button[kind="secondary"] p,button[data-testid="baseButton-secondary"] p {
-        color:#123A67 !important;
-      }
-      button[kind="primary"] p,button[data-testid="baseButton-primary"] p {
+      /* Quando esta aba está ativa, somente os quatro botões de navegação
+         usam st.button. Seletores diretos não dependem de :has() ou de pais
+         específicos, que variam entre versões do Streamlit. */
+      div[data-testid="stButton"] button,
+      div[data-testid="stButton"] button *,
+      button[data-testid="baseButton-secondary"],
+      button[data-testid="baseButton-secondary"] *,
+      button[data-testid="baseButton-primary"],
+      button[data-testid="baseButton-primary"] * {
         color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
       }
       div[data-testid="stMultiSelect"] [data-baseweb="select"],
       div[data-testid="stSelectbox"] [data-baseweb="select"],
