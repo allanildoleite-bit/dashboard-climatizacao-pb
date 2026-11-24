@@ -9246,6 +9246,36 @@ def renderizar_quantitativo_ares():
         f'<strong>{fmt(linha.Aparelhos)}</strong></div>'
         for linha in ranking.itertuples(index=False)
     ) or '<p class="ar-muted">Nenhum registro no recorte.</p>'
+    # As duas visualizações adicionais são complementares: concentração
+    # por escola e composição técnica das capacidades por regional.
+    top_escolas = (filtrado[filtrado["Total de aparelhos"] > 0]
+                   .sort_values("Total de aparelhos", ascending=False).head(10))
+    max_escola = max(int(top_escolas["Total de aparelhos"].max()), 1) if not top_escolas.empty else 1
+    barras_escolas = "".join(
+        f'<div class="ar-bar-row ar-school-row" title="{escape(str(linha["Unidade Escolar"]))}">'
+        f'<span class="ar-bar-label">{escape(str(linha["Unidade Escolar"]))}</span>'
+        f'<div class="ar-bar-track"><div class="ar-bar-fill" style="width:{100*int(linha["Total de aparelhos"])/max_escola:.2f}%;background:#0A6E9E"></div></div>'
+        f'<strong>{fmt(linha["Total de aparelhos"])}</strong></div>'
+        for _, linha in top_escolas.iterrows()
+    ) or '<p class="ar-muted">Sem escolas com demanda quantificada.</p>'
+    capacidade_gre = filtrado.groupby("GRE")[colunas_btu].sum()
+    mistura_gre = []
+    for gre, linha in capacidade_gre.iterrows():
+        soma_gre = int(linha.sum())
+        if soma_gre <= 0:
+            continue
+        segmentos = "".join(
+            f'<span title="{escape(col)}: {fmt(linha[col])}" style="width:{100*int(linha[col])/soma_gre:.3f}%;background:{cores[i]}"></span>'
+            for i, col in enumerate(colunas_btu) if int(linha[col]) > 0
+        )
+        mistura_gre.append(
+            f'<div class="ar-mix-row"><span>{escape(gre)}</span><div class="ar-mix-track">{segmentos}</div><b>{fmt(soma_gre)}</b></div>'
+        )
+    mistura_html = "".join(mistura_gre) or '<p class="ar-muted">Sem equipamentos no recorte.</p>'
+    legenda_mistura = "".join(
+        f'<span><i style="background:{cores[i]}"></i>{escape(nome)}</span>'
+        for i, nome in enumerate(colunas_btu)
+    )
     pct_suplan = (100 * qtd_suplan / total) if total else 0
     if total:
         fatia_suplan = f"conic-gradient(#EE962E 0 {pct_suplan:.4f}%,#146FC0 {pct_suplan:.4f}% 100%)"
@@ -9281,6 +9311,15 @@ def renderizar_quantitativo_ares():
     .ar-school-pill {{background:#F3F7FC;padding:10px 12px;border-radius:10px;font-size:12px;font-weight:700}}
     .ar-school-pill b {{font-size:18px;display:block;margin-top:3px;color:#123E74}}
     .ar-footnote {{font-size:11px;color:#6E8199;margin-top:10px}}
+    .ar-school-row {{grid-template-columns:minmax(125px,1.1fr) minmax(0,1fr) 45px}}
+    .ar-school-row .ar-bar-label {{overflow:hidden;text-overflow:ellipsis}}
+    .ar-mix-legend {{display:flex;gap:8px 15px;flex-wrap:wrap;margin:11px 0 18px}}
+    .ar-mix-legend span {{font-size:10px;color:#536A83;font-weight:750;white-space:nowrap}}
+    .ar-mix-legend i {{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}}
+    .ar-mix-row {{display:grid;grid-template-columns:54px minmax(0,1fr) 45px;gap:10px;align-items:center;margin:11px 0;font-size:11px;color:#405D79;font-weight:800}}
+    .ar-mix-row b {{text-align:right;font-size:11px}}
+    .ar-mix-track {{display:flex;height:15px;overflow:hidden;border-radius:5px;background:#EEF3F9}}
+    .ar-mix-track span {{height:100%;display:block}}
     @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}}}
     @media(max-width:440px){{.ar-kpis{{grid-template-columns:1fr 1fr}}.ar-kpi{{padding:12px}}.ar-kpi-value{{font-size:26px}}.ar-donut-row{{flex-direction:column}}}}
     </style>
@@ -9305,14 +9344,82 @@ def renderizar_quantitativo_ares():
         <div class="ar-box"><h3>Ranking de demanda por GRE</h3>
           <div class="ar-sub">Quantidade total de equipamentos necessários em cada regional</div>{barras_gre}</div>
       </div>
+      <div class="ar-grid">
+        <div class="ar-box"><h3>Escolas com maior demanda</h3>
+          <div class="ar-sub">10 unidades escolares com maior quantitativo de aparelhos</div>{barras_escolas}</div>
+        <div class="ar-box"><h3>Perfil de capacidades por GRE</h3>
+          <div class="ar-sub">Participação de cada faixa de BTU no total da regional</div>
+          <div class="ar-mix-legend">{legenda_mistura}</div>{mistura_html}</div>
+      </div>
     </div>"""
-    # Altura suficiente para exibir as 16 GREs sem uma segunda barra de rolagem.
-    components.html(html_ares, height=590 + max(180, len(ranking) * 38), scrolling=False)
+    altura_resumo = 1000 + len(ranking) * 38 + max(len(mistura_gre) * 31, 320)
+    components.html(html_ares, height=altura_resumo, scrolling=False)
 
     st.markdown("#### Detalhamento por unidade escolar")
     tabela = filtrado[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
                       + ["Total de aparelhos", "Situação do levantamento"]]
-    st.dataframe(tabela, hide_index=True, use_container_width=True, height=450)
+    tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação"})
+    tabela = tabela[["Unidade Escolar", "Município", "GRE", "SUPLAN"] + colunas_btu
+                    + ["Total de Ares", "Situação"]]
+    colunas_tabela = list(tabela.columns)
+    cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
+    linhas_html = []
+    for _, linha in tabela.iterrows():
+        celulas = []
+        for col in colunas_tabela:
+            valor = linha[col]
+            if col in colunas_btu or col == "Total de Ares":
+                conteudo = fmt(valor) if int(valor) else "—"
+                classe = ' class="ar-number"'
+            elif col == "SUPLAN":
+                conteudo = ('<span class="ar-supl-tag">SUPLAN</span>' if valor == "SIM"
+                            else '<span class="ar-other-tag">Demais</span>')
+                classe = ""
+            elif col == "Situação":
+                conteudo = ('<span class="ar-data-tag">Quantificado</span>' if valor == "Com quantitativo"
+                            else '<span class="ar-pending-tag">Não informado</span>')
+                classe = ""
+            else:
+                conteudo = escape(str(valor))
+                classe = ""
+            celulas.append(f"<td{classe} title=\"{escape(str(valor), quote=True)}\">{conteudo}</td>")
+        linhas_html.append("<tr>" + "".join(celulas) + "</tr>")
+    if not linhas_html:
+        linhas_html.append(f'<tr><td colspan="{len(colunas_tabela)}" style="text-align:center;padding:24px">Nenhuma escola encontrada para os filtros selecionados.</td></tr>')
+    html_tabela = f"""
+    <style>
+    * {{box-sizing:border-box}}
+    body {{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:white}}
+    .ar-table-frame {{border:1px solid #BDCDDF;border-radius:13px;overflow:hidden;box-shadow:0 5px 16px rgba(0,31,73,.08)}}
+    .ar-table-scroll {{overflow:auto;max-height:525px;scrollbar-color:#718096 #E9EFF6}}
+    .ar-school-table {{width:100%;min-width:1420px;table-layout:fixed;border-collapse:separate;border-spacing:0;color:#03427D;font-size:12px}}
+    .ar-school-table th {{position:sticky;top:0;z-index:2;text-align:left;background:#0A4C96;color:white;
+      padding:14px 10px;font-size:12px;font-weight:800;border-right:1px solid #3977B6;white-space:nowrap}}
+    .ar-school-table td {{height:45px;padding:11px 10px;border-right:1px solid #E0E7EF;
+      border-bottom:1px solid #C7D2DF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+    .ar-school-table tbody tr:nth-child(odd) {{background:#FFFFFF}}
+    .ar-school-table tbody tr:nth-child(even) {{background:#F0F5FB}}
+    .ar-school-table tbody tr:hover {{background:#DCEBFB}}
+    .ar-school-table th:first-child,.ar-school-table td:first-child {{width:300px}}
+    .ar-school-table th:nth-child(2),.ar-school-table td:nth-child(2) {{width:135px}}
+    .ar-school-table th:nth-child(3),.ar-school-table td:nth-child(3) {{width:78px}}
+    .ar-school-table th:nth-child(4),.ar-school-table td:nth-child(4) {{width:90px}}
+    .ar-school-table th:nth-child(n+5):nth-child(-n+10),.ar-school-table td:nth-child(n+5):nth-child(-n+10) {{width:94px;text-align:right}}
+    .ar-school-table th:nth-child(11),.ar-school-table td:nth-child(11) {{width:115px;text-align:right;font-weight:900}}
+    .ar-school-table th:nth-child(12),.ar-school-table td:nth-child(12) {{width:140px}}
+    .ar-number {{font-variant-numeric:tabular-nums}}
+    .ar-supl-tag,.ar-other-tag,.ar-data-tag,.ar-pending-tag {{display:inline-block;padding:5px 8px;border-radius:6px;font-size:10px;font-weight:800}}
+    .ar-supl-tag {{background:#FFF0DC;color:#955200}}
+    .ar-other-tag {{background:#E5F0FD;color:#155B9D}}
+    .ar-data-tag {{background:#E3F5EC;color:#187A4D}}
+    .ar-pending-tag {{background:#FFF2DE;color:#98610B}}
+    .ar-table-foot {{padding:10px 14px;font-size:11px;color:#5D748E;background:#F7FAFE;border-top:1px solid #DCE5EF}}
+    </style>
+    <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
+    <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Arraste horizontalmente para visualizar todas as capacidades</div></div>
+    """
+    components.html(html_tabela, height=585, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
