@@ -9177,8 +9177,20 @@ def renderizar_quantitativo_ares():
       div[data-testid="stWidgetLabel"] label,
       div[data-testid="stMultiSelect"] label,
       div[data-testid="stSelectbox"] label,
-      div[data-testid="stTextInput"] label {
+      div[data-testid="stTextInput"] label,
+      div[data-testid="stCaptionContainer"] p,
+      div[data-testid="stMarkdownContainer"] h1,
+      div[data-testid="stMarkdownContainer"] h2,
+      div[data-testid="stMarkdownContainer"] h3,
+      div[data-testid="stMarkdownContainer"] h4 {
         color:#123A67 !important;font-weight:800 !important;
+      }
+      div[data-testid="stCaptionContainer"] p {color:#5B718D !important;font-weight:600 !important;}
+      button[kind="secondary"] p,button[data-testid="baseButton-secondary"] p {
+        color:#123A67 !important;
+      }
+      button[kind="primary"] p,button[data-testid="baseButton-primary"] p {
+        color:#FFFFFF !important;
       }
       div[data-testid="stMultiSelect"] [data-baseweb="select"],
       div[data-testid="stSelectbox"] [data-baseweb="select"],
@@ -9193,6 +9205,7 @@ def renderizar_quantitativo_ares():
         color:#123A67 !important;
       }
       div[data-testid="stTextInput"] input::placeholder {color:#7289A2 !important;}
+      [data-baseweb="popover"] [role="option"] {color:#123A67 !important;}
     </style>""", unsafe_allow_html=True)
     st.markdown(f"""
     <div style="background:linear-gradient(115deg,#082B59,#075DA7);border-radius:19px;
@@ -9207,7 +9220,7 @@ def renderizar_quantitativo_ares():
         <div style="font-size:13px;color:#DBEDFC">Levantamento de equipamentos novos para escolas ainda não climatizadas</div>
       </div>
       <div style="background:white;padding:10px 13px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center">
-        <img src="{GEOBS_LOGO}" alt="GEOBS" style="width:155px;max-width:100%;height:auto;object-fit:contain"/>
+        <img src="{GEOBS_LOGO}" alt="GEOBS" style="width:78px;max-width:100%;max-height:72px;height:auto;object-fit:contain"/>
       </div>
     </div>""", unsafe_allow_html=True)
     try:
@@ -9231,14 +9244,14 @@ def renderizar_quantitativo_ares():
     with col_filtro2:
         municipio = st.selectbox("Município", ["Todos"] + municipios, key="ares_municipio")
     with col_filtro3:
-        filtro_suplan = st.selectbox("SUPLAN", ["Todas", "SUPLAN", "Demais escolas"], key="ares_suplan")
+        filtro_orgao = st.selectbox("Órgão", ["Todos", "SEE", "SUPLAN"], key="ares_orgao")
     with col_filtro4:
         busca = st.text_input("Buscar unidade escolar", placeholder="Digite parte do nome da escola", key="ares_busca")
     filtrado = base_gre.copy()
     if municipio != "Todos":
         filtrado = filtrado[filtrado["Município"] == municipio]
-    if filtro_suplan != "Todas":
-        filtrado = filtrado[filtrado["SUPLAN"] == ("SIM" if filtro_suplan == "SUPLAN" else "NÃO")]
+    if filtro_orgao != "Todos":
+        filtrado = filtrado[filtrado["SUPLAN"] == ("SIM" if filtro_orgao == "SUPLAN" else "NÃO")]
     if busca.strip():
         termo = normalizar_texto(busca)
         filtrado = filtrado[filtrado["Unidade Escolar"].map(normalizar_texto).str.contains(re.escape(termo), regex=True)]
@@ -9362,15 +9375,15 @@ def renderizar_quantitativo_ares():
       <div class="ar-grid">
         <div class="ar-box"><h3>Equipamentos por capacidade</h3>
           <div class="ar-sub">Quantidade de aparelhos por faixa de BTU</div>{barras_cap}</div>
-        <div class="ar-box"><h3>Distribuição por responsabilidade</h3>
-          <div class="ar-sub">SUPLAN e demais escolas, sem duplicação</div>
+        <div class="ar-box"><h3>Distribuição por órgão</h3>
+          <div class="ar-sub">SUPLAN e SEE, sem duplicação</div>
           <div class="ar-donut-row"><div class="ar-donut" role="img" aria-label="SUPLAN: {pct_suplan:.1f}% da demanda"></div>
             <div class="ar-leg">
               <div class="ar-leg-item"><span><i class="ar-leg-dot" style="background:#EE962E"></i>SUPLAN</span><strong>{fmt(qtd_suplan)}</strong></div>
-              <div class="ar-leg-item"><span><i class="ar-leg-dot" style="background:#146FC0"></i>Demais escolas</span><strong>{fmt(qtd_demais)}</strong></div>
+              <div class="ar-leg-item"><span><i class="ar-leg-dot" style="background:#146FC0"></i>SEE</span><strong>{fmt(qtd_demais)}</strong></div>
             </div></div>
           <div class="ar-school-count"><div class="ar-school-pill">Escolas SUPLAN<b>{fmt(len(suplan))}</b></div>
-            <div class="ar-school-pill">Demais escolas<b>{fmt(len(demais))}</b></div></div>
+            <div class="ar-school-pill">Escolas SEE<b>{fmt(len(demais))}</b></div></div>
           <div class="ar-footnote">Os aparelhos SUPLAN estão incluídos no total geral.</div>
         </div>
       </div>
@@ -9391,7 +9404,7 @@ def renderizar_quantitativo_ares():
 
     st.markdown('<div style="font-size:21px;font-weight:900;color:#123A67;margin:6px 0 8px">Detalhamento por unidade escolar</div>',
                 unsafe_allow_html=True)
-    st.caption("Os filtros superiores de GRE, município, SUPLAN e unidade escolar também são aplicados a esta tabela.")
+    st.caption("Os filtros superiores de GRE, município, órgão e unidade escolar também são aplicados a esta tabela.")
     tabela_filtro1, tabela_filtro2 = st.columns([1, 1])
     with tabela_filtro1:
         capacidade_tabela = st.selectbox("Capacidade de interesse (tabela)",
@@ -9407,8 +9420,9 @@ def renderizar_quantitativo_ares():
         tabela_base = tabela_base[tabela_base["Situação do levantamento"] == situacao_tabela]
     tabela = tabela_base[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
                       + ["Total de aparelhos", "Situação do levantamento"]]
-    tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação"})
-    tabela = tabela[["Unidade Escolar", "Município", "GRE", "SUPLAN"] + colunas_btu
+    tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação", "SUPLAN": "Órgão"})
+    tabela["Órgão"] = tabela["Órgão"].map({"SIM": "SUPLAN", "NÃO": "SEE"})
+    tabela = tabela[["Unidade Escolar", "Município", "GRE", "Órgão"] + colunas_btu
                     + ["Total de Ares", "Situação"]]
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
@@ -9420,9 +9434,9 @@ def renderizar_quantitativo_ares():
             if col in colunas_btu or col == "Total de Ares":
                 conteudo = fmt(valor) if int(valor) else "—"
                 classe = ' class="ar-number"'
-            elif col == "SUPLAN":
-                conteudo = ('<span class="ar-supl-tag">SUPLAN</span>' if valor == "SIM"
-                            else '<span class="ar-other-tag">Demais</span>')
+            elif col == "Órgão":
+                conteudo = ('<span class="ar-supl-tag">SUPLAN</span>' if valor == "SUPLAN"
+                            else '<span class="ar-other-tag">SEE</span>')
                 classe = ""
             elif col == "Situação":
                 conteudo = ('<span class="ar-data-tag">Quantificado</span>' if valor == "Com quantitativo"
