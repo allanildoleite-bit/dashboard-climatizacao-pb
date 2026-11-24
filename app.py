@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import base64
+import csv
 import os
 import json
 import re
 import time
 from datetime import datetime
 from html import escape
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -68,6 +69,10 @@ RESPONSAVEIS_ELETRICA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZ
 RESPONSAVEIS_CIVIL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7O0FhWM-9EjgJtLXGBZGzz2-naiSUSStFl9RlWfAmdVexXBYNIMN7JEgm2Bh1tFDy8288s7KfFPOe/pub?gid=2070229368&single=true&output=csv"
 ACOMPANHAMENTO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=1974682974&single=true&output=csv"
 CONFIG_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPdHzntUWsquHsYK9FnOdW9PCcmWL197EuG1WAAy7GVbe7SNUA/pub?gid=274650779&single=true&output=csv"
+
+# Levantamento de equipamentos NOVOS para escolas ainda não climatizadas.
+ARES_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-vAw24EN6Xie1aP8IcsjVQ44WG7p7gBo9RGyFJb-W1xmhKjebNudHJsXYUXwxLQ/pub?gid=1361509235&single=true&output=csv"
+ARES_CAPACIDADES = (12000, 18000, 24000, 30000, 36000, 60000)
 
 # Fontes da terceira aba: escolas + responsáveis técnicos por fontes separadas.
 CONSULTA_ESCOLAS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNuA-vcj5XUKy97lqwZYuuztSetij9zIXlNR2IaXv5XHfRLGrZ3q1AvNrN7jtNf7_063rBYxWh0G2h/pub?gid=1046000686&single=true&output=csv"
@@ -9093,6 +9098,156 @@ def montar_html(base: pd.DataFrame, setor: pd.DataFrame, responsaveis: pd.DataFr
     return html
 
 
+@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
+def carregar_quantitativo_ares() -> pd.DataFrame:
+    """Lê a aba GERAL publicada, sem contar linhas de títulos ou totais."""
+    requisicao = Request(
+        ARES_GERAL_URL,
+        headers={"User-Agent": "Mozilla/5.0", "Accept": "text/csv,text/plain,*/*"},
+    )
+    with urlopen(requisicao, timeout=35) as resposta:
+        conteudo = resposta.read().decode("utf-8-sig", errors="replace")
+    if conteudo.lstrip().lower().startswith(("<!doctype", "<html")):
+        raise ValueError("A planilha retornou HTML. Confira a publicação da aba GERAL em CSV.")
+
+    linhas = list(csv.reader(StringIO(conteudo)))
+    cabecalho_idx = next((i for i, linha in enumerate(linhas[:35]) if
+        any(normalizar_texto(c) == "gre" for c in linha)
+        and any("unidade escolar" in normalizar_texto(c) for c in linha)
+        and sum("btu" in normalizar_texto(c) for c in linha) >= 2), None)
+    if cabecalho_idx is None:
+        raise ValueError("Não foi possível identificar o cabeçalho GRE / Unidade Escolar / capacidades BTU.")
+
+    # As primeiras 11 colunas incluem a marcação SUPLAN. As seguintes
+    # pertencem ao quadro RESUMO POR GRE (à direita) e não são importadas.
+    cabecalho = [str(c).strip() for c in linhas[cabecalho_idx][:11]]
+    dados = pd.DataFrame(
+        [(linha[:11] + [""] * 11)[:11] for linha in linhas[cabecalho_idx + 1:]],
+        columns=cabecalho,
+    )
+    col_gre = achar_coluna(dados, ["GRE"], obrigatoria=True)
+    col_escola = achar_coluna(dados, ["Unidade Escolar"], obrigatoria=True)
+    col_municipio = achar_coluna(dados, ["Município", "Municipio"], obrigatoria=True)
+    col_suplan = achar_coluna(dados, ["SUPLAN"], obrigatoria=True)
+
+    saida = pd.DataFrame()
+    saida["GRE"] = dados[col_gre].map(padronizar_gre)
+    saida["Unidade Escolar"] = dados[col_escola].fillna("").astype(str).str.strip()
+    saida["Município"] = dados[col_municipio].fillna("").astype(str).str.strip()
+    saida["SUPLAN"] = dados[col_suplan].map(
+        lambda valor: "SIM" if normalizar_texto(valor) in ("sim", "s", "yes", "1") else "NÃO"
+    )
+    for capacidade in ARES_CAPACIDADES:
+        # Aceita grafias como "12.000 BTU", "12000 BTUS" e "12 000 BTU".
+        col = next((c for c in dados.columns if "btu" in normalizar_texto(c)
+                    and re.sub(r"\D", "", str(c).split("BTU")[0].split("btu")[0]) == str(capacidade)), None)
+        if col is None:
+            raise ValueError(f"A capacidade {capacidade:,} BTU não foi encontrada na planilha.")
+        def converter_quantidade(valor):
+            s = str(valor).strip().replace("\u00a0", "")
+            if not s or normalizar_texto(s) in ("nan", "none", "-"):
+                return 0
+            s = s.replace(".", "").replace(",", ".")
+            n = float(s)
+            if n < 0 or n != int(n):
+                raise ValueError(f"Quantidade inválida de aparelhos: {valor}")
+            return int(n)
+        saida[f"{capacidade:,}".replace(",", ".") + " BTU"] = dados[col].map(converter_quantidade)
+
+    # O levantamento contém linhas preparadas mas ainda vazias; estas não
+    # representam escolas concluídas nem demanda igual a zero.
+    saida = saida[saida["GRE"].notna() & saida["Unidade Escolar"].ne("")].copy()
+    saida = saida[~saida["Unidade Escolar"].map(normalizar_texto).str.contains(r"^(?:total|subtotal|geral)\b", regex=True)]
+    colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
+    saida["Total de aparelhos"] = saida[colunas_btu].sum(axis=1).astype(int)
+    # As linhas com identificação, mas sem quantidade, ficam sinalizadas
+    # separadamente, como levantamentos ainda sem demanda quantificada.
+    saida["Situação do levantamento"] = saida["Total de aparelhos"].apply(
+        lambda n: "Com quantitativo" if n > 0 else "Sem quantitativo informado"
+    )
+    return saida.reset_index(drop=True)
+
+
+def renderizar_quantitativo_ares():
+    """Quarta aba principal, com dados diretamente da planilha publicada."""
+    st.markdown("### Quantitativo de Ares")
+    st.caption("Demanda de aparelhos novos para escolas ainda não climatizadas · Fonte: levantamento GEOBS / SEE")
+    try:
+        dados = carregar_quantitativo_ares()
+    except Exception as erro:
+        st.error("Não foi possível atualizar o quantitativo de ares a partir da aba GERAL publicada.")
+        st.info(f"Verifique o acesso à planilha ou a estrutura das colunas. Detalhe: {erro}")
+        return
+
+    if dados.empty:
+        st.info("Não há escolas identificadas no levantamento publicado.")
+        return
+
+    colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
+    lista_gres = sorted(dados["GRE"].dropna().unique().tolist(), key=lambda g: int(re.search(r"\d+", g).group()))
+    col_filtro1, col_filtro2, col_filtro3, col_filtro4 = st.columns([1, 1, 1, 2])
+    with col_filtro1:
+        gres = st.multiselect("GRE", lista_gres, placeholder="Todas as GREs", key="ares_gre")
+    base_gre = dados[dados["GRE"].isin(gres)] if gres else dados
+    municipios = sorted(base_gre["Município"].dropna().unique().tolist())
+    with col_filtro2:
+        municipio = st.selectbox("Município", ["Todos"] + municipios, key="ares_municipio")
+    with col_filtro3:
+        filtro_suplan = st.selectbox("SUPLAN", ["Todas", "SUPLAN", "Demais escolas"], key="ares_suplan")
+    with col_filtro4:
+        busca = st.text_input("Buscar unidade escolar", placeholder="Digite parte do nome da escola", key="ares_busca")
+    filtrado = base_gre.copy()
+    if municipio != "Todos":
+        filtrado = filtrado[filtrado["Município"] == municipio]
+    if filtro_suplan != "Todas":
+        filtrado = filtrado[filtrado["SUPLAN"] == ("SIM" if filtro_suplan == "SUPLAN" else "NÃO")]
+    if busca.strip():
+        termo = normalizar_texto(busca)
+        filtrado = filtrado[filtrado["Unidade Escolar"].map(normalizar_texto).str.contains(re.escape(termo), regex=True)]
+
+    com_dados = filtrado[filtrado["Total de aparelhos"] > 0]
+    total = int(filtrado["Total de aparelhos"].sum())
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Aparelhos necessários", f"{total:,}".replace(",", "."))
+    m2.metric("Escolas com quantitativo", f"{len(com_dados):,}".replace(",", "."))
+    m3.metric("GREs contempladas", int(com_dados["GRE"].nunique()))
+    m4.metric("Escolas sem quantitativo", int((filtrado["Total de aparelhos"] == 0).sum()))
+
+    suplan = filtrado[filtrado["SUPLAN"] == "SIM"]
+    demais = filtrado[filtrado["SUPLAN"] == "NÃO"]
+    st.markdown("#### Responsabilidade pelo atendimento")
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("Escolas SUPLAN", int(len(suplan)))
+    s2.metric("Aparelhos SUPLAN", f"{int(suplan['Total de aparelhos'].sum()):,}".replace(",", "."))
+    s3.metric("Demais escolas", int(len(demais)))
+    s4.metric("Aparelhos das demais", f"{int(demais['Total de aparelhos'].sum()):,}".replace(",", "."))
+    st.caption("Os quantitativos SUPLAN estão incluídos no total geral. A classificação segue a coluna SUPLAN publicada (SIM ou sem marcação).")
+
+    st.markdown("#### Distribuição por capacidade")
+    capacidades = filtrado[colunas_btu].sum().astype(int)
+    st.bar_chart(capacidades.rename("Aparelhos"), color="#146FC0", horizontal=True)
+    st.dataframe(pd.DataFrame({"Capacidade": colunas_btu, "Quantidade": capacidades.values}),
+                 hide_index=True, use_container_width=True)
+
+    st.markdown("#### Demanda de equipamentos por GRE")
+    ranking = (filtrado.groupby("GRE", as_index=False)
+               .agg(Escolas=("Unidade Escolar", "count"), Aparelhos=("Total de aparelhos", "sum"))
+               .sort_values(["Aparelhos", "GRE"], ascending=[False, True]))
+    if not ranking.empty:
+        st.bar_chart(ranking.set_index("GRE")["Aparelhos"], color="#146FC0", horizontal=True)
+        st.dataframe(ranking, hide_index=True, use_container_width=True)
+
+    st.markdown("#### Quantitativo por unidade escolar")
+    tabela = filtrado[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
+                      + ["Total de aparelhos", "Situação do levantamento"]]
+    st.dataframe(tabela, hide_index=True, use_container_width=True, height=450)
+    st.download_button("Baixar levantamento filtrado (CSV)",
+                       data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                       file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
+                       key="baixar_ares")
+    st.caption("Campos vazios não são tratados como demanda inexistente. Os totais mostram apenas equipamentos quantificados na planilha publicada. Atualização em cache a cada 150 segundos.")
+
+
 def renderizar():
     try:
         base, setor, responsaveis, acompanhamento, config = carregar_dados()
@@ -9131,6 +9286,7 @@ def renderizar():
             "Dashboard",
             "Relatório para impressão",
             "Consulta por Unidade Escolar",
+            "Quantitativo de Ares",
         ]
         if st.session_state.get("pagina_principal") not in paginas_validas:
             st.session_state["pagina_principal"] = "Dashboard"
@@ -9140,7 +9296,7 @@ def renderizar():
 
         with st.container(border=True):
             st.markdown('<div class="nav-principal-anchor"></div>', unsafe_allow_html=True)
-            nav1, nav2, nav3 = st.columns([1.0, 1.35, 1.65], gap="small")
+            nav1, nav2, nav3, nav4 = st.columns([1.0, 1.35, 1.65, 1.2], gap="small")
 
             pagina_atual = st.session_state["pagina_principal"]
 
@@ -9174,6 +9330,16 @@ def renderizar():
                     on_click=_mudar_pagina_principal,
                     args=("Consulta por Unidade Escolar",),
                 )
+            with nav4:
+                st.button(
+                    "Quantitativo de Ares",
+                    key="nav_ares",
+                    icon=":material/ac_unit:",
+                    type="primary" if pagina_atual == "Quantitativo de Ares" else "secondary",
+                    use_container_width=True,
+                    on_click=_mudar_pagina_principal,
+                    args=("Quantitativo de Ares",),
+                )
 
         pagina = st.session_state["pagina_principal"]
 
@@ -9187,6 +9353,8 @@ def renderizar():
                 acompanhamento,
                 config,
             )
+        elif pagina == "Quantitativo de Ares":
+            renderizar_quantitativo_ares()
         else:
             renderizar_consulta_unidade_escolar()
     except Exception as erro:
