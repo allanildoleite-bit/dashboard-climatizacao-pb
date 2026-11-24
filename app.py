@@ -9170,8 +9170,12 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
 
 def renderizar_quantitativo_ares():
     """Quarta aba principal, com dados diretamente da planilha publicada."""
-    st.markdown("### Quantitativo de Ares")
-    st.caption("Demanda de aparelhos novos para escolas ainda não climatizadas · Fonte: levantamento GEOBS / SEE")
+    st.markdown("""<div style="background:linear-gradient(115deg,#082B59,#075DA7);border-radius:19px;
+      padding:24px 28px;color:white;box-shadow:0 8px 24px rgba(0,31,73,.16);margin-bottom:14px">
+      <div style="font-size:12px;letter-spacing:1.6px;font-weight:800;color:#C6E7FF">GEOBS · PLANEJAMENTO DE CLIMATIZAÇÃO</div>
+      <div style="font-size:29px;font-weight:900;margin:5px 0">Quantitativo de Ares</div>
+      <div style="font-size:14px;color:#DBEDFC">Levantamento de equipamentos novos para escolas ainda não climatizadas</div>
+    </div>""", unsafe_allow_html=True)
     try:
         dados = carregar_quantitativo_ares()
     except Exception as erro:
@@ -9207,37 +9211,105 @@ def renderizar_quantitativo_ares():
 
     com_dados = filtrado[filtrado["Total de aparelhos"] > 0]
     total = int(filtrado["Total de aparelhos"].sum())
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Aparelhos necessários", f"{total:,}".replace(",", "."))
-    m2.metric("Escolas com quantitativo", f"{len(com_dados):,}".replace(",", "."))
-    m3.metric("GREs contempladas", int(com_dados["GRE"].nunique()))
-    m4.metric("Escolas sem quantitativo", int((filtrado["Total de aparelhos"] == 0).sum()))
-
-    suplan = filtrado[filtrado["SUPLAN"] == "SIM"]
-    demais = filtrado[filtrado["SUPLAN"] == "NÃO"]
-    st.markdown("#### Responsabilidade pelo atendimento")
-    s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Escolas SUPLAN", int(len(suplan)))
-    s2.metric("Aparelhos SUPLAN", f"{int(suplan['Total de aparelhos'].sum()):,}".replace(",", "."))
-    s3.metric("Demais escolas", int(len(demais)))
-    s4.metric("Aparelhos das demais", f"{int(demais['Total de aparelhos'].sum()):,}".replace(",", "."))
-    st.caption("Os quantitativos SUPLAN estão incluídos no total geral. A classificação segue a coluna SUPLAN publicada (SIM ou sem marcação).")
-
-    st.markdown("#### Distribuição por capacidade")
     capacidades = filtrado[colunas_btu].sum().astype(int)
-    st.bar_chart(capacidades.rename("Aparelhos"), color="#146FC0", horizontal=True)
-    st.dataframe(pd.DataFrame({"Capacidade": colunas_btu, "Quantidade": capacidades.values}),
-                 hide_index=True, use_container_width=True)
-
-    st.markdown("#### Demanda de equipamentos por GRE")
     ranking = (filtrado.groupby("GRE", as_index=False)
                .agg(Escolas=("Unidade Escolar", "count"), Aparelhos=("Total de aparelhos", "sum"))
                .sort_values(["Aparelhos", "GRE"], ascending=[False, True]))
-    if not ranking.empty:
-        st.bar_chart(ranking.set_index("GRE")["Aparelhos"], color="#146FC0", horizontal=True)
-        st.dataframe(ranking, hide_index=True, use_container_width=True)
+    suplan = filtrado[filtrado["SUPLAN"] == "SIM"]
+    demais = filtrado[filtrado["SUPLAN"] == "NÃO"]
+    qtd_suplan = int(suplan["Total de aparelhos"].sum())
+    qtd_demais = int(demais["Total de aparelhos"].sum())
+    def fmt(valor):
+        return f"{int(valor):,}".replace(",", ".")
+    def card(titulo, valor, nota, cor):
+        return (f'<div class="ar-kpi" style="--ar-accent:{cor}"><div class="ar-kpi-name">{escape(titulo)}</div>'
+                f'<div class="ar-kpi-value">{fmt(valor)}</div><div class="ar-kpi-note">{escape(nota)}</div></div>')
 
-    st.markdown("#### Quantitativo por unidade escolar")
+    kpis = "".join([
+        card("APARELHOS NECESSÁRIOS", total, "Demanda total quantificada", "#146FC0"),
+        card("ESCOLAS LEVANTADAS", len(com_dados), "Com equipamentos informados", "#147D87"),
+        card("GRES CONTEMPLADAS", com_dados["GRE"].nunique(), "Regionais com demanda", "#3972B5"),
+        card("SEM QUANTITATIVO", (filtrado["Total de aparelhos"] == 0).sum(), "Registros sem demanda informada", "#D49A2B"),
+    ])
+    max_cap = max(int(capacidades.max()), 1)
+    cores = ["#0B376E", "#155EA5", "#2084C8", "#36A3CD", "#67BFCE", "#90D5DF"]
+    barras_cap = "".join(
+        f'<div class="ar-bar-row"><span class="ar-bar-label">{escape(nome)}</span>'
+        f'<div class="ar-bar-track"><div class="ar-bar-fill" style="width:{100*int(valor)/max_cap:.2f}%;background:{cores[i]}"></div></div>'
+        f'<strong>{fmt(valor)}</strong></div>'
+        for i, (nome, valor) in enumerate(capacidades.items())
+    )
+    max_gre = max(int(ranking["Aparelhos"].max()), 1) if not ranking.empty else 1
+    barras_gre = "".join(
+        f'<div class="ar-bar-row"><span class="ar-bar-label">{escape(str(linha.GRE))}</span>'
+        f'<div class="ar-bar-track"><div class="ar-bar-fill" style="width:{100*int(linha.Aparelhos)/max_gre:.2f}%;background:#146FC0"></div></div>'
+        f'<strong>{fmt(linha.Aparelhos)}</strong></div>'
+        for linha in ranking.itertuples(index=False)
+    ) or '<p class="ar-muted">Nenhum registro no recorte.</p>'
+    pct_suplan = (100 * qtd_suplan / total) if total else 0
+    if total:
+        fatia_suplan = f"conic-gradient(#EE962E 0 {pct_suplan:.4f}%,#146FC0 {pct_suplan:.4f}% 100%)"
+    else:
+        fatia_suplan = "#E3EAF3"
+
+    html_ares = f"""
+    <style>
+    .ar-panel-wrap {{font-family:'Segoe UI',Arial,sans-serif;color:#17365D}}
+    .ar-kpis {{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:12px 0 19px}}
+    .ar-kpi {{background:#fff;border:1px solid #DCE7F4;border-top:4px solid var(--ar-accent);border-radius:15px;
+      padding:17px 18px;box-shadow:0 5px 19px rgba(15,47,89,.07);min-width:0}}
+    .ar-kpi-name {{font-weight:800;color:#647992;font-size:11px;letter-spacing:.6px}}
+    .ar-kpi-value {{font-size:33px;font-weight:900;color:#082E62;line-height:1.25;margin:7px 0}}
+    .ar-kpi-note {{font-size:12px;color:#62738C;font-weight:600}}
+    .ar-grid {{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px}}
+    .ar-box {{background:#fff;border:1px solid #DCE7F4;border-radius:17px;padding:20px 21px;
+      box-shadow:0 5px 20px rgba(15,47,89,.06);min-width:0}}
+    .ar-box h3 {{font-size:18px;color:#092D5F;font-weight:850;margin:0 0 5px}}
+    .ar-sub {{font-size:12px;color:#6E8199;margin-bottom:18px}}
+    .ar-bar-row {{display:grid;grid-template-columns:95px minmax(0,1fr) 48px;align-items:center;gap:12px;margin:12px 0}}
+    .ar-bar-label {{font-size:12px;font-weight:750;color:#455D78;white-space:nowrap}}
+    .ar-bar-track {{height:13px;background:#ECF2F8;border-radius:999px;overflow:hidden}}
+    .ar-bar-fill {{height:100%;min-width:0;border-radius:999px}}
+    .ar-bar-row strong {{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:#17365D}}
+    .ar-donut-row {{display:flex;align-items:center;gap:22px;justify-content:center;margin:22px 0}}
+    .ar-donut {{width:146px;height:146px;flex:none;border-radius:50%;background:{fatia_suplan};position:relative}}
+    .ar-donut::after {{content:'';position:absolute;inset:31px;border-radius:50%;background:white}}
+    .ar-leg {{flex:1;min-width:0}}
+    .ar-leg-item {{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px}}
+    .ar-leg-dot {{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px}}
+    .ar-school-count {{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}}
+    .ar-school-pill {{background:#F3F7FC;padding:10px 12px;border-radius:10px;font-size:12px;font-weight:700}}
+    .ar-school-pill b {{font-size:18px;display:block;margin-top:3px;color:#123E74}}
+    .ar-footnote {{font-size:11px;color:#6E8199;margin-top:10px}}
+    @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}}}
+    @media(max-width:440px){{.ar-kpis{{grid-template-columns:1fr 1fr}}.ar-kpi{{padding:12px}}.ar-kpi-value{{font-size:26px}}.ar-donut-row{{flex-direction:column}}}}
+    </style>
+    <div class="ar-panel-wrap">
+      <div class="ar-kpis">{kpis}</div>
+      <div class="ar-grid">
+        <div class="ar-box"><h3>Equipamentos por capacidade</h3>
+          <div class="ar-sub">Quantidade de aparelhos por faixa de BTU</div>{barras_cap}</div>
+        <div class="ar-box"><h3>Distribuição por responsabilidade</h3>
+          <div class="ar-sub">SUPLAN e demais escolas, sem duplicação</div>
+          <div class="ar-donut-row"><div class="ar-donut" role="img" aria-label="SUPLAN: {pct_suplan:.1f}% da demanda"></div>
+            <div class="ar-leg">
+              <div class="ar-leg-item"><span><i class="ar-leg-dot" style="background:#EE962E"></i>SUPLAN</span><strong>{fmt(qtd_suplan)}</strong></div>
+              <div class="ar-leg-item"><span><i class="ar-leg-dot" style="background:#146FC0"></i>Demais escolas</span><strong>{fmt(qtd_demais)}</strong></div>
+            </div></div>
+          <div class="ar-school-count"><div class="ar-school-pill">Escolas SUPLAN<b>{fmt(len(suplan))}</b></div>
+            <div class="ar-school-pill">Demais escolas<b>{fmt(len(demais))}</b></div></div>
+          <div class="ar-footnote">Os aparelhos SUPLAN estão incluídos no total geral.</div>
+        </div>
+      </div>
+      <div class="ar-grid" style="grid-template-columns:1fr">
+        <div class="ar-box"><h3>Ranking de demanda por GRE</h3>
+          <div class="ar-sub">Quantidade total de equipamentos necessários em cada regional</div>{barras_gre}</div>
+      </div>
+    </div>"""
+    # Altura suficiente para exibir as 16 GREs sem uma segunda barra de rolagem.
+    components.html(html_ares, height=590 + max(180, len(ranking) * 38), scrolling=False)
+
+    st.markdown("#### Detalhamento por unidade escolar")
     tabela = filtrado[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
                       + ["Total de aparelhos", "Situação do levantamento"]]
     st.dataframe(tabela, hide_index=True, use_container_width=True, height=450)
