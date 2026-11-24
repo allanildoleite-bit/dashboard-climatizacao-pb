@@ -9186,6 +9186,16 @@ def renderizar_quantitativo_ares():
         color:#123A67 !important;font-weight:800 !important;
       }
       div[data-testid="stCaptionContainer"] p {color:#5B718D !important;font-weight:600 !important;}
+      div[data-testid="stWidgetLabel"] *,
+      div[data-testid="stMarkdownContainer"] > p,
+      div[data-testid="stMarkdownContainer"] > div > p {
+        color:#123A67 !important;
+      }
+      [data-testid="stSelectbox"] div[data-baseweb="select"] div,
+      [data-testid="stMultiSelect"] div[data-baseweb="select"] div,
+      [data-testid="stTextInput"] input {
+        color:#123A67 !important;
+      }
       button[kind="secondary"] p,button[data-testid="baseButton-secondary"] p {
         color:#123A67 !important;
       }
@@ -9207,22 +9217,47 @@ def renderizar_quantitativo_ares():
       div[data-testid="stTextInput"] input::placeholder {color:#7289A2 !important;}
       [data-baseweb="popover"] [role="option"] {color:#123A67 !important;}
     </style>""", unsafe_allow_html=True)
-    st.markdown(f"""
-    <div style="background:linear-gradient(115deg,#082B59,#075DA7);border-radius:19px;
-      padding:17px 22px;color:white;box-shadow:0 8px 24px rgba(0,31,73,.16);margin-bottom:14px;
-      display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
-      <div style="background:white;padding:10px 13px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center">
-        <img src="{GOV_LOGO}" alt="Governo da Paraíba" style="width:155px;max-width:100%;height:auto;object-fit:contain"/>
-      </div>
-      <div style="flex:1 1 310px;text-align:center;min-width:240px">
-        <div style="font-size:11px;letter-spacing:1.5px;font-weight:800;color:#C6E7FF">PLANEJAMENTO DE CLIMATIZAÇÃO ESCOLAR</div>
-        <div style="font-size:28px;font-weight:900;margin:6px 0">Quantitativo de Ares</div>
-        <div style="font-size:13px;color:#DBEDFC">Levantamento de equipamentos novos para escolas ainda não climatizadas</div>
-      </div>
-      <div style="background:white;padding:10px 13px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center">
-        <img src="{GEOBS_LOGO}" alt="GEOBS" style="width:78px;max-width:100%;max-height:72px;height:auto;object-fit:contain"/>
-      </div>
-    </div>""", unsafe_allow_html=True)
+    # Renderizar o cabeçalho em um componente HTML próprio evita que o tema
+    # global do Streamlit altere as cores, proporções ou logos do painel.
+    cabecalho_ares = f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
+    <style>
+      * {{box-sizing:border-box}}
+      body {{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:transparent}}
+      .cab {{height:146px;width:100%;padding:21px 24px;border-radius:24px;
+        display:grid;grid-template-columns:clamp(150px,17%,250px) minmax(0,1fr) clamp(150px,17%,250px);
+        gap:16px;align-items:center;
+        background:linear-gradient(105deg,#1B477B 0%,#0D386F 46%,#0056A4 100%);
+        box-shadow:0 6px 16px rgba(7,45,90,.16)}}
+      .logo {{height:89px;border-radius:19px;background:#F1F5FA;
+        display:flex;align-items:center;justify-content:center;padding:9px 14px;min-width:0}}
+      .logo img {{max-width:100%;max-height:76px;width:auto;height:auto;object-fit:contain}}
+      .logo.geobs img {{max-height:73px;max-width:83px}}
+      .txt {{text-align:center;min-width:0;color:white}}
+      .title {{color:#fff;font-weight:950;line-height:1.18;
+        font-size:clamp(17px,2.05vw,30px);text-transform:uppercase;letter-spacing:.1px}}
+      .subtitle {{color:#fff;font-size:clamp(11px,1.15vw,16px);
+        font-weight:800;margin-top:9px;line-height:1.25}}
+      @media(max-width:690px) {{
+        .cab {{height:154px;grid-template-columns:1fr 1fr;grid-template-rows:auto 48px;
+          padding:12px 16px;gap:8px 15px}}
+        .txt {{grid-column:1/-1;grid-row:1}}
+        .logo {{width:100%;max-width:185px;justify-self:center;height:48px}}
+        .logo img {{max-height:43px}}.logo.geobs img {{max-height:41px;max-width:48px}}
+        .title {{font-size:clamp(15px,3.3vw,22px)}}
+        .subtitle {{font-size:11px;margin-top:5px}}
+      }}
+    </style></head><body>
+      <header class="cab">
+        <div class="logo"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
+        <div class="txt"><div class="title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
+          <div class="subtitle">Secretaria de Estado da Educação - Gerência de Obras</div></div>
+        <div class="logo geobs"><img src="{GEOBS_LOGO}" alt="GEOBS - Gerência de Obras"></div>
+      </header>
+    </body></html>"""
+    components.html(cabecalho_ares, height=160, scrolling=False)
+    st.markdown('<div style="color:#123A67;font-size:23px;font-weight:900;'
+                'border-left:5px solid #146FC0;padding-left:13px;margin:2px 0 15px">'
+                'Quantitativo de Ares</div>', unsafe_allow_html=True)
     try:
         dados = carregar_quantitativo_ares()
     except Exception as erro:
