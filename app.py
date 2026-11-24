@@ -4272,6 +4272,12 @@ def _smooth_svg_path_from_points(points_str: str) -> str:
 
 def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
     dados = _dados_gre_resumo(base_filtrada)
+    # Índice de prioridade: 70% da proporção pendente e 30% do
+    # volume de pendências relativo à GRE com mais pendências no recorte.
+    max_pendentes = max(
+        (max(0.0, float(l.get("Total", 0) or 0) - float(l.get("Climatizadas", 0) or 0))
+         for _, l in dados.iterrows()), default=0.0
+    )
     por_numero = {}
     for _, linha in dados.iterrows():
         numero = re.search(r"\d+", str(linha.get("GRE", linha.get("GRE_Label", ""))))
@@ -4284,16 +4290,18 @@ def _relatorio_mapa_gre_html(base_filtrada: pd.DataFrame) -> str:
         total = float(linha.get("Total", 0) or 0) if linha is not None else 0.0
         clim = float(linha.get("Climatizadas", 0) or 0) if linha is not None else 0.0
         pct = clim / total if total > 0 else 0.0
+        pendentes = max(0.0, total - clim)
+        indice = .70 * (pendentes / total) + .30 * (pendentes / max_pendentes) if total > 0 and max_pendentes > 0 else 0.0
         if total <= 0:
             classe, cor, texto_cor = "no-data", "#AFC1D5", "#17365D"
-        elif pct >= .70:
-            classe, cor, texto_cor = "high", "#001F49", "#FFFFFF"
-        elif pct >= .50:
-            classe, cor, texto_cor = "medium", "#1F77D0", "#FFFFFF"
-        elif pct >= .30:
-            classe, cor, texto_cor = "low", "#F2A900", "#17365D"
-        else:
+        elif indice >= .70:
             classe, cor, texto_cor = "critical", "#EF4444", "#FFFFFF"
+        elif indice >= .50:
+            classe, cor, texto_cor = "high", "#F28C28", "#17365D"
+        elif indice >= .30:
+            classe, cor, texto_cor = "medium", "#1F77D0", "#FFFFFF"
+        else:
+            classe, cor, texto_cor = "low", "#25965A", "#FFFFFF"
         valor = f"{_fmt_num_br(clim)}/{_fmt_num_br(total)}" if total > 0 else "—"
         pct_txt = _fmt_pct_br(pct) if total > 0 else "—"
         x, y = GRE_LABEL_CENTERS[numero]
@@ -4746,13 +4754,13 @@ def _montar_html_relatorio_impressao(
             """
 
         blocos.append(f"""<div class="report-block compact figure-intro-block" data-keep-with-next="true">
-          <p class="print-narrative">A Figura {fig_mapa} apresenta a distribuição territorial do percentual de conclusão das ações de climatização entre as Gerências Regionais consideradas no recorte.</p>
+          <p class="print-narrative">A Figura {fig_mapa} apresenta a prioridade de intervenção por GRE, calculada por índice composto: 70% da proporção de escolas pendentes e 30% do volume de pendências relativo à GRE com maior quantidade pendente no recorte. Os rótulos mantêm o percentual de conclusão.</p>
         </div>""")
         blocos.append(f"""<div class="report-block figure-block">
           <div class="print-map-card">
-            <div class="print-figure-title">Figura {fig_mapa} – Distribuição Territorial da Climatização por GRE</div>
+            <div class="print-figure-title">Figura {fig_mapa} – Prioridade de Intervenção por GRE</div>
             {_relatorio_mapa_gre_html(base_filtrada)}
-            <div class="print-map-legend"><span><i style="background:var(--noite)"></i>Alto (≥ 70%)</span><span><i style="background:var(--medio)"></i>Médio (50% a 69%)</span><span><i style="background:#F6C431"></i>Baixo (30% a 49%)</span><span><i style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span></div>
+            <div class="print-map-legend"><span><i style="background:var(--vermelho)"></i>Crítica (índice ≥ 70%)</span><span><i style="background:#F28C28"></i>Alta (50% a &lt;70%)</span><span><i style="background:var(--medio)"></i>Média (30% a &lt;50%)</span><span><i style="background:#25965A"></i>Baixa (&lt;30%)</span><span><i style="background:#AFC1D5"></i>Sem dados</span></div>
             <div class="print-figure-source">Fonte: Gerência de Obras – SEE; limites territoriais elaborados a partir da malha municipal do IBGE.</div>
           </div>
         </div>""")
@@ -7053,9 +7061,9 @@ body {
 }
 .gre-real-svg { width:100%; height:100%; display:block; }
 .gre-region { stroke:#FFFFFF; stroke-width:2.2; stroke-linejoin:round; transition:opacity .22s ease,filter .22s ease; cursor:pointer; }
-.gre-region.high { fill:var(--azul-noite); }
+.gre-region.high { fill:#F28C28; }
 .gre-region.medium { fill:var(--azul-medio); }
-.gre-region.low { fill:var(--amarelo); }
+.gre-region.low { fill:#25965A; }
 .gre-region.critical { fill:var(--vermelho); }
 .gre-region.no-data { fill:#AFC1D5; }
 .gre-municipal-lines { fill:none; stroke:rgba(255,255,255,.55); stroke-width:.38; pointer-events:none; }
@@ -7707,15 +7715,15 @@ body {
                     <div class="panel-head">Mapa por GRE</div>
                     <div class="panel-body">
                         <div class="chart-title">Prioridade da climatização por GRE</div>
-                        <div class="analytics-subtitle">Mapa geográfico real das 16 GREs, construído com a malha municipal do IBGE</div>
+                        <div class="analytics-subtitle">Prioridade: 70% da proporção pendente + 30% do volume relativo de pendências (malha municipal do IBGE)</div>
                         <div class="performance-summary" id="grePerformanceSummary"></div>
                         <div class="real-map-stage real-map-stage-v2" id="grePerformanceGrid"></div>
                         <div class="map-legend">
-                            <span><i class="legend-square" style="background:var(--azul-noite)"></i>Alto (≥ 70%)</span>
-                            <span><i class="legend-square" style="background:var(--azul-medio)"></i>Médio (50% a 69%)</span>
-                            <span><i class="legend-square" style="background:var(--amarelo)"></i>Baixo (30% a 49%)</span>
-                            <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítico (&lt; 30%)</span>
-                            <span>Rótulos e indicadores seguem as cores de prioridade</span>
+                            <span><i class="legend-square" style="background:var(--vermelho)"></i>Crítica (índice ≥ 70%)</span>
+                            <span><i class="legend-square" style="background:#F28C28"></i>Alta (50% a &lt;70%)</span>
+                            <span><i class="legend-square" style="background:var(--azul-medio)"></i>Média (30% a &lt;50%)</span>
+                            <span><i class="legend-square" style="background:#25965A"></i>Baixa (&lt;30%)</span>
+                            <span>Os rótulos mostram escolas climatizadas/total e percentual de conclusão</span>
                         </div>
                     </div>
                 </div>
@@ -8539,15 +8547,17 @@ const GRE_SEDES = {"1": "João Pessoa", "2": "Guarabira", "3": "Campina Grande",
 const GRE_LABEL_CUSTOM = {"1": {"num": 10.8, "city": 7.2, "value": 9.0}, "8": {"city": 7.8}, "11": {"city": 7.8}, "14": {"num": 10.8, "city": 7.2, "value": 9.0}, "16": {"num": 10.8, "city": 7.0, "value": 8.9}};
 
 
-function performanceClass(row) {
+function performanceClass(row, maxPending = 0) {
     const total = Number(row?.Total || 0);
     const clim = Number(row?.Climatizadas || 0);
     if (total <= 0) return {key:"no-data", color:"#AFC1D5", name:"Sem dados", pct:0};
     const pct = Math.max(0, Math.min(1, clim / total));
-    if (pct >= .70) return {key:"high", color:"#001F49", name:"Alto", pct};
-    if (pct >= .50) return {key:"medium", color:"#1F77D0", name:"Médio", pct};
-    if (pct >= .30) return {key:"low", color:"#F2A900", name:"Baixo", pct};
-    return {key:"critical", color:"#EF4444", name:"Crítico", pct};
+    const pending = Math.max(0, total - clim);
+    const score = .70 * (pending / total) + .30 * (maxPending > 0 ? pending / maxPending : 0);
+    if (score >= .70) return {key:"critical", color:"#EF4444", name:"Crítica", pct, score};
+    if (score >= .50) return {key:"high", color:"#F28C28", name:"Alta", pct, score};
+    if (score >= .30) return {key:"medium", color:"#1F77D0", name:"Média", pct, score};
+    return {key:"low", color:"#25965A", name:"Baixa", pct, score};
 }
 
 function renderGrePerformance(rows, selectedGres = []) {
@@ -8557,21 +8567,22 @@ function renderGrePerformance(rows, selectedGres = []) {
     const selectedSet = new Set(Array.isArray(selectedGres) ? selectedGres : []);
     const hasSelection = selectedSet.size > 0;
     const counts = {high:0,medium:0,low:0,critical:0};
+    const maxPending = Math.max(0, ...rows.map(r => Math.max(0, Number(r.Total || 0) - Number(r.Climatizadas || 0))));
     const byNum = {};
     rows.forEach(row => {
         const match=String(row.GRE||row.GRE_Label||"").match(/(\d+)/);
         if(match) byNum[Number(match[1])]=row;
-        const perf=performanceClass(row);
+        const perf=performanceClass(row,maxPending);
         if(Object.prototype.hasOwnProperty.call(counts,perf.key)) counts[perf.key]+=1;
     });
     summary.innerHTML=`
-      <div class="performance-summary-item"><span><i style="background:var(--azul-noite)"></i>Alto</span><strong>${fmtNum(counts.high)}</strong></div>
+      <div class="performance-summary-item"><span><i style="background:#F28C28"></i>Alta</span><strong>${fmtNum(counts.high)}</strong></div>
       <div class="performance-summary-item"><span><i style="background:var(--azul-medio)"></i>Médio</span><strong>${fmtNum(counts.medium)}</strong></div>
-      <div class="performance-summary-item"><span><i style="background:var(--amarelo)"></i>Baixo</span><strong>${fmtNum(counts.low)}</strong></div>
+      <div class="performance-summary-item"><span><i style="background:#25965A"></i>Baixa</span><strong>${fmtNum(counts.low)}</strong></div>
       <div class="performance-summary-item"><span><i style="background:var(--vermelho)"></i>Crítico</span><strong>${fmtNum(counts.critical)}</strong></div>`;
     const regions=[]; const labels=[];
     Object.keys(GRE_REGION_PATHS).sort((a,b)=>Number(a)-Number(b)).forEach(numTxt=>{
-        const num=Number(numTxt), row=byNum[num]||null, perf=performanceClass(row);
+        const num=Number(numTxt), row=byNum[num]||null, perf=performanceClass(row,maxPending);
         const total=Number(row?.Total||0), clim=Number(row?.Climatizadas||0);
         const greValue=row?.GRE||`${num}ª GRE`;
         const selected=selectedSet.has(greValue);
@@ -8583,8 +8594,8 @@ function renderGrePerformance(rows, selectedGres = []) {
         const lx=x, ly=y;
         const fsNum=cfg.num||13.2, fsCity=cfg.city||8.9, fsValue=cfg.value||11.0;
         const fsPct=Math.max(7.2, fsValue-2.2);
-        const tone=(perf.key==='low'||perf.key==='no-data')?'dark':'light';
-        regions.push(`<path class="gre-region ${perf.key} ${stateClass}" data-gre="${num}" d="${GRE_REGION_PATHS[numTxt]}"><title>${num}ª GRE — ${GRE_SEDES[numTxt]}: ${value} (${pctValue})</title></path>`);
+        const tone=(perf.key==='low'||perf.key==='high'||perf.key==='no-data')?'dark':'light';
+        regions.push(`<path class="gre-region ${perf.key} ${stateClass}" data-gre="${num}" d="${GRE_REGION_PATHS[numTxt]}"><title>${num}ª GRE — ${GRE_SEDES[numTxt]}: ${value} (${pctValue} concluído); prioridade ${perf.name}${total>0 ? `; índice ${(perf.score*100).toFixed(1)}%` : ''}</title></path>`);
         labels.push(`<g class="gre-map-label ${tone} ${stateClass}"><text class="gre-num" x="${lx}" y="${ly-11}" text-anchor="middle" style="font-size:${fsNum}px">${num}ª GRE</text><text class="gre-city" x="${lx}" y="${ly-1}" text-anchor="middle" style="font-size:${fsCity}px">${escapeHtml(GRE_SEDES[numTxt]||'')}</text><text class="gre-value" x="${lx}" y="${ly+11}" text-anchor="middle" style="font-size:${fsValue}px">${value}</text><text class="gre-pct" x="${lx}" y="${ly+21}" text-anchor="middle" style="font-size:${fsPct}px">${pctValue}</text></g>`);
     });
     target.innerHTML=`<svg class="gre-real-svg" viewBox="${GRE_MAP_VIEWBOX}" role="img" aria-label="Mapa geográfico real das GREs da Paraíba"><path d="${GRE_STATE_PATH}" fill="#F4F7FA" stroke="#7E8B99" stroke-width="1.8"/>${regions.join('')}<path class="gre-municipal-lines" d="${GRE_MUNICIPAL_PATHS}"/>${labels.join('')}</svg>`;
