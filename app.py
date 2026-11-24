@@ -9170,11 +9170,45 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
 
 def renderizar_quantitativo_ares():
     """Quarta aba principal, com dados diretamente da planilha publicada."""
-    st.markdown("""<div style="background:linear-gradient(115deg,#082B59,#075DA7);border-radius:19px;
-      padding:24px 28px;color:white;box-shadow:0 8px 24px rgba(0,31,73,.16);margin-bottom:14px">
-      <div style="font-size:12px;letter-spacing:1.6px;font-weight:800;color:#C6E7FF">GEOBS · PLANEJAMENTO DE CLIMATIZAÇÃO</div>
-      <div style="font-size:29px;font-weight:900;margin:5px 0">Quantitativo de Ares</div>
-      <div style="font-size:14px;color:#DBEDFC">Levantamento de equipamentos novos para escolas ainda não climatizadas</div>
+    st.markdown("""
+    <style>
+      /* Os rótulos do Streamlit precisam contrastar com o fundo branco. */
+      div[data-testid="stWidgetLabel"] p,
+      div[data-testid="stWidgetLabel"] label,
+      div[data-testid="stMultiSelect"] label,
+      div[data-testid="stSelectbox"] label,
+      div[data-testid="stTextInput"] label {
+        color:#123A67 !important;font-weight:800 !important;
+      }
+      div[data-testid="stMultiSelect"] [data-baseweb="select"],
+      div[data-testid="stSelectbox"] [data-baseweb="select"],
+      div[data-testid="stTextInput"] input {
+        background:#FFFFFF !important;color:#123A67 !important;
+        border-color:#C8D8EB !important;
+      }
+      div[data-testid="stMultiSelect"] [data-baseweb="select"] input,
+      div[data-testid="stSelectbox"] [data-baseweb="select"] input,
+      div[data-testid="stSelectbox"] [data-baseweb="select"] span,
+      div[data-testid="stMultiSelect"] [data-baseweb="select"] span {
+        color:#123A67 !important;
+      }
+      div[data-testid="stTextInput"] input::placeholder {color:#7289A2 !important;}
+    </style>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="background:linear-gradient(115deg,#082B59,#075DA7);border-radius:19px;
+      padding:17px 22px;color:white;box-shadow:0 8px 24px rgba(0,31,73,.16);margin-bottom:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+      <div style="background:white;padding:10px 13px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center">
+        <img src="{GOV_LOGO}" alt="Governo da Paraíba" style="width:155px;max-width:100%;height:auto;object-fit:contain"/>
+      </div>
+      <div style="flex:1 1 310px;text-align:center;min-width:240px">
+        <div style="font-size:11px;letter-spacing:1.5px;font-weight:800;color:#C6E7FF">PLANEJAMENTO DE CLIMATIZAÇÃO ESCOLAR</div>
+        <div style="font-size:28px;font-weight:900;margin:6px 0">Quantitativo de Ares</div>
+        <div style="font-size:13px;color:#DBEDFC">Levantamento de equipamentos novos para escolas ainda não climatizadas</div>
+      </div>
+      <div style="background:white;padding:10px 13px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center">
+        <img src="{GEOBS_LOGO}" alt="GEOBS" style="width:155px;max-width:100%;height:auto;object-fit:contain"/>
+      </div>
     </div>""", unsafe_allow_html=True)
     try:
         dados = carregar_quantitativo_ares()
@@ -9355,8 +9389,23 @@ def renderizar_quantitativo_ares():
     altura_resumo = 1000 + len(ranking) * 38 + max(len(mistura_gre) * 31, 320)
     components.html(html_ares, height=altura_resumo, scrolling=False)
 
-    st.markdown("#### Detalhamento por unidade escolar")
-    tabela = filtrado[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
+    st.markdown('<div style="font-size:21px;font-weight:900;color:#123A67;margin:6px 0 8px">Detalhamento por unidade escolar</div>',
+                unsafe_allow_html=True)
+    st.caption("Os filtros superiores de GRE, município, SUPLAN e unidade escolar também são aplicados a esta tabela.")
+    tabela_filtro1, tabela_filtro2 = st.columns([1, 1])
+    with tabela_filtro1:
+        capacidade_tabela = st.selectbox("Capacidade de interesse (tabela)",
+                                        ["Todas as capacidades"] + colunas_btu, key="ares_tabela_capacidade")
+    with tabela_filtro2:
+        situacao_tabela = st.selectbox("Situação do levantamento (tabela)",
+                                     ["Todas", "Com quantitativo", "Sem quantitativo informado"],
+                                     key="ares_tabela_situacao")
+    tabela_base = filtrado.copy()
+    if capacidade_tabela != "Todas as capacidades":
+        tabela_base = tabela_base[tabela_base[capacidade_tabela] > 0]
+    if situacao_tabela != "Todas":
+        tabela_base = tabela_base[tabela_base["Situação do levantamento"] == situacao_tabela]
+    tabela = tabela_base[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
                       + ["Total de aparelhos", "Situação do levantamento"]]
     tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação"})
     tabela = tabela[["Unidade Escolar", "Município", "GRE", "SUPLAN"] + colunas_btu
