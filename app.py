@@ -9137,27 +9137,42 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
     saida["SUPLAN"] = dados[col_suplan].map(
         lambda valor: "SIM" if normalizar_texto(valor) in ("sim", "s", "yes", "1") else "NÃO"
     )
+    # Descartar linhas vazias e linhas-resumo ANTES da conversão. A aba
+    # publicada tem áreas auxiliares, que podem conter textos não numéricos.
+    validas = saida["GRE"].notna() & saida["Unidade Escolar"].ne("")
+    validas &= ~saida["Unidade Escolar"].map(normalizar_texto).str.contains(
+        r"^(?:total|subtotal|geral)\b", regex=True
+    )
+    dados = dados.loc[validas].copy().reset_index(drop=True)
+    saida = saida.loc[validas].copy().reset_index(drop=True)
+    problemas = [[] for _ in range(len(saida))]
     for capacidade in ARES_CAPACIDADES:
         # Aceita grafias como "12.000 BTU", "12000 BTUS" e "12 000 BTU".
         col = next((c for c in dados.columns if "btu" in normalizar_texto(c)
                     and re.sub(r"\D", "", str(c).split("BTU")[0].split("btu")[0]) == str(capacidade)), None)
         if col is None:
             raise ValueError(f"A capacidade {capacidade:,} BTU não foi encontrada na planilha.")
-        def converter_quantidade(valor):
+        def converter_quantidade(valor, indice):
             s = str(valor).strip().replace("\u00a0", "")
             if not s or normalizar_texto(s) in ("nan", "none", "-"):
                 return 0
-            s = s.replace(".", "").replace(",", ".")
-            n = float(s)
-            if n < 0 or n != int(n):
-                raise ValueError(f"Quantidade inválida de aparelhos: {valor}")
-            return int(n)
-        saida[f"{capacidade:,}".replace(",", ".") + " BTU"] = dados[col].map(converter_quantidade)
+            try:
+                n = float(s.replace(".", "").replace(",", "."))
+                if n >= 0 and n == int(n):
+                    return int(n)
+            except (ValueError, OverflowError):
+                pass
+            # Não derrubar o painel por erro de digitação. O valor não é
+            # contabilizado e a célula é indicada para revisão no painel.
+            problemas[indice].append(f"{capacidade:,} BTU: {s}".replace(",", "."))
+            return 0
+        nome_capacidade = f"{capacidade:,}".replace(",", ".") + " BTU"
+        saida[nome_capacidade] = [converter_quantidade(valor, i)
+                                  for i, valor in enumerate(dados[col])]
 
     # O levantamento contém linhas preparadas mas ainda vazias; estas não
     # representam escolas concluídas nem demanda igual a zero.
-    saida = saida[saida["GRE"].notna() & saida["Unidade Escolar"].ne("")].copy()
-    saida = saida[~saida["Unidade Escolar"].map(normalizar_texto).str.contains(r"^(?:total|subtotal|geral)\b", regex=True)]
+    saida["Inconsistências"] = ["; ".join(lista) for lista in problemas]
     colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
     saida["Total de aparelhos"] = saida[colunas_btu].sum(axis=1).astype(int)
     # As linhas com identificação, mas sem quantidade, ficam sinalizadas
@@ -9165,6 +9180,7 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
     saida["Situação do levantamento"] = saida["Total de aparelhos"].apply(
         lambda n: "Com quantitativo" if n > 0 else "Sem quantitativo informado"
     )
+    saida.loc[saida["Inconsistências"].ne(""), "Situação do levantamento"] = "Revisar valores"
     return saida.reset_index(drop=True)
 
 
@@ -9186,10 +9202,14 @@ def renderizar_quantitativo_ares():
         color:#123A67 !important;font-weight:800 !important;
       }
       div[data-testid="stCaptionContainer"] p {color:#5B718D !important;font-weight:600 !important;}
-      div[data-testid="stWidgetLabel"] *,
-      div[data-testid="stMarkdownContainer"] > p,
-      div[data-testid="stMarkdownContainer"] > div > p {
+      div[data-testid="stWidgetLabel"] * {
         color:#123A67 !important;
+      }
+      /* Alertas têm fundo escuro neste tema: preservar texto legível. */
+      div[data-testid="stAlert"] p,
+      div[data-testid="stAlert"] span {
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
       }
       [data-testid="stSelectbox"] div[data-baseweb="select"] div,
       [data-testid="stMultiSelect"] div[data-baseweb="select"] div,
@@ -9255,7 +9275,7 @@ def renderizar_quantitativo_ares():
     </style></head><body>
       <header class="cab">
         <div class="logo"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
-        <div class="txt"><div class="title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
+        <div class="txt"><div class="title">Levantamento de Equipamentos para Climatização Escolar na Paraíba</div>
           <div class="subtitle">Secretaria de Estado da Educação - Gerência de Obras</div></div>
         <div class="logo geobs"><img src="{GEOBS_LOGO}" alt="GEOBS - Gerência de Obras"></div>
       </header>
@@ -9274,6 +9294,19 @@ def renderizar_quantitativo_ares():
     if dados.empty:
         st.info("Não há escolas identificadas no levantamento publicado.")
         return
+
+    registros_invalidos = dados[dados["Inconsistências"].ne("")]
+    if not registros_invalidos.empty:
+        st.warning(
+            f"Foram encontradas {len(registros_invalidos)} escola(s) com valores "
+            "não numéricos ou inválidos na planilha. Esses valores não entram "
+            "na soma até serem corrigidos."
+        )
+        with st.expander("Consultar células que precisam de revisão"):
+            st.dataframe(
+                registros_invalidos[["GRE", "Município", "Unidade Escolar", "Inconsistências"]],
+                hide_index=True, use_container_width=True,
+            )
 
     colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
     lista_gres = sorted(dados["GRE"].dropna().unique().tolist(), key=lambda g: int(re.search(r"\d+", g).group()))
@@ -9317,7 +9350,8 @@ def renderizar_quantitativo_ares():
         card("APARELHOS NECESSÁRIOS", total, "Demanda total quantificada", "#146FC0"),
         card("ESCOLAS LEVANTADAS", len(com_dados), "Com equipamentos informados", "#147D87"),
         card("GRES CONTEMPLADAS", com_dados["GRE"].nunique(), "Regionais com demanda", "#3972B5"),
-        card("SEM QUANTITATIVO", (filtrado["Total de aparelhos"] == 0).sum(), "Registros sem demanda informada", "#D49A2B"),
+        card("SEM QUANTITATIVO", ((filtrado["Total de aparelhos"] == 0) &
+             filtrado["Inconsistências"].eq("")).sum(), "Registros sem demanda informada", "#D49A2B"),
     ])
     max_cap = max(int(capacidades.max()), 1)
     cores = ["#0B376E", "#155EA5", "#2084C8", "#36A3CD", "#67BFCE", "#90D5DF"]
@@ -9364,6 +9398,81 @@ def renderizar_quantitativo_ares():
         f'<span><i style="background:{cores[i]}"></i>{escape(nome)}</span>'
         for i, nome in enumerate(colunas_btu)
     )
+    # Análises que não repetem o ranking por GRE nem o perfil por capacidade:
+    # distribuição das necessidades, concentração da demanda e porte técnico.
+    escolas_positivas = filtrado[filtrado["Total de aparelhos"] > 0].copy()
+    intervalos = [(1, 10), (11, 20), (21, 30), (31, 50), (51, 100)]
+    frequencias = [int(escolas_positivas["Total de aparelhos"].between(a, b).sum())
+                   for a, b in intervalos]
+    frequencias.append(int((escolas_positivas["Total de aparelhos"] > 100).sum()))
+    rotulos_faixa = ["1–10", "11–20", "21–30", "31–50", "51–100", ">100"]
+    max_freq = max(frequencias + [1])
+    barras_frequencia = "".join(
+        f'<div class="ar-hist-col" title="{escape(rotulo)} aparelhos: {fmt(qtd)} escolas">'
+        f'<b>{fmt(qtd)}</b><div class="ar-hist-track"><div class="ar-hist-fill" '
+        f'style="height:{100 * qtd / max_freq:.1f}%"></div></div><span>{escape(rotulo)}</span></div>'
+        for rotulo, qtd in zip(rotulos_faixa, frequencias)
+    )
+
+    ordenadas = escolas_positivas.sort_values("Total de aparelhos", ascending=False)
+    somas_acumuladas = ordenadas["Total de aparelhos"].cumsum()
+    demanda_total = int(ordenadas["Total de aparelhos"].sum())
+    numero_escolas = len(ordenadas)
+    indice_80 = int((somas_acumuladas < 0.8 * demanda_total).sum()) + 1 if demanda_total else 0
+    proporcao_80 = 100 * indice_80 / numero_escolas if numero_escolas else 0
+    # Coordenadas SVG permitem mostrar uma curva acumulada sem bibliotecas JS.
+    pontos_pareto = ["38,176"]
+    if demanda_total:
+        pontos_pareto.extend(
+            f"{38 + 460 * i / numero_escolas:.2f},{176 - 145 * int(soma) / demanda_total:.2f}"
+            for i, soma in enumerate(somas_acumuladas, start=1)
+        )
+    curva_pareto = " ".join(pontos_pareto)
+    linha_80_x = 38 + 460 * indice_80 / numero_escolas if numero_escolas else 38
+    grafico_pareto = (
+        '<svg class="ar-svg" viewBox="0 0 530 215" role="img" '
+        'aria-label="Curva acumulada de aparelhos por escolas ordenadas por demanda">'
+        '<line x1="38" y1="31" x2="38" y2="176" stroke="#BACDE1"/>'
+        '<line x1="38" y1="176" x2="498" y2="176" stroke="#BACDE1"/>'
+        '<line x1="38" y1="60" x2="498" y2="60" stroke="#D8E4F2" stroke-dasharray="5 5"/>'
+        '<text x="3" y="64" fill="#55708E" font-size="11">80%</text>'
+        f'<polyline points="{curva_pareto}" fill="none" stroke="#146FC0" stroke-width="3" '
+        'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'<line x1="{linha_80_x:.2f}" y1="60" x2="{linha_80_x:.2f}" y2="176" '
+        'stroke="#EE962E" stroke-width="2" stroke-dasharray="5 4"/>'
+        '<text x="38" y="194" fill="#55708E" font-size="11">0</text>'
+        '<text x="474" y="194" fill="#55708E" font-size="11">100%</text>'
+        '<text x="183" y="211" fill="#55708E" font-size="11">Escolas acumuladas (%)</text>'
+        '</svg>'
+    )
+
+    # Potência nominal somada, não estimativa de consumo elétrico em kWh.
+    capacidades_numericas = dict(zip(colunas_btu, ARES_CAPACIDADES))
+    escolas_positivas["Capacidade nominal BTU/h"] = sum(
+        escolas_positivas[nome] * valor for nome, valor in capacidades_numericas.items()
+    )
+    max_aparelhos = max(int(escolas_positivas["Total de aparelhos"].max()) if numero_escolas else 0, 1)
+    max_btu = max(int(escolas_positivas["Capacidade nominal BTU/h"].max()) if numero_escolas else 0, 1)
+    pontos_dispersao = "".join(
+        f'<circle cx="{44 + 450 * int(linha["Total de aparelhos"]) / max_aparelhos:.2f}" '
+        f'cy="{178 - 145 * int(linha["Capacidade nominal BTU/h"]) / max_btu:.2f}" '
+        f'r="4" fill="{("#EE962E" if linha["SUPLAN"] == "SIM" else "#146FC0")}" '
+        f'fill-opacity=".73"><title>{escape(str(linha["Unidade Escolar"]))}: '
+        f'{fmt(linha["Total de aparelhos"])} aparelhos; '
+        f'{fmt(linha["Capacidade nominal BTU/h"])} BTU/h</title></circle>'
+        for _, linha in escolas_positivas.iterrows()
+    )
+    grafico_dispersao = (
+        '<svg class="ar-svg" viewBox="0 0 530 215" role="img" '
+        'aria-label="Relação entre aparelhos e capacidade nominal em BTU por hora">'
+        '<line x1="44" y1="33" x2="44" y2="178" stroke="#BACDE1"/>'
+        '<line x1="44" y1="178" x2="494" y2="178" stroke="#BACDE1"/>'
+        f'{pontos_dispersao}'
+        f'<text x="5" y="38" fill="#55708E" font-size="10">{fmt(max_btu)}</text>'
+        f'<text x="470" y="194" fill="#55708E" font-size="10">{fmt(max_aparelhos)}</text>'
+        '<text x="197" y="211" fill="#55708E" font-size="11">Aparelhos por escola</text>'
+        '</svg>'
+    )
     pct_suplan = (100 * qtd_suplan / total) if total else 0
     if total:
         fatia_suplan = f"conic-gradient(#EE962E 0 {pct_suplan:.4f}%,#146FC0 {pct_suplan:.4f}% 100%)"
@@ -9408,6 +9517,14 @@ def renderizar_quantitativo_ares():
     .ar-mix-row b {{text-align:right;font-size:11px}}
     .ar-mix-track {{display:flex;height:15px;overflow:hidden;border-radius:5px;background:#EEF3F9}}
     .ar-mix-track span {{height:100%;display:block}}
+    .ar-hist {{display:flex;align-items:end;justify-content:space-between;gap:9px;min-height:218px}}
+    .ar-hist-col {{display:flex;align-items:center;flex-direction:column;flex:1;min-width:0;gap:7px;color:#345B82;font-size:11px;font-weight:800}}
+    .ar-hist-col b {{color:#0A376B;font-size:13px}}
+    .ar-hist-track {{height:155px;width:100%;max-width:65px;display:flex;align-items:end;background:#F0F5FA;border-radius:6px 6px 0 0;overflow:hidden}}
+    .ar-hist-fill {{width:100%;background:linear-gradient(180deg,#31A0CB,#146FC0);border-radius:5px 5px 0 0}}
+    .ar-svg {{width:100%;height:auto;display:block;margin:10px auto}}
+    .ar-insight {{background:#EDF5FC;border-left:3px solid #146FC0;padding:9px 12px;border-radius:7px;color:#234A73;font-size:12px;line-height:1.5}}
+    .ar-scatter-leg {{display:flex;gap:15px;flex-wrap:wrap;margin-top:5px;font-size:12px;color:#426383}}
     @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}}}
     @media(max-width:440px){{.ar-kpis{{grid-template-columns:1fr 1fr}}.ar-kpi{{padding:12px}}.ar-kpi-value{{font-size:26px}}.ar-donut-row{{flex-direction:column}}}}
     </style>
@@ -9439,8 +9556,28 @@ def renderizar_quantitativo_ares():
           <div class="ar-sub">Participação de cada faixa de BTU no total da regional</div>
           <div class="ar-mix-legend">{legenda_mistura}</div>{mistura_html}</div>
       </div>
+      <div class="ar-grid">
+        <div class="ar-box"><h3>Distribuição da demanda por escola</h3>
+          <div class="ar-sub">Quantas escolas precisam de 1–10, 11–20 ou mais aparelhos</div>
+          <div class="ar-hist">{barras_frequencia}</div>
+          <div class="ar-footnote">Considera apenas escolas com quantidade de aparelhos informada.</div></div>
+        <div class="ar-box"><h3>Concentração da demanda (Pareto)</h3>
+          <div class="ar-sub">Participação acumulada da demanda, começando pelas escolas com maior necessidade</div>
+          {grafico_pareto}
+          <div class="ar-insight"><strong>{fmt(indice_80)} escolas ({proporcao_80:.1f}%)</strong>
+          concentram pelo menos 80% dos equipamentos quantificados neste recorte.</div></div>
+      </div>
+      <div class="ar-grid" style="grid-template-columns:1fr">
+        <div class="ar-box"><h3>Porte do atendimento: aparelhos × capacidade térmica</h3>
+          <div class="ar-sub">Cada ponto representa uma escola; permite distinguir quantidade de máquinas e capacidade nominal prevista</div>
+          {grafico_dispersao}
+          <div class="ar-scatter-leg"><span><i class="ar-leg-dot" style="background:#146FC0"></i>SEE</span>
+            <span><i class="ar-leg-dot" style="background:#EE962E"></i>SUPLAN</span></div>
+          <div class="ar-footnote">BTU/h corresponde à soma das capacidades nominais dos equipamentos, e não ao consumo de energia elétrica.</div>
+        </div>
+      </div>
     </div>"""
-    altura_resumo = 1000 + len(ranking) * 38 + max(len(mistura_gre) * 31, 320)
+    altura_resumo = 1860 + len(ranking) * 38 + max(len(mistura_gre) * 31, 320)
     components.html(html_ares, height=altura_resumo, scrolling=False)
 
     st.markdown('<div style="font-size:21px;font-weight:900;color:#123A67;margin:6px 0 8px">Detalhamento por unidade escolar</div>',
@@ -9452,7 +9589,7 @@ def renderizar_quantitativo_ares():
                                         ["Todas as capacidades"] + colunas_btu, key="ares_tabela_capacidade")
     with tabela_filtro2:
         situacao_tabela = st.selectbox("Situação do levantamento (tabela)",
-                                     ["Todas", "Com quantitativo", "Sem quantitativo informado"],
+                                     ["Todas", "Com quantitativo", "Sem quantitativo informado", "Revisar valores"],
                                      key="ares_tabela_situacao")
     tabela_base = filtrado.copy()
     if capacidade_tabela != "Todas as capacidades":
@@ -9460,11 +9597,11 @@ def renderizar_quantitativo_ares():
     if situacao_tabela != "Todas":
         tabela_base = tabela_base[tabela_base["Situação do levantamento"] == situacao_tabela]
     tabela = tabela_base[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
-                      + ["Total de aparelhos", "Situação do levantamento"]]
+                      + ["Total de aparelhos", "Situação do levantamento", "Inconsistências"]]
     tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação", "SUPLAN": "Órgão"})
     tabela["Órgão"] = tabela["Órgão"].map({"SIM": "SUPLAN", "NÃO": "SEE"})
     tabela = tabela[["Unidade Escolar", "Município", "GRE", "Órgão"] + colunas_btu
-                    + ["Total de Ares", "Situação"]]
+                    + ["Total de Ares", "Situação", "Inconsistências"]]
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
     linhas_html = []
@@ -9481,6 +9618,7 @@ def renderizar_quantitativo_ares():
                 classe = ""
             elif col == "Situação":
                 conteudo = ('<span class="ar-data-tag">Quantificado</span>' if valor == "Com quantitativo"
+                            else '<span class="ar-pending-tag">Revisar valores</span>' if valor == "Revisar valores"
                             else '<span class="ar-pending-tag">Não informado</span>')
                 classe = ""
             else:
@@ -9511,6 +9649,7 @@ def renderizar_quantitativo_ares():
     .ar-school-table th:nth-child(n+5):nth-child(-n+10),.ar-school-table td:nth-child(n+5):nth-child(-n+10) {{width:94px;text-align:right}}
     .ar-school-table th:nth-child(11),.ar-school-table td:nth-child(11) {{width:115px;text-align:right;font-weight:900}}
     .ar-school-table th:nth-child(12),.ar-school-table td:nth-child(12) {{width:140px}}
+    .ar-school-table th:nth-child(13),.ar-school-table td:nth-child(13) {{width:220px}}
     .ar-number {{font-variant-numeric:tabular-nums}}
     .ar-supl-tag,.ar-other-tag,.ar-data-tag,.ar-pending-tag {{display:inline-block;padding:5px 8px;border-radius:6px;font-size:10px;font-weight:800}}
     .ar-supl-tag {{background:#FFF0DC;color:#955200}}
