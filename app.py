@@ -9954,7 +9954,7 @@ def renderizar_quantitativo_ares():
         <div class="ar-section-head"><span class="ar-section-number">02</span><div><h2>Análise dos Ambientes</h2>
           <p>Leitura exclusiva da aba DETALHAMENTO, sem duplicar as linhas de total por escola.</p></div></div>
       <div class="ar-grid" style="grid-template-columns:1fr">
-        <div class="ar-box"><h3>Mapa de calor · GRE × tipo de ambiente</h3>
+        <div class="ar-box"><h3>Distribuição de aparelhos por GRE e ambiente</h3>
           <div class="ar-sub">Em quais regionais estão as maiores necessidades em salas de aula, bibliotecas, laboratórios e outros ambientes.</div>
           {heatmap_gre_amb}<div class="ar-footnote">Cada célula mostra a quantidade de aparelhos, não o número de ambientes.</div></div>
       </div>
@@ -10161,12 +10161,17 @@ def renderizar_quantitativo_ares():
       background:#EAF3FC;color:#155A9D;font-size:16px;font-weight:800;cursor:pointer;line-height:22px;
       text-align:center;text-decoration:none}}
     .ar-school-open:hover {{background:#0B4E91;color:white}}
-    .ar-modal {{position:fixed;inset:0;background:rgba(5,25,54,.76);display:none;align-items:center;
-      justify-content:center;z-index:1000;padding:14px}}
+    .ar-modal {{position:fixed!important;inset:0!important;background:rgba(5,25,54,.60);
+      display:none;z-index:2147483647!important;padding:0!important;overflow:hidden}}
     {''.join(regras_abertura)}
-    .ar-dialog {{width:min(1080px,100%);max-height:96%;overflow:auto;background:#FFF;border-radius:16px;
-      box-shadow:0 20px 70px rgba(0,0,0,.3);padding:20px;color:#16385E}}
-    .ar-dialog-head {{display:flex;justify-content:space-between;align-items:start;gap:15px}}
+    .ar-modal .ar-dialog {{position:absolute!important;top:12px!important;left:12px!important;
+      right:12px!important;bottom:12px!important;display:block!important;width:auto!important;
+      height:auto!important;max-height:none!important;box-sizing:border-box!important;
+      overflow-y:auto!important;overflow-x:hidden!important;background:#FFF!important;
+      border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.3);padding:18px;
+      color:#16385E!important;z-index:2!important}}
+    .ar-dialog-head {{display:flex;justify-content:space-between;align-items:start;gap:15px;
+      position:sticky;top:-18px;background:#FFF;padding:4px 0 10px;z-index:3}}
     .ar-dialog h2 {{font-size:20px;color:#0A396E;margin:0 0 7px}}
     .ar-close {{border:0;border-radius:8px;padding:7px 12px;background:#D7E7F7;color:#0B396F;
       font-size:19px;font-weight:900;cursor:pointer;text-decoration:none}}
@@ -10181,7 +10186,7 @@ def renderizar_quantitativo_ares():
       font-size:12px;font-weight:700;color:#456483}}
     .ar-detail-summary b {{font-size:17px;color:#104A85;margin-left:7px}}
     .ar-no-rooms {{padding:22px;background:#F3F7FC;border-radius:10px;color:#476580}}
-    .ar-detail-scroll {{overflow:auto;max-height:430px}}
+    .ar-detail-scroll {{overflow:auto;max-height:calc(100vh - 235px);min-height:120px}}
     .ar-detail-table {{border-collapse:collapse;width:100%;min-width:790px;font-size:12px}}
     .ar-detail-table th {{position:sticky;top:0;background:#0A4C96;color:white;text-align:right;padding:11px 8px}}
     .ar-detail-table th:first-child,.ar-detail-table td:first-child {{text-align:left}}
