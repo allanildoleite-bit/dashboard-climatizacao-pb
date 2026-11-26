@@ -9337,6 +9337,106 @@ def montar_fluxo_gre_ambiente_btu(detalhamento: pd.DataFrame, colunas_btu: list)
             f'{titulos}{"".join(caminhos)}{"".join(blocos)}</svg></div>')
 
 
+def renderizar_consulta_ambientes_ares(escolas: pd.DataFrame, ambientes: pd.DataFrame,
+                                      colunas_btu: list) -> None:
+    """Consulta de escola sempre visível no início, fora dos iframes dos gráficos."""
+    st.markdown(
+        '<div style="margin:18px 0 9px;padding:13px 17px;border-left:5px solid #146FC0;'
+        'background:#EAF3FC;border-radius:8px;color:#0C3769;font-size:19px;font-weight:900">'
+        'Consultar levantamento por ambiente</div>', unsafe_allow_html=True,
+    )
+    st.caption("Escolha a unidade escolar. O detalhamento será mostrado imediatamente abaixo, antes dos gráficos.")
+    lista_escolas = escolas.reset_index(drop=True)
+    # Usar somente strings no seletor evita problemas de estado na mudança de filtros.
+    etiquetas = [
+        f'{i + 1:03d} · {row["Unidade Escolar"]} — {row["Município"]} ({row["GRE"]})'
+        for i, (_, row) in enumerate(lista_escolas.iterrows())
+    ]
+    escolhida = st.selectbox(
+        "Unidade escolar para consultar os ambientes",
+        ["Selecione uma unidade escolar"] + etiquetas,
+        key="ares_consulta_ambientes_topo",
+    )
+    if escolhida == "Selecione uma unidade escolar":
+        return
+    try:
+        indice = etiquetas.index(escolhida)
+    except ValueError:
+        st.info("A unidade selecionada não pertence mais aos filtros atuais. Escolha outra escola.")
+        return
+    escola = lista_escolas.iloc[indice]
+    nome = str(escola["Unidade Escolar"])
+    chave = normalizar_texto(nome)
+    if ambientes.empty:
+        registros = pd.DataFrame()
+    else:
+        registros = ambientes[ambientes["Chave escola"] == chave]
+    total_ambientes = int(registros["Total"].sum()) if not registros.empty else 0
+    total_geral = int(escola["Total de aparelhos"])
+    def numero(n):
+        return f'{int(n):,}'.replace(',', '.')
+    st.markdown(
+        '<div style="background:linear-gradient(105deg,#123F74,#075EA9);padding:15px 20px;'
+        'border-radius:12px;color:white;margin:15px 0 10px">'
+        f'<div style="font-size:18px;font-weight:900;color:white">{escape(nome)}</div>'
+        f'<div style="font-size:12px;color:#DDEDFB">{escape(str(escola["GRE"]))} · '
+        f'{escape(str(escola["Município"]))} · '
+        f'{"SUPLAN" if escola["SUPLAN"] == "SIM" else "SEE"}</div></div>',
+        unsafe_allow_html=True,
+    )
+    cards = [
+        ("APARELHOS NA ABA GERAL", total_geral),
+        ("AMBIENTES DISCRIMINADOS", len(registros)),
+        ("APARELHOS POR AMBIENTE", total_ambientes),
+    ]
+    st.markdown(
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 15px">' + ''.join(
+            '<div style="flex:1;min-width:170px;background:white;border:1px solid #D5E3F3;'
+            'border-top:3px solid #146FC0;border-radius:10px;padding:12px 16px">'
+            f'<div style="color:#526C87;font-size:11px;font-weight:900">{titulo}</div>'
+            f'<div style="color:#0A3E79;font-size:27px;font-weight:900">{numero(valor)}</div></div>'
+            for titulo, valor in cards) + '</div>', unsafe_allow_html=True,
+    )
+    if registros.empty:
+        st.warning("Esta escola ainda não tem ambientes discriminados na aba DETALHAMENTO.")
+        return
+    tabela_amb = registros[["Ambiente"] + colunas_btu + ["Total"]].rename(
+        columns={"Ambiente": "Tipo / Ambiente", "Total": "Total de Ares"})
+    cab = ''.join(f'<th>{escape(col)}</th>' for col in tabela_amb.columns)
+    linhas = ''.join(
+        '<tr>' + ''.join(
+            f'<td title="{escape(str(row[col]), quote=True)}">'
+            f'{escape(str(row[col])) if col == "Tipo / Ambiente" else numero(row[col]) if int(row[col]) else "—"}'
+            '</td>' for col in tabela_amb.columns) + '</tr>'
+        for _, row in tabela_amb.iterrows()
+    )
+    html = f"""
+    <style>
+      *{{box-sizing:border-box}}body{{margin:0;font-family:'Segoe UI',Arial,sans-serif;color:#03427D}}
+      .frame{{border:1px solid #C7D6E6;border-radius:13px;overflow:hidden;background:#fff}}
+      .scroll{{max-height:480px;overflow:auto;scrollbar-color:#748DA5 #EDF3F9}}
+      table{{width:100%;min-width:1030px;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}}
+      th{{position:sticky;top:0;background:#0A4C96;color:#fff;text-align:left;padding:14px 10px;
+         font-weight:800;border-right:1px solid #3977B6;white-space:nowrap}}
+      td{{height:44px;padding:11px 10px;border-bottom:1px solid #C7D2DF;
+         border-right:1px solid #E0E7EF;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+      td:first-child,th:first-child{{width:255px;text-align:left}}td:last-child{{font-weight:900}}
+      tbody tr:nth-child(even){{background:#F0F5FB}}tbody tr:nth-child(odd){{background:#fff}}
+      tbody tr:hover{{background:#DCEBFB}}
+      .foot{{background:#F7FAFE;padding:10px 13px;font-size:11px;color:#5D748E}}
+    </style><div class="frame"><div class="scroll"><table><thead><tr>{cab}</tr></thead>
+    <tbody>{linhas}</tbody></table></div><div class="foot">{numero(len(tabela_amb))} ambientes registrados ·
+    Deslize horizontalmente para ver todas as capacidades.</div></div>"""
+    components.html(html, height=min(550, 45 * (len(tabela_amb) + 1) + 50), scrolling=False)
+    if total_geral != total_ambientes:
+        st.warning(f"Conferência necessária: {numero(total_geral)} aparelhos na aba GERAL "
+                   f"e {numero(total_ambientes)} na soma dos ambientes da aba DETALHAMENTO.")
+    st.download_button("Baixar ambientes da escola (CSV)",
+                       data=tabela_amb.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                       file_name="levantamento_ambientes_escola.csv", mime="text/csv",
+                       key="ares_baixar_ambientes_topo")
+
+
 def renderizar_quantitativo_ares():
     """Quarta aba principal, com dados diretamente da planilha publicada."""
     st.markdown("""
@@ -9495,6 +9595,8 @@ def renderizar_quantitativo_ares():
     if not detalhamento.empty:
         detalhamento = detalhamento[detalhamento["Chave escola"].isin(chaves_filtradas)].copy()
         detalhamento["Grupo de ambiente"] = detalhamento["Ambiente"].map(categorizar_ambiente)
+
+    renderizar_consulta_ambientes_ares(filtrado, detalhamento, colunas_btu)
 
     com_dados = filtrado[filtrado["Total de aparelhos"] > 0]
     total = int(filtrado["Total de aparelhos"].sum())
@@ -9871,17 +9973,9 @@ def renderizar_quantitativo_ares():
           <div class="ar-sub">Participação de cada faixa de BTU no total de aparelhos de cada regional.</div>
           <div class="ar-mix-legend">{legenda_mistura}</div>{mistura_html}</div>
       </div>
-      <div class="ar-grid" style="grid-template-columns:1fr">
-        <div class="ar-box"><h3>Porte do atendimento · quantidade × capacidade térmica</h3>
-          <div class="ar-sub">Cada ponto representa uma escola, considerando número de aparelhos e capacidade nominal instalada prevista.</div>
-          {grafico_dispersao}
-          <div class="ar-scatter-leg"><span><i class="ar-leg-dot" style="background:#146FC0"></i>SEE</span>
-          <span><i class="ar-leg-dot" style="background:#EE962E"></i>SUPLAN</span></div>
-          <div class="ar-footnote">BTU/h representa capacidade térmica nominal, não consumo elétrico.</div></div>
-      </div>
       </section>
     </div>"""
-    altura_resumo = (2350 + len(ranking) * 32 +
+    altura_resumo = (1900 + len(ranking) * 32 +
                     max(len(mistura_gre) * 29, 340) +
                     (max(240, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
     components.html(html_ares, height=altura_resumo, scrolling=False)
@@ -10016,117 +10110,9 @@ def renderizar_quantitativo_ares():
     <div id="ar-table-top"></div>
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Para consultar os ambientes, selecione uma escola no campo acima da tabela.</div></div>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · O levantamento de cada unidade pode ser consultado na seção “Consultar levantamento por ambiente”, no início desta aba.</div></div>
     """
-    # Preserva a tabela institucional HTML (cabeçalho azul e linhas zebrada).
-    # A escolha por nome, feita fora do iframe, atualiza o detalhe pelo Streamlit.
-    st.markdown(
-        '<div style="padding:11px 15px;background:#E9F3FD;border-left:4px solid #146FC0;'
-        'border-radius:8px;color:#133F70;font-size:13px;font-weight:700;margin:8px 0 12px">'
-        'Para consultar todos os ambientes e aparelhos previstos, escolha uma unidade escolar '
-        'no seletor abaixo. A tabela preserva a formatação original do painel.</div>',
-        unsafe_allow_html=True,
-    )
-    tabela_visual = tabela.reset_index(drop=True)
-    opcoes_escolas = [None] + list(range(len(tabela_visual)))
-    def legenda_escola(indice):
-        if indice is None:
-            return "Selecione uma escola pelo nome (alternativa à seleção da tabela)"
-        registro = tabela_visual.iloc[indice]
-        return (f'{registro["Unidade Escolar"]} — {registro["Município"]} '
-                f'({registro["GRE"]})')
-    selecao_manual = st.selectbox(
-        "Selecionar escola para visualizar o levantamento por ambiente",
-        opcoes_escolas, format_func=legenda_escola, key="ares_escola_detalhamento",
-    )
     components.html(html_tabela, height=585, scrolling=False)
-    indice_escolhido = selecao_manual
-    if indice_escolhido is not None and 0 <= indice_escolhido < len(tabela_visual):
-        escola_escolhida = tabela_visual.iloc[indice_escolhido]
-        nome_escolhido = str(escola_escolhida["Unidade Escolar"])
-        chave_escolhida = normalizar_texto(nome_escolhido)
-        total_geral_escolhido = int(escola_escolhida["Total de Ares"])
-        if detalhamento.empty:
-            ambientes_escola = pd.DataFrame()
-        else:
-            ambientes_escola = detalhamento[
-                detalhamento["Chave escola"] == chave_escolhida].copy()
-        total_detalhado = int(ambientes_escola["Total"].sum()) if not ambientes_escola.empty else 0
-        st.markdown(
-            '<div style="background:linear-gradient(90deg,#0A4382,#126CB5);padding:16px 18px;'
-            'border-radius:12px;color:#FFFFFF;margin:19px 0 12px">'
-            '<div style="font-size:12px;font-weight:800;color:#D8EBFC">LEVANTAMENTO POR AMBIENTE</div>'
-            f'<div style="font-size:19px;font-weight:900;color:#FFFFFF">{escape(nome_escolhido)}</div>'
-            f'<div style="font-size:12px;color:#E2F0FD">{escape(str(escola_escolhida["GRE"]))} · '
-            f'{escape(str(escola_escolhida["Município"]))} · '
-            f'{escape(str(escola_escolhida["Órgão"]))}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 17px">'
-            + ''.join(
-                '<div style="flex:1;min-width:175px;background:#F0F6FC;border:1px solid #D5E3F3;'
-                'border-radius:11px;padding:13px 17px">'
-                f'<div style="font-size:12px;color:#56708A;font-weight:800">{escape(rotulo)}</div>'
-                f'<div style="font-size:26px;font-weight:900;color:#0B467F">{fmt(valor)}</div></div>'
-                for rotulo, valor in [
-                    ("Total na aba GERAL", total_geral_escolhido),
-                    ("Ambientes discriminados", len(ambientes_escola)),
-                    ("Aparelhos por ambiente", total_detalhado),
-                ]
-            ) + '</div>', unsafe_allow_html=True,
-        )
-        if ambientes_escola.empty:
-            st.warning("Ainda não há ambientes individualizados para esta escola na aba DETALHAMENTO.")
-        else:
-            detalhe_tabela = ambientes_escola[["Ambiente"] + colunas_btu + ["Total"]].copy()
-            detalhe_tabela = detalhe_tabela.rename(columns={"Ambiente": "Tipo / Ambiente", "Total": "Total de Ares"})
-            colunas_detalhe = list(detalhe_tabela.columns)
-            cabecalhos_detalhe = ''.join(f'<th>{escape(col)}</th>' for col in colunas_detalhe)
-            linhas_detalhe = ''.join(
-                '<tr>' + ''.join(
-                    f'<td title="{escape(str(row[col]), quote=True)}">'
-                    f'{fmt(row[col]) if col != "Tipo / Ambiente" and int(row[col]) else "—" if col != "Tipo / Ambiente" else escape(str(row[col]))}'
-                    '</td>' for col in colunas_detalhe
-                ) + '</tr>' for _, row in detalhe_tabela.iterrows()
-            )
-            html_detalhamento = f"""
-            <style>
-              * {{box-sizing:border-box}}
-              body {{margin:0;font-family:'Segoe UI',Arial,sans-serif;color:#03427D;background:#fff}}
-              .frame {{border:1px solid #BDCDDF;border-radius:13px;overflow:hidden}}
-              .scroll {{max-height:500px;overflow:auto;scrollbar-color:#7088A1 #EDF3F9}}
-              table {{border-collapse:separate;border-spacing:0;min-width:1000px;width:100%;font-size:12px;table-layout:fixed}}
-              th {{background:#0A4C96;color:white;position:sticky;top:0;text-align:left;padding:14px 10px;
-                font-weight:800;border-right:1px solid #3977B6;white-space:nowrap}}
-              th:first-child,td:first-child {{width:255px;text-align:left}}
-              td {{padding:12px 10px;height:44px;border-bottom:1px solid #C7D2DF;border-right:1px solid #E0E7EF;
-                text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-              td:first-child {{color:#03427D}}
-              tbody tr:nth-child(even) {{background:#F0F5FB}}
-              tbody tr:nth-child(odd) {{background:#FFFFFF}}
-              tbody tr:hover {{background:#DCEBFB}}
-              td:last-child {{font-weight:900;color:#0A4C96}}
-              .foot {{padding:10px 14px;background:#F7FAFE;color:#5D748E;font-size:11px}}
-            </style>
-            <div class="frame"><div class="scroll"><table><thead><tr>{cabecalhos_detalhe}</tr></thead>
-            <tbody>{linhas_detalhe}</tbody></table></div>
-            <div class="foot">{fmt(len(detalhe_tabela))} ambientes registrados · Deslize horizontalmente para visualizar todas as capacidades.</div></div>
-            """
-            components.html(html_detalhamento, height=min(550, 45 * (len(detalhe_tabela) + 1) + 52),
-                            scrolling=False)
-            if total_geral_escolhido != total_detalhado:
-                st.warning(
-                    f"Conferência: a aba GERAL registra {fmt(total_geral_escolhido)} aparelhos, "
-                    f"enquanto o detalhamento dos ambientes soma {fmt(total_detalhado)}. "
-                    "Verifique os dados na planilha de origem."
-                )
-            st.download_button(
-                "Baixar ambientes desta escola (CSV)",
-                data=detalhe_tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                file_name="detalhamento_ambientes_escola.csv", mime="text/csv",
-                key="baixar_ambientes_escola",
-            )
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
