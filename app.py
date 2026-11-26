@@ -9849,28 +9849,7 @@ def renderizar_quantitativo_ares():
       </div>
       </section>
       <section class="ar-section">
-        <div class="ar-section-head"><span class="ar-section-number">02</span><div><h2>Análise Estratégica</h2>
-          <p>Concentração da demanda e distribuição de responsabilidades entre SEE e SUPLAN.</p></div></div>
-        <div class="ar-grid">
-          <div class="ar-box"><h3>Curva ABC · onde se concentra a demanda?</h3>
-            <div class="ar-sub">As escolas são ordenadas da maior para a menor quantidade de aparelhos. A curva mostra quanto da demanda se acumula ao incluir cada escola.</div>
-            {grafico_pareto}
-            <div class="ar-abc-grid">{abc_cards}</div>
-            <div class="ar-insight" style="margin-top:15px"><strong>{fmt(indice_80)} escolas ({proporcao_80:.1f}%)</strong>
-             concentram pelo menos 80% dos aparelhos. A classificação mede concentração, não urgência de obras.</div></div>
-          <div class="ar-box"><h3>Distribuição da demanda por escola</h3>
-            <div class="ar-sub">Quantidade de escolas em cada faixa de necessidade de aparelhos.</div>
-            <div class="ar-hist">{barras_frequencia}</div>
-            <div class="ar-footnote">Considera apenas escolas com quantitativo informado na aba GERAL.</div></div>
-        </div>
-        <div class="ar-abc-guide"><strong>Como interpretar as classes ABC</strong>
-          <div><span><b>A</b> Primeiras escolas que somam aproximadamente 80% da demanda.</span>
-          <span><b>B</b> Escolas seguintes, até atingir aproximadamente 95%.</span>
-          <span><b>C</b> Escolas restantes, correspondentes à parcela final da demanda.</span></div>
-          <small>A classificação depende do filtro selecionado e não representa prioridade de execução de obras.</small></div>
-      </section>
-      <section class="ar-section">
-        <div class="ar-section-head"><span class="ar-section-number">03</span><div><h2>Análise dos Ambientes</h2>
+        <div class="ar-section-head"><span class="ar-section-number">02</span><div><h2>Análise dos Ambientes</h2>
           <p>Leitura exclusiva da aba DETALHAMENTO, sem duplicar as linhas de total por escola.</p></div></div>
       <div class="ar-grid" style="grid-template-columns:1fr">
         <div class="ar-box"><h3>Mapa de calor · GRE × tipo de ambiente</h3>
@@ -9902,7 +9881,7 @@ def renderizar_quantitativo_ares():
       </div>
       </section>
     </div>"""
-    altura_resumo = (2350 + len(ranking) * 32 +
+    altura_resumo = (1650 + len(ranking) * 32 +
                     max(len(mistura_gre) * 29, 340) +
                     (max(240, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
     components.html(html_ares, height=altura_resumo, scrolling=False)
@@ -10093,7 +10072,93 @@ def renderizar_quantitativo_ares():
     </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique no nome (um ou dois cliques) ou no botão ↗ para abrir o levantamento completo por ambiente.</div></div>
     {''.join(detalhes_html)}
     """
-    components.html(html_tabela, height=690, scrolling=False)
+    # Seleção nativa do Streamlit: o levantamento aparece na página após
+    # selecionar a escola. Não depende de JavaScript, âncoras nem iframe.
+    st.markdown(
+        '<div style="padding:11px 15px;background:#E9F3FD;border-left:4px solid #146FC0;'
+        'border-radius:8px;color:#133F70;font-size:13px;font-weight:700;margin:8px 0 12px">'
+        'Selecione uma linha da tabela para visualizar os ambientes e aparelhos destinados à escola. '
+        'Você também pode procurar a unidade pelo campo abaixo.</div>',
+        unsafe_allow_html=True,
+    )
+    tabela_visual = tabela.reset_index(drop=True)
+    try:
+        evento_tabela = st.dataframe(
+            tabela_visual, height=410, hide_index=True, use_container_width=True,
+            selection_mode="single-row", on_select="rerun", key="ares_tabela_interativa",
+            column_config={
+                "Unidade Escolar": st.column_config.TextColumn("Unidade Escolar", width="large"),
+                "Município": st.column_config.TextColumn("Município", width="medium"),
+                "GRE": st.column_config.TextColumn("GRE", width="small"),
+                "Órgão": st.column_config.TextColumn("Órgão", width="small"),
+            },
+        )
+        linhas_selecionadas = list(evento_tabela.selection.rows)
+    except (TypeError, AttributeError):
+        # Compatibilidade com versões anteriores à seleção de linhas nativa.
+        st.dataframe(tabela_visual, height=410, hide_index=True, use_container_width=True)
+        linhas_selecionadas = []
+
+    opcoes_escolas = [None] + list(range(len(tabela_visual)))
+    def legenda_escola(indice):
+        if indice is None:
+            return "Selecione uma escola pelo nome (alternativa à seleção da tabela)"
+        registro = tabela_visual.iloc[indice]
+        return (f'{registro["Unidade Escolar"]} — {registro["Município"]} '
+                f'({registro["GRE"]})')
+    selecao_manual = st.selectbox(
+        "Localizar escola para abrir o levantamento por ambiente",
+        opcoes_escolas, format_func=legenda_escola, key="ares_escola_detalhamento",
+    )
+    indice_escolhido = (selecao_manual if selecao_manual is not None else
+                        linhas_selecionadas[0] if linhas_selecionadas else None)
+    if indice_escolhido is not None and 0 <= indice_escolhido < len(tabela_visual):
+        escola_escolhida = tabela_visual.iloc[indice_escolhido]
+        nome_escolhido = str(escola_escolhida["Unidade Escolar"])
+        chave_escolhida = normalizar_texto(nome_escolhido)
+        total_geral_escolhido = int(escola_escolhida["Total de Ares"])
+        if detalhamento.empty:
+            ambientes_escola = pd.DataFrame()
+        else:
+            ambientes_escola = detalhamento[
+                detalhamento["Chave escola"] == chave_escolhida].copy()
+        total_detalhado = int(ambientes_escola["Total"].sum()) if not ambientes_escola.empty else 0
+        st.markdown(
+            '<div style="background:linear-gradient(90deg,#0A4382,#126CB5);padding:16px 18px;'
+            'border-radius:12px;color:#FFFFFF;margin:19px 0 12px">'
+            '<div style="font-size:12px;font-weight:800;color:#D8EBFC">LEVANTAMENTO POR AMBIENTE</div>'
+            f'<div style="font-size:19px;font-weight:900;color:#FFFFFF">{escape(nome_escolhido)}</div>'
+            f'<div style="font-size:12px;color:#E2F0FD">{escape(str(escola_escolhida["GRE"]))} · '
+            f'{escape(str(escola_escolhida["Município"]))} · '
+            f'{escape(str(escola_escolhida["Órgão"]))}</div></div>',
+            unsafe_allow_html=True,
+        )
+        resumo_escola = st.columns(3)
+        with resumo_escola[0]:
+            st.metric("Total na aba GERAL", fmt(total_geral_escolhido))
+        with resumo_escola[1]:
+            st.metric("Ambientes discriminados", fmt(len(ambientes_escola)))
+        with resumo_escola[2]:
+            st.metric("Aparelhos por ambiente", fmt(total_detalhado))
+        if ambientes_escola.empty:
+            st.warning("Ainda não há ambientes individualizados para esta escola na aba DETALHAMENTO.")
+        else:
+            detalhe_tabela = ambientes_escola[["Ambiente"] + colunas_btu + ["Total"]].copy()
+            detalhe_tabela = detalhe_tabela.rename(columns={"Ambiente": "Tipo / Ambiente", "Total": "Total de Ares"})
+            st.dataframe(detalhe_tabela, height=min(540, 45 * (len(detalhe_tabela) + 1) + 10),
+                         hide_index=True, use_container_width=True)
+            if total_geral_escolhido != total_detalhado:
+                st.warning(
+                    f"Conferência: a aba GERAL registra {fmt(total_geral_escolhido)} aparelhos, "
+                    f"enquanto o detalhamento dos ambientes soma {fmt(total_detalhado)}. "
+                    "Verifique os dados na planilha de origem."
+                )
+            st.download_button(
+                "Baixar ambientes desta escola (CSV)",
+                data=detalhe_tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                file_name="detalhamento_ambientes_escola.csv", mime="text/csv",
+                key="baixar_ambientes_escola",
+            )
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
