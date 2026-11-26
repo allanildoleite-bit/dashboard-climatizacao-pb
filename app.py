@@ -9227,8 +9227,6 @@ def carregar_detalhamento_ambientes() -> pd.DataFrame:
                 quantidade.append(int(n) if n >= 0 and n == int(n) else 0)
             except (ValueError, OverflowError):
                 quantidade.append(0)
-        if sum(quantidade) == 0:
-            continue
         registro = {"GRE": gre_atual, "Município": municipio_atual,
                     "Unidade Escolar": escola_atual, "Ambiente": ambiente,
                     "Chave escola": normalizar_texto(escola_atual),
@@ -9673,6 +9671,7 @@ def renderizar_quantitativo_ares():
         )
     curva_pareto = " ".join(pontos_pareto)
     linha_80_x = 38 + 460 * indice_80 / numero_escolas if numero_escolas else 38
+    linha_95_x = 38 + 460 * indice_95 / numero_escolas if numero_escolas else 38
     grafico_pareto = (
         '<svg class="ar-svg" viewBox="0 0 530 215" role="img" '
         'aria-label="Curva acumulada de aparelhos por escolas ordenadas por demanda">'
@@ -9680,10 +9679,16 @@ def renderizar_quantitativo_ares():
         '<line x1="38" y1="176" x2="498" y2="176" stroke="#BACDE1"/>'
         '<line x1="38" y1="60" x2="498" y2="60" stroke="#D8E4F2" stroke-dasharray="5 5"/>'
         '<text x="3" y="64" fill="#55708E" font-size="11">80%</text>'
+        '<line x1="38" y1="38" x2="498" y2="38" stroke="#D8E4F2" stroke-dasharray="3 5"/>'
+        '<text x="3" y="41" fill="#55708E" font-size="11">95%</text>'
         f'<polyline points="{curva_pareto}" fill="none" stroke="#146FC0" stroke-width="3" '
         'stroke-linecap="round" stroke-linejoin="round"/>'
         f'<line x1="{linha_80_x:.2f}" y1="60" x2="{linha_80_x:.2f}" y2="176" '
         'stroke="#EE962E" stroke-width="2" stroke-dasharray="5 4"/>'
+        f'<line x1="{linha_95_x:.2f}" y1="38" x2="{linha_95_x:.2f}" y2="176" '
+        'stroke="#16A39E" stroke-width="2" stroke-dasharray="4 4"/>'
+        f'<text x="{max(42, linha_80_x - 8):.2f}" y="170" fill="#B26810" font-weight="800" font-size="12">A</text>'
+        f'<text x="{max(42, linha_95_x - 8):.2f}" y="170" fill="#0A807C" font-weight="800" font-size="12">B</text>'
         '<text x="38" y="194" fill="#55708E" font-size="11">0</text>'
         '<text x="474" y="194" fill="#55708E" font-size="11">100%</text>'
         '<text x="183" y="211" fill="#55708E" font-size="11">Escolas acumuladas (%)</text>'
@@ -9760,6 +9765,16 @@ def renderizar_quantitativo_ares():
     .ar-abc-card span {{font-size:11px;color:#56728C;line-height:1.4;display:block}}
     .ar-abc-b {{border-top-color:#16A39E}}
     .ar-abc-c {{border-top-color:#E99A36}}
+    .ar-abc-guide {{margin-top:16px;background:#FFFFFF;border:1px solid #DCE7F4;border-radius:15px;
+       padding:17px 20px;color:#163F70;box-shadow:0 4px 16px rgba(14,53,91,.04)}}
+    .ar-abc-guide>strong {{font-size:14px}}
+    .ar-abc-guide>div {{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:13px 0 10px}}
+    .ar-abc-guide span {{font-size:12px;color:#496684;line-height:1.5;display:block}}
+    .ar-abc-guide b {{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;
+       background:#E7F1FC;color:#145DA2;margin-right:5px}}
+    .ar-abc-guide span:nth-child(2) b {{background:#E2F5F1;color:#087D75}}
+    .ar-abc-guide span:nth-child(3) b {{background:#FFF2DF;color:#A56A19}}
+    .ar-abc-guide small {{color:#6F859D;font-size:11px}}
     .ar-wide-matrix {{max-height:500px}}
     .ar-wide-matrix .ar-matrix {{min-width:800px;border-spacing:4px}}
     .ar-wide-matrix .ar-matrix th {{font-size:10px;white-space:normal;min-width:70px;line-height:1.2}}
@@ -9805,7 +9820,7 @@ def renderizar_quantitativo_ares():
     .ar-matrix th {{font-size:11px;text-align:center;color:#345474;padding:9px 5px}}
     .ar-matrix th:first-child {{text-align:left;min-width:135px}}
     .ar-matrix td {{border-radius:5px;text-align:center;padding:9px 4px;font-weight:800}}
-    @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}.ar-section-head h2{{font-size:18px}}}}
+    @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}.ar-section-head h2{{font-size:18px}}.ar-abc-guide>div{{grid-template-columns:1fr}}}}
     @media(max-width:440px){{.ar-kpis{{grid-template-columns:1fr 1fr}}.ar-kpi{{padding:12px}}.ar-kpi-value{{font-size:26px}}.ar-donut-row{{flex-direction:column}}}}
     </style>
     <div class="ar-panel-wrap">
@@ -9828,23 +9843,31 @@ def renderizar_quantitativo_ares():
           <div class="ar-footnote">Os aparelhos SUPLAN estão incluídos no total geral.</div>
         </div>
       </div>
+      <div class="ar-grid" style="grid-template-columns:1fr">
+        <div class="ar-box"><h3>Ranking de demanda por GRE</h3>
+          <div class="ar-sub">Quantidade total de equipamentos necessários em cada regional.</div>{barras_gre}</div>
+      </div>
       </section>
       <section class="ar-section">
         <div class="ar-section-head"><span class="ar-section-number">02</span><div><h2>Análise Estratégica</h2>
           <p>Concentração da demanda e distribuição de responsabilidades entre SEE e SUPLAN.</p></div></div>
         <div class="ar-grid">
-          <div class="ar-box"><h3>Curva ABC · concentração da demanda</h3>
-            <div class="ar-sub">Escolas ordenadas por quantidade necessária, com classes de demanda acumulada.</div>
+          <div class="ar-box"><h3>Curva ABC · onde se concentra a demanda?</h3>
+            <div class="ar-sub">As escolas são ordenadas da maior para a menor quantidade de aparelhos. A curva mostra quanto da demanda se acumula ao incluir cada escola.</div>
             {grafico_pareto}
             <div class="ar-abc-grid">{abc_cards}</div>
             <div class="ar-insight" style="margin-top:15px"><strong>{fmt(indice_80)} escolas ({proporcao_80:.1f}%)</strong>
              concentram pelo menos 80% dos aparelhos. A classificação mede concentração, não urgência de obras.</div></div>
-          <div class="ar-box"><h3>SEE × SUPLAN por GRE</h3>
-            <div class="ar-sub">Comparação da quantidade de equipamentos sob responsabilidade de cada órgão em cada regional.</div>
-            <div class="ar-legend"><span><i style="background:#146FC0"></i>SEE</span>
-              <span><i style="background:#ED972F"></i>SUPLAN</span><span>Valores: SEE / SUPLAN</span></div>
-            {comparativo_orgao}</div>
+          <div class="ar-box"><h3>Distribuição da demanda por escola</h3>
+            <div class="ar-sub">Quantidade de escolas em cada faixa de necessidade de aparelhos.</div>
+            <div class="ar-hist">{barras_frequencia}</div>
+            <div class="ar-footnote">Considera apenas escolas com quantitativo informado na aba GERAL.</div></div>
         </div>
+        <div class="ar-abc-guide"><strong>Como interpretar as classes ABC</strong>
+          <div><span><b>A</b> Primeiras escolas que somam aproximadamente 80% da demanda.</span>
+          <span><b>B</b> Escolas seguintes, até atingir aproximadamente 95%.</span>
+          <span><b>C</b> Escolas restantes, correspondentes à parcela final da demanda.</span></div>
+          <small>A classificação depende do filtro selecionado e não representa prioridade de execução de obras.</small></div>
       </section>
       <section class="ar-section">
         <div class="ar-section-head"><span class="ar-section-number">03</span><div><h2>Análise dos Ambientes</h2>
@@ -9854,11 +9877,6 @@ def renderizar_quantitativo_ares():
           <div class="ar-sub">Em quais regionais estão as maiores necessidades em salas de aula, bibliotecas, laboratórios e outros ambientes.</div>
           {heatmap_gre_amb}<div class="ar-footnote">Cada célula mostra a quantidade de aparelhos, não o número de ambientes.</div></div>
       </div>
-      <div class="ar-grid" style="grid-template-columns:1fr">
-        <div class="ar-box"><h3>Fluxo dos equipamentos · GRE → Ambiente → BTU</h3>
-          <div class="ar-sub">Os fluxos mais espessos representam maiores quantidades. Passe o cursor para consultar cada relação.</div>
-          {fluxo_ambientes}<div class="ar-footnote">Aparelhos contabilizados uma vez em cada etapa do fluxo; fonte: ambientes discriminados.</div></div>
-      </div>
       <div class="ar-grid">
         <div class="ar-box"><h3>Demanda por tipo de ambiente</h3>
           <div class="ar-sub">Equipamentos distribuídos entre salas de aula, laboratórios e outros espaços</div>
@@ -9867,11 +9885,26 @@ def renderizar_quantitativo_ares():
           <div class="ar-sub">Matriz de quantidade: cores mais intensas indicam maior concentração de aparelhos</div>
           {matriz_ambiente}<div class="ar-footnote">Dados exclusivamente dos ambientes discriminados, sem somar as linhas de total da aba GERAL.</div></div>
       </div>
+      <div class="ar-grid">
+        <div class="ar-box"><h3>Escolas com maior demanda</h3>
+          <div class="ar-sub">10 unidades escolares com maior quantitativo de aparelhos no recorte.</div>{barras_escolas}</div>
+        <div class="ar-box"><h3>Perfil de capacidades por GRE</h3>
+          <div class="ar-sub">Participação de cada faixa de BTU no total de aparelhos de cada regional.</div>
+          <div class="ar-mix-legend">{legenda_mistura}</div>{mistura_html}</div>
+      </div>
+      <div class="ar-grid" style="grid-template-columns:1fr">
+        <div class="ar-box"><h3>Porte do atendimento · quantidade × capacidade térmica</h3>
+          <div class="ar-sub">Cada ponto representa uma escola, considerando número de aparelhos e capacidade nominal instalada prevista.</div>
+          {grafico_dispersao}
+          <div class="ar-scatter-leg"><span><i class="ar-leg-dot" style="background:#146FC0"></i>SEE</span>
+          <span><i class="ar-leg-dot" style="background:#EE962E"></i>SUPLAN</span></div>
+          <div class="ar-footnote">BTU/h representa capacidade térmica nominal, não consumo elétrico.</div></div>
+      </div>
       </section>
     </div>"""
-    altura_resumo = (2050 + len(orgaos_gre) * 23 +
-                    max(590, 27 * len(orgaos_gre) + 65) +
-                    (max(280, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
+    altura_resumo = (2350 + len(ranking) * 32 +
+                    max(len(mistura_gre) * 29, 340) +
+                    (max(240, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
     components.html(html_ares, height=altura_resumo, scrolling=False)
 
     if erro_detalhamento:
@@ -9945,12 +9978,18 @@ def renderizar_quantitativo_ares():
                 classe = ""
             elif col == "Unidade Escolar":
                 chave = normalizar_texto(str(valor))
-                conteudo = (f'<button type="button" class="ar-school-link" '
+                conteudo = (f'<span class="ar-school-action"><button type="button" class="ar-school-link" '
                             f'data-school="{escape(chave, quote=True)}" '
                             f'data-title="{escape(str(valor), quote=True)}" '
                             f'data-total="{int(linha["Total de Ares"])}" '
                             f'title="Clique duas vezes para consultar os ambientes">'
-                            f'{escape(str(valor))}</button>')
+                            f'{escape(str(valor))}</button>'
+                            f'<button type="button" class="ar-school-open" '
+                            f'data-school="{escape(chave, quote=True)}" '
+                            f'data-title="{escape(str(valor), quote=True)}" '
+                            f'data-total="{int(linha["Total de Ares"])}" '
+                            f'title="Abrir levantamento por ambiente" '
+                            f'aria-label="Abrir levantamento de {escape(str(valor), quote=True)}">↗</button></span>')
                 classe = ""
             else:
                 conteudo = escape(str(valor))
@@ -9988,9 +10027,13 @@ def renderizar_quantitativo_ares():
     .ar-data-tag {{background:#E3F5EC;color:#187A4D}}
     .ar-pending-tag {{background:#FFF2DE;color:#98610B}}
     .ar-table-foot {{padding:10px 14px;font-size:11px;color:#5D748E;background:#F7FAFE;border-top:1px solid #DCE5EF}}
-    .ar-school-link {{display:block;width:100%;padding:0;border:0;background:none;color:#03427D;
+    .ar-school-action {{display:flex;align-items:center;gap:7px;width:100%;min-width:0}}
+    .ar-school-link {{display:block;flex:1;min-width:0;padding:0;border:0;background:none;color:#03427D;
       font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
     .ar-school-link:hover,.ar-school-link:focus {{color:#0B70C8;text-decoration:underline;outline-offset:2px}}
+    .ar-school-open {{flex:none;width:24px;height:24px;border:1px solid #9ABDDD;border-radius:6px;
+      background:#EAF3FC;color:#155A9D;font-size:16px;font-weight:800;cursor:pointer;line-height:1}}
+    .ar-school-open:hover {{background:#0B4E91;color:white}}
     .ar-modal {{position:fixed;inset:0;background:rgba(5,25,54,.76);display:none;align-items:center;
       justify-content:center;z-index:1000;padding:14px}}
     .ar-modal[aria-hidden="false"] {{display:flex}}
@@ -10011,7 +10054,7 @@ def renderizar_quantitativo_ares():
     </style>
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique duas vezes no nome de uma escola para consultar os aparelhos por ambiente. Arraste horizontalmente para visualizar todas as capacidades.</div></div>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Dê dois cliques no nome da escola ou use o botão ↗ para abrir todos os ambientes. Deslize horizontalmente para consultar as capacidades.</div></div>
     <div id="ar-detail-modal" class="ar-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Detalhamento por ambiente">
       <div class="ar-dialog"><div class="ar-dialog-head"><h2 id="ar-detail-name"></h2>
       <button type="button" class="ar-close" id="ar-modal-close" aria-label="Fechar">×</button></div>
@@ -10019,8 +10062,13 @@ def renderizar_quantitativo_ares():
       <div class="ar-modal-note" id="ar-detail-note"></div></div></div>
     <script>
     (() => {{
-      const raw = atob('{detalhe_json_b64}');
-      const detalhamento = JSON.parse(new TextDecoder().decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+      let detalhamento = {{}};
+      try {{
+        const raw = atob('{detalhe_json_b64}');
+        detalhamento = JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+      }} catch (erro) {{
+        console.error('Falha ao carregar os ambientes:', erro);
+      }}
       const modal = document.getElementById('ar-detail-modal');
       const unidades = ['12.000','18.000','24.000','30.000','36.000','60.000'];
       const fmt = n => Number(n || 0).toLocaleString('pt-BR');
@@ -10055,9 +10103,19 @@ def renderizar_quantitativo_ares():
         document.getElementById('ar-modal-close').focus();
       }}
       function fechar() {{ modal.setAttribute('aria-hidden', 'true'); }}
-      document.querySelectorAll('.ar-school-link').forEach(b => {{
-        b.addEventListener('dblclick', () => abrir(b));
-        b.addEventListener('keydown', e => {{ if (e.key === 'Enter') abrir(b); }});
+      // Delegação no documento também cobre cliques rápidos na célula e
+      // evita perder eventos quando o navegador seleciona o texto do nome.
+      document.addEventListener('dblclick', e => {{
+        const botao = e.target.closest('.ar-school-link');
+        if (botao) {{ e.preventDefault(); abrir(botao); }}
+      }});
+      document.addEventListener('click', e => {{
+        const botao = e.target.closest('.ar-school-open');
+        if (botao) {{ e.preventDefault(); abrir(botao); }}
+      }});
+      document.addEventListener('keydown', e => {{
+        const botao = e.target.closest('.ar-school-link, .ar-school-open');
+        if (botao && (e.key === 'Enter' || e.key === ' ')) {{ e.preventDefault(); abrir(botao); }}
       }});
       document.getElementById('ar-modal-close').addEventListener('click', fechar);
       modal.addEventListener('click', e => {{ if (e.target === modal) fechar(); }});
@@ -10065,7 +10123,7 @@ def renderizar_quantitativo_ares():
     }})();
     </script>
     """
-    components.html(html_tabela, height=585, scrolling=False)
+    components.html(html_tabela, height=690, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
