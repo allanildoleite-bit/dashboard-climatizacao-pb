@@ -72,6 +72,7 @@ CONFIG_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRZX4r6uxkgM2_FrPd
 
 # Levantamento de equipamentos NOVOS para escolas ainda não climatizadas.
 ARES_GERAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-vAw24EN6Xie1aP8IcsjVQ44WG7p7gBo9RGyFJb-W1xmhKjebNudHJsXYUXwxLQ/pub?gid=1361509235&single=true&output=csv"
+ARES_DETALHAMENTO_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-vAw24EN6Xie1aP8IcsjVQ44WG7p7gBo9RGyFJb-W1xmhKjebNudHJsXYUXwxLQ/pub?gid=164626800&single=true&output=csv"
 ARES_CAPACIDADES = (12000, 18000, 24000, 30000, 36000, 60000)
 
 # Fontes da terceira aba: escolas + responsáveis técnicos por fontes separadas.
@@ -9137,27 +9138,42 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
     saida["SUPLAN"] = dados[col_suplan].map(
         lambda valor: "SIM" if normalizar_texto(valor) in ("sim", "s", "yes", "1") else "NÃO"
     )
+    # Descartar linhas vazias e linhas-resumo ANTES da conversão. A aba
+    # publicada tem áreas auxiliares, que podem conter textos não numéricos.
+    validas = saida["GRE"].notna() & saida["Unidade Escolar"].ne("")
+    validas &= ~saida["Unidade Escolar"].map(normalizar_texto).str.contains(
+        r"^(?:total|subtotal|geral)\b", regex=True
+    )
+    dados = dados.loc[validas].copy().reset_index(drop=True)
+    saida = saida.loc[validas].copy().reset_index(drop=True)
+    problemas = [[] for _ in range(len(saida))]
     for capacidade in ARES_CAPACIDADES:
         # Aceita grafias como "12.000 BTU", "12000 BTUS" e "12 000 BTU".
         col = next((c for c in dados.columns if "btu" in normalizar_texto(c)
                     and re.sub(r"\D", "", str(c).split("BTU")[0].split("btu")[0]) == str(capacidade)), None)
         if col is None:
             raise ValueError(f"A capacidade {capacidade:,} BTU não foi encontrada na planilha.")
-        def converter_quantidade(valor):
+        def converter_quantidade(valor, indice):
             s = str(valor).strip().replace("\u00a0", "")
             if not s or normalizar_texto(s) in ("nan", "none", "-"):
                 return 0
-            s = s.replace(".", "").replace(",", ".")
-            n = float(s)
-            if n < 0 or n != int(n):
-                raise ValueError(f"Quantidade inválida de aparelhos: {valor}")
-            return int(n)
-        saida[f"{capacidade:,}".replace(",", ".") + " BTU"] = dados[col].map(converter_quantidade)
+            try:
+                n = float(s.replace(".", "").replace(",", "."))
+                if n >= 0 and n == int(n):
+                    return int(n)
+            except (ValueError, OverflowError):
+                pass
+            # Não derrubar o painel por erro de digitação. O valor não é
+            # contabilizado e a célula é indicada para revisão no painel.
+            problemas[indice].append(f"{capacidade:,} BTU: {s}".replace(",", "."))
+            return 0
+        nome_capacidade = f"{capacidade:,}".replace(",", ".") + " BTU"
+        saida[nome_capacidade] = [converter_quantidade(valor, i)
+                                  for i, valor in enumerate(dados[col])]
 
     # O levantamento contém linhas preparadas mas ainda vazias; estas não
     # representam escolas concluídas nem demanda igual a zero.
-    saida = saida[saida["GRE"].notna() & saida["Unidade Escolar"].ne("")].copy()
-    saida = saida[~saida["Unidade Escolar"].map(normalizar_texto).str.contains(r"^(?:total|subtotal|geral)\b", regex=True)]
+    saida["Inconsistências"] = ["; ".join(lista) for lista in problemas]
     colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
     saida["Total de aparelhos"] = saida[colunas_btu].sum(axis=1).astype(int)
     # As linhas com identificação, mas sem quantidade, ficam sinalizadas
@@ -9165,7 +9181,162 @@ def carregar_quantitativo_ares() -> pd.DataFrame:
     saida["Situação do levantamento"] = saida["Total de aparelhos"].apply(
         lambda n: "Com quantitativo" if n > 0 else "Sem quantitativo informado"
     )
+    saida.loc[saida["Inconsistências"].ne(""), "Situação do levantamento"] = "Revisar valores"
     return saida.reset_index(drop=True)
+
+
+@st.cache_data(ttl=150, show_spinner=False)
+def carregar_detalhamento_ambientes() -> pd.DataFrame:
+    """Extrai somente linhas de ambientes da aba DETALHAMENTO publicada.
+
+    Cada escola começa numa linha TOTAL DA ABA GERAL; as linhas seguintes,
+    ainda que tenham GRE/nome vazios, pertencem à última escola identificada.
+    Essa linha-total jamais é somada aos ambientes.
+    """
+    requisicao = Request(ARES_DETALHAMENTO_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(requisicao, timeout=35) as resposta:
+        conteudo = resposta.read().decode("utf-8-sig", errors="replace")
+    if conteudo.lstrip().lower().startswith(("<!doctype", "<html")):
+        raise ValueError("A aba DETALHAMENTO não retornou um CSV publicado.")
+    linhas = list(csv.reader(StringIO(conteudo)))
+    indice = next((i for i, r in enumerate(linhas[:30]) if len(r) >= 11
+                   and normalizar_texto(r[1]) == "unidade escolar"
+                   and "ambiente" in normalizar_texto(r[3])), None)
+    if indice is None:
+        raise ValueError("Colunas da aba DETALHAMENTO não foram reconhecidas.")
+    escola_atual = municipio_atual = gre_atual = ""
+    registros = []
+    for linha in linhas[indice + 1:]:
+        r = (linha + [""] * 12)[:12]
+        ambiente = r[3].strip()
+        nome_escola = r[1].strip()
+        if nome_escola and normalizar_texto(ambiente) == "total da aba geral":
+            escola_atual = nome_escola
+            municipio_atual = r[2].strip()
+            gre_atual = padronizar_gre(r[0]) or ""
+            continue
+        # Aceitar uma nova escola somente quando inicia um bloco reconhecido;
+        # nunca fazer forward-fill através de títulos ou subtotais.
+        if not escola_atual or not ambiente or normalizar_texto(ambiente).startswith(("total", "subtotal")):
+            continue
+        quantidade = []
+        for valor in r[4:10]:
+            s = str(valor).strip().replace("\u00a0", "")
+            try:
+                n = float(s.replace(".", "").replace(",", ".")) if s else 0
+                quantidade.append(int(n) if n >= 0 and n == int(n) else 0)
+            except (ValueError, OverflowError):
+                quantidade.append(0)
+        if sum(quantidade) == 0:
+            continue
+        registro = {"GRE": gre_atual, "Município": municipio_atual,
+                    "Unidade Escolar": escola_atual, "Ambiente": ambiente,
+                    "Chave escola": normalizar_texto(escola_atual),
+                    "Total": sum(quantidade)}
+        registro.update({f"{b:,}".replace(",", ".") + " BTU": q
+                         for b, q in zip(ARES_CAPACIDADES, quantidade)})
+        registros.append(registro)
+    colunas = ["GRE", "Município", "Unidade Escolar", "Ambiente", "Chave escola", "Total"] + [
+        f"{b:,}".replace(",", ".") + " BTU" for b in ARES_CAPACIDADES]
+    return pd.DataFrame(registros, columns=colunas)
+
+
+def categorizar_ambiente(nome: str) -> str:
+    """Agrupa grafias semelhantes sem alterar o nome exibido no detalhe."""
+    texto = normalizar_texto(nome)
+    if re.search(r"\bsala\s*(?:de\s*aula\s*)?\d+\b", texto) or "sala de aula" in texto:
+        return "Salas de aula"
+    if "laboratorio" in texto:
+        return "Laboratórios"
+    if "biblioteca" in texto:
+        return "Bibliotecas"
+    if "professor" in texto:
+        return "Sala dos professores"
+    if "secretaria" in texto:
+        return "Secretarias"
+    if "diretoria" in texto or "diretor" in texto:
+        return "Diretorias"
+    if "coordenac" in texto:
+        return "Coordenação"
+    return "Outros ambientes"
+
+
+def montar_fluxo_gre_ambiente_btu(detalhamento: pd.DataFrame, colunas_btu: list) -> str:
+    """Diagrama Sankey em SVG: GRE -> tipo de ambiente -> capacidade.
+
+    Usa exclusivamente as linhas de ambientes; cada equipamento participa
+    de um elo em cada etapa, sem somar novamente a linha TOTAL DA ABA GERAL.
+    """
+    if detalhamento.empty:
+        return '<div class="ar-empty">Nenhum ambiente detalhado para este recorte.</div>'
+    base = detalhamento.groupby(["GRE", "Grupo de ambiente"], as_index=False)[colunas_btu].sum()
+    longo = base.melt(id_vars=["GRE", "Grupo de ambiente"], value_vars=colunas_btu,
+                      var_name="BTU", value_name="Quantidade")
+    longo = longo[longo["Quantidade"] > 0]
+    if longo.empty:
+        return '<div class="ar-empty">Não há equipamentos para montar o fluxo.</div>'
+    colunas = ["GRE", "Grupo de ambiente", "BTU"]
+    etapas = []
+    for coluna in colunas:
+        totais = longo.groupby(coluna)["Quantidade"].sum().sort_values(ascending=False)
+        etapas.append([(str(chave), int(valor)) for chave, valor in totais.items()])
+    total = int(longo["Quantidade"].sum())
+    altura = max(590, 27 * len(etapas[0]) + 65)
+    topo, base_y, espacamento = 44, altura - 26, 9
+    escala = min((base_y - topo - espacamento * max(len(n) - 1, 0)) / total for n in etapas)
+    posicoes = {}
+    for indice, nos in enumerate(etapas):
+        ocupacao = total * escala + (len(nos) - 1) * espacamento
+        y = topo + (base_y - topo - ocupacao) / 2
+        for nome, valor in nos:
+            posicoes[(indice, nome)] = {"y": y, "altura": valor * escala,
+                                        "in_offset": 0, "out_offset": 0}
+            y += valor * escala + espacamento
+    xs = [168, 485, 835]
+    caminhos = []
+    for etapa, origem, destino, cor in [
+        (0, "GRE", "Grupo de ambiente", "#2375BE"),
+        (1, "Grupo de ambiente", "BTU", "#16A39E"),
+    ]:
+        ligacoes = longo.groupby([origem, destino])["Quantidade"].sum().reset_index()
+        ligacoes = ligacoes.sort_values("Quantidade", ascending=False)
+        for _, ligacao in ligacoes.iterrows():
+            nome_a, nome_b, valor = str(ligacao[origem]), str(ligacao[destino]), int(ligacao["Quantidade"])
+            a, b = posicoes[(etapa, nome_a)], posicoes[(etapa + 1, nome_b)]
+            espessura = valor * escala
+            ya = a["y"] + a["out_offset"] + espessura / 2
+            yb = b["y"] + b["in_offset"] + espessura / 2
+            a["out_offset"] += espessura
+            b["in_offset"] += espessura
+            x1, x2 = xs[etapa] + 16, xs[etapa + 1]
+            caminhos.append(
+                f'<path d="M{x1},{ya:.2f} C{(x1+x2)/2:.1f},{ya:.2f} '
+                f'{(x1+x2)/2:.1f},{yb:.2f} {x2},{yb:.2f}" fill="none" '
+                f'stroke="{cor}" stroke-opacity=".20" stroke-width="{max(0.45, espessura):.2f}">'
+                f'<title>{escape(nome_a)} → {escape(nome_b)}: {valor:,} aparelhos</title></path>'
+            )
+    blocos = []
+    paleta = ["#1769B0", "#159A91", "#E99A36"]
+    for etapa, nos in enumerate(etapas):
+        for nome, valor in nos:
+            pos = posicoes[(etapa, nome)]
+            x, y, h = xs[etapa], pos["y"], max(pos["altura"], 1)
+            texto = nome.replace(" BTU", "") if etapa == 2 else nome
+            if etapa == 1 and len(texto) > 20:
+                texto = texto[:18] + "…"
+            eixo_texto = x - 7 if etapa == 0 else x + 23
+            ancora = "end" if etapa == 0 else "start"
+            blocos.append(f'<rect x="{x}" y="{y:.2f}" width="16" height="{h:.2f}" '
+                          f'rx="3" fill="{paleta[etapa]}"><title>{escape(nome)}: {valor:,}</title></rect>'
+                          f'<text x="{eixo_texto}" y="{y + max(h, 8)/2 + 4:.2f}" '
+                          f'font-size="11" font-weight="650" text-anchor="{ancora}" '
+                          f'fill="#284E73">{escape(texto)}</text>')
+    titulos = ''.join(f'<text x="{x}" y="25" font-size="15" font-weight="800" '
+                      f'fill="#123A67" text-anchor="middle">{titulo}</text>'
+                      for x, titulo in zip([155, 495, 847], ["GRE", "TIPO DE AMBIENTE", "CAPACIDADE (BTU)"]))
+    return (f'<div class="ar-flow-scroll"><svg viewBox="0 0 1035 {altura}" '
+            f'width="100%" role="img" aria-label="Fluxo de equipamentos entre GRE, ambiente e BTU">'
+            f'{titulos}{"".join(caminhos)}{"".join(blocos)}</svg></div>')
 
 
 def renderizar_quantitativo_ares():
@@ -9186,10 +9357,14 @@ def renderizar_quantitativo_ares():
         color:#123A67 !important;font-weight:800 !important;
       }
       div[data-testid="stCaptionContainer"] p {color:#5B718D !important;font-weight:600 !important;}
-      div[data-testid="stWidgetLabel"] *,
-      div[data-testid="stMarkdownContainer"] > p,
-      div[data-testid="stMarkdownContainer"] > div > p {
+      div[data-testid="stWidgetLabel"] * {
         color:#123A67 !important;
+      }
+      /* Alertas têm fundo escuro neste tema: preservar texto legível. */
+      div[data-testid="stAlert"] p,
+      div[data-testid="stAlert"] span {
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
       }
       [data-testid="stSelectbox"] div[data-baseweb="select"] div,
       [data-testid="stMultiSelect"] div[data-baseweb="select"] div,
@@ -9255,7 +9430,7 @@ def renderizar_quantitativo_ares():
     </style></head><body>
       <header class="cab">
         <div class="logo"><img src="{GOV_LOGO}" alt="Governo da Paraíba"></div>
-        <div class="txt"><div class="title">Painel de Monitoramento da Climatização Escolar na Paraíba</div>
+        <div class="txt"><div class="title">Levantamento de Equipamentos para Climatização Escolar na Paraíba</div>
           <div class="subtitle">Secretaria de Estado da Educação - Gerência de Obras</div></div>
         <div class="logo geobs"><img src="{GEOBS_LOGO}" alt="GEOBS - Gerência de Obras"></div>
       </header>
@@ -9274,6 +9449,19 @@ def renderizar_quantitativo_ares():
     if dados.empty:
         st.info("Não há escolas identificadas no levantamento publicado.")
         return
+
+    registros_invalidos = dados[dados["Inconsistências"].ne("")]
+    if not registros_invalidos.empty:
+        st.warning(
+            f"Foram encontradas {len(registros_invalidos)} escola(s) com valores "
+            "não numéricos ou inválidos na planilha. Esses valores não entram "
+            "na soma até serem corrigidos."
+        )
+        with st.expander("Consultar células que precisam de revisão"):
+            st.dataframe(
+                registros_invalidos[["GRE", "Município", "Unidade Escolar", "Inconsistências"]],
+                hide_index=True, use_container_width=True,
+            )
 
     colunas_btu = [f"{c:,}".replace(",", ".") + " BTU" for c in ARES_CAPACIDADES]
     lista_gres = sorted(dados["GRE"].dropna().unique().tolist(), key=lambda g: int(re.search(r"\d+", g).group()))
@@ -9297,6 +9485,19 @@ def renderizar_quantitativo_ares():
         termo = normalizar_texto(busca)
         filtrado = filtrado[filtrado["Unidade Escolar"].map(normalizar_texto).str.contains(re.escape(termo), regex=True)]
 
+    # DETALHAMENTO é fonte complementar: não altera o quantitativo da aba GERAL.
+    # Quando estiver indisponível, os indicadores principais continuam funcionando.
+    erro_detalhamento = None
+    try:
+        detalhamento = carregar_detalhamento_ambientes()
+    except Exception as erro:
+        erro_detalhamento = str(erro)
+        detalhamento = pd.DataFrame()
+    chaves_filtradas = set(filtrado["Unidade Escolar"].map(normalizar_texto))
+    if not detalhamento.empty:
+        detalhamento = detalhamento[detalhamento["Chave escola"].isin(chaves_filtradas)].copy()
+        detalhamento["Grupo de ambiente"] = detalhamento["Ambiente"].map(categorizar_ambiente)
+
     com_dados = filtrado[filtrado["Total de aparelhos"] > 0]
     total = int(filtrado["Total de aparelhos"].sum())
     capacidades = filtrado[colunas_btu].sum().astype(int)
@@ -9317,7 +9518,8 @@ def renderizar_quantitativo_ares():
         card("APARELHOS NECESSÁRIOS", total, "Demanda total quantificada", "#146FC0"),
         card("ESCOLAS LEVANTADAS", len(com_dados), "Com equipamentos informados", "#147D87"),
         card("GRES CONTEMPLADAS", com_dados["GRE"].nunique(), "Regionais com demanda", "#3972B5"),
-        card("SEM QUANTITATIVO", (filtrado["Total de aparelhos"] == 0).sum(), "Registros sem demanda informada", "#D49A2B"),
+        card("SEM QUANTITATIVO", ((filtrado["Total de aparelhos"] == 0) &
+             filtrado["Inconsistências"].eq("")).sum(), "Registros sem demanda informada", "#D49A2B"),
     ])
     max_cap = max(int(capacidades.max()), 1)
     cores = ["#0B376E", "#155EA5", "#2084C8", "#36A3CD", "#67BFCE", "#90D5DF"]
@@ -9334,6 +9536,18 @@ def renderizar_quantitativo_ares():
         f'<strong>{fmt(linha.Aparelhos)}</strong></div>'
         for linha in ranking.itertuples(index=False)
     ) or '<p class="ar-muted">Nenhum registro no recorte.</p>'
+    orgaos_gre = filtrado.groupby(["GRE", "SUPLAN"])["Total de aparelhos"].sum().unstack(fill_value=0)
+    maior_orgao_gre = max(int(orgaos_gre.max().max()), 1) if not orgaos_gre.empty else 1
+    comparativo_orgao = "".join(
+        f'<div class="ar-compare-row"><strong>{escape(str(gre))}</strong>'
+        f'<div class="ar-compare-pair"><span title="SEE: {fmt(valores.get("NÃO",0))} equipamentos" '
+        f'style="width:{100 * int(valores.get("NÃO",0)) / maior_orgao_gre:.2f}%;background:#146FC0"></span>'
+        f'<span title="SUPLAN: {fmt(valores.get("SIM",0))} equipamentos" '
+        f'style="width:{100 * int(valores.get("SIM",0)) / maior_orgao_gre:.2f}%;background:#ED972F"></span></div>'
+        f'<small>{fmt(valores.get("NÃO",0))} / {fmt(valores.get("SIM",0))}</small></div>'
+        for gre, valores in orgaos_gre.sort_index(key=lambda idx: idx.map(
+            lambda s: int(re.search(r"\d+", str(s)).group()) if re.search(r"\d+", str(s)) else 99)).iterrows()
+    ) or '<div class="ar-empty">Nenhuma regional no recorte.</div>'
     # As duas visualizações adicionais são complementares: concentração
     # por escola e composição técnica das capacidades por regional.
     top_escolas = (filtrado[filtrado["Total de aparelhos"] > 0]
@@ -9364,6 +9578,145 @@ def renderizar_quantitativo_ares():
         f'<span><i style="background:{cores[i]}"></i>{escape(nome)}</span>'
         for i, nome in enumerate(colunas_btu)
     )
+    if not detalhamento.empty:
+        por_ambiente = (detalhamento.groupby("Grupo de ambiente", as_index=False)[colunas_btu]
+                        .sum().assign(Total=lambda d: d[colunas_btu].sum(axis=1))
+                        .sort_values("Total", ascending=False))
+        maior_ambiente = max(int(por_ambiente["Total"].max()), 1)
+        barras_ambientes = "".join(
+            f'<div class="ar-bar-row ar-school-row"><span class="ar-bar-label" title="{escape(str(row["Grupo de ambiente"]))}">'
+            f'{escape(str(row["Grupo de ambiente"]))}</span><div class="ar-bar-track">'
+            f'<div class="ar-bar-fill" style="width:{100*int(row["Total"])/maior_ambiente:.2f}%;background:#168C9A"></div>'
+            f'</div><strong>{fmt(row["Total"])}</strong></div>'
+            for _, row in por_ambiente.iterrows()
+        )
+        maior_celula = max(int(por_ambiente[colunas_btu].max().max()), 1)
+        cabecalho_matriz = "".join(f'<th>{escape(str(b // 1000))}k</th>' for b in ARES_CAPACIDADES)
+        linhas_matriz = "".join(
+            '<tr><th>' + escape(str(row["Grupo de ambiente"])) + '</th>' +
+            ''.join(f'<td style="background:rgba(20,111,192,{0.09 + 0.82*int(row[col])/maior_celula:.3f});'
+                    f'color:{"#fff" if int(row[col])/maior_celula > .58 else "#153D65"}" '
+                    f'title="{escape(str(row["Grupo de ambiente"]))} — {escape(col)}: {fmt(row[col])}">'
+                    f'{fmt(row[col]) if int(row[col]) else "—"}</td>' for col in colunas_btu) + '</tr>'
+            for _, row in por_ambiente.iterrows()
+        )
+        matriz_ambiente = (f'<div class="ar-matrix-scroll"><table class="ar-matrix"><thead><tr><th>Ambiente</th>'
+                           f'{cabecalho_matriz}</tr></thead><tbody>{linhas_matriz}</tbody></table></div>')
+        total_ambientes = int(detalhamento["Total"].sum())
+        nota_ambientes = (f'{fmt(detalhamento["Chave escola"].nunique())} escolas com ambientes discriminados; '
+                          f'{fmt(total_ambientes)} aparelhos distribuídos nesses ambientes. '
+                          'O total por ambiente pode diferir do quantitativo consolidado da aba GERAL.')
+        fluxo_ambientes = montar_fluxo_gre_ambiente_btu(detalhamento, colunas_btu)
+        mapa_gre_amb = detalhamento.pivot_table(index="GRE", columns="Grupo de ambiente", values="Total",
+                                                aggfunc="sum", fill_value=0)
+        mapa_gre_amb = mapa_gre_amb.loc[sorted(mapa_gre_amb.index,
+            key=lambda s: int(re.search(r"\d+", str(s)).group()) if re.search(r"\d+", str(s)) else 99)]
+        colunas_mapa = por_ambiente["Grupo de ambiente"].tolist()
+        max_mapa = max(int(mapa_gre_amb.max().max()), 1)
+        cab_mapa = "".join(f'<th title="{escape(grupo)}">{escape(grupo)}</th>' for grupo in colunas_mapa)
+        linhas_mapa = "".join(
+            '<tr><th>' + escape(gre) + '</th>' + ''.join(
+                f'<td title="{escape(gre)} · {escape(grupo)}: {fmt(mapa_gre_amb.loc[gre, grupo])} aparelhos" '
+                f'style="background:rgba(16,137,145,{0.08 + .87*int(mapa_gre_amb.loc[gre, grupo])/max_mapa:.3f});'
+                f'color:{"#fff" if int(mapa_gre_amb.loc[gre, grupo])/max_mapa > .54 else "#16446A"}">'
+                f'{fmt(mapa_gre_amb.loc[gre, grupo]) if int(mapa_gre_amb.loc[gre, grupo]) else "—"}</td>'
+                for grupo in colunas_mapa) + '</tr>' for gre in mapa_gre_amb.index
+        )
+        heatmap_gre_amb = (f'<div class="ar-matrix-scroll ar-wide-matrix"><table class="ar-matrix">'
+                           f'<thead><tr><th>GRE</th>{cab_mapa}</tr></thead><tbody>{linhas_mapa}</tbody></table></div>')
+    else:
+        barras_ambientes = '<p class="ar-muted">Sem ambientes detalhados para os filtros selecionados.</p>'
+        matriz_ambiente = '<p class="ar-muted">Sem dados de ambientes para apresentar.</p>'
+        nota_ambientes = "A aba DETALHAMENTO não possui registros disponíveis neste recorte."
+        heatmap_gre_amb = '<div class="ar-empty">Nenhum ambiente registrado para o recorte.</div>'
+        fluxo_ambientes = '<div class="ar-empty">Nenhum ambiente registrado para o recorte.</div>'
+    # Análises que não repetem o ranking por GRE nem o perfil por capacidade:
+    # distribuição das necessidades, concentração da demanda e porte técnico.
+    escolas_positivas = filtrado[filtrado["Total de aparelhos"] > 0].copy()
+    intervalos = [(1, 10), (11, 20), (21, 30), (31, 50), (51, 100)]
+    frequencias = [int(escolas_positivas["Total de aparelhos"].between(a, b).sum())
+                   for a, b in intervalos]
+    frequencias.append(int((escolas_positivas["Total de aparelhos"] > 100).sum()))
+    rotulos_faixa = ["1–10", "11–20", "21–30", "31–50", "51–100", ">100"]
+    max_freq = max(frequencias + [1])
+    barras_frequencia = "".join(
+        f'<div class="ar-hist-col" title="{escape(rotulo)} aparelhos: {fmt(qtd)} escolas">'
+        f'<b>{fmt(qtd)}</b><div class="ar-hist-track"><div class="ar-hist-fill" '
+        f'style="height:{100 * qtd / max_freq:.1f}%"></div></div><span>{escape(rotulo)}</span></div>'
+        for rotulo, qtd in zip(rotulos_faixa, frequencias)
+    )
+
+    ordenadas = escolas_positivas.sort_values("Total de aparelhos", ascending=False)
+    somas_acumuladas = ordenadas["Total de aparelhos"].cumsum()
+    demanda_total = int(ordenadas["Total de aparelhos"].sum())
+    numero_escolas = len(ordenadas)
+    indice_80 = int((somas_acumuladas < 0.8 * demanda_total).sum()) + 1 if demanda_total else 0
+    indice_95 = int((somas_acumuladas < 0.95 * demanda_total).sum()) + 1 if demanda_total else 0
+    proporcao_80 = 100 * indice_80 / numero_escolas if numero_escolas else 0
+    contagens_abc = (indice_80, max(0, indice_95 - indice_80), max(0, numero_escolas - indice_95))
+    totais_abc = (int(somas_acumuladas.iloc[indice_80 - 1]) if indice_80 else 0,
+                  int(somas_acumuladas.iloc[indice_95 - 1] - somas_acumuladas.iloc[indice_80 - 1])
+                  if indice_95 > indice_80 else 0,
+                  int(demanda_total - somas_acumuladas.iloc[indice_95 - 1]) if indice_95 else 0)
+    abc_cards = "".join(
+        f'<div class="ar-abc-card ar-abc-{letra.lower()}"><b>CLASSE {letra}</b>'
+        f'<strong>{fmt(qtd)} escolas</strong><span>{fmt(maq)} aparelhos · '
+        f'{(100*maq/demanda_total) if demanda_total else 0:.1f}% da demanda</span></div>'
+        for letra, qtd, maq in zip("ABC", contagens_abc, totais_abc)
+    )
+    # Coordenadas SVG permitem mostrar uma curva acumulada sem bibliotecas JS.
+    pontos_pareto = ["38,176"]
+    if demanda_total:
+        pontos_pareto.extend(
+            f"{38 + 460 * i / numero_escolas:.2f},{176 - 145 * int(soma) / demanda_total:.2f}"
+            for i, soma in enumerate(somas_acumuladas, start=1)
+        )
+    curva_pareto = " ".join(pontos_pareto)
+    linha_80_x = 38 + 460 * indice_80 / numero_escolas if numero_escolas else 38
+    grafico_pareto = (
+        '<svg class="ar-svg" viewBox="0 0 530 215" role="img" '
+        'aria-label="Curva acumulada de aparelhos por escolas ordenadas por demanda">'
+        '<line x1="38" y1="31" x2="38" y2="176" stroke="#BACDE1"/>'
+        '<line x1="38" y1="176" x2="498" y2="176" stroke="#BACDE1"/>'
+        '<line x1="38" y1="60" x2="498" y2="60" stroke="#D8E4F2" stroke-dasharray="5 5"/>'
+        '<text x="3" y="64" fill="#55708E" font-size="11">80%</text>'
+        f'<polyline points="{curva_pareto}" fill="none" stroke="#146FC0" stroke-width="3" '
+        'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'<line x1="{linha_80_x:.2f}" y1="60" x2="{linha_80_x:.2f}" y2="176" '
+        'stroke="#EE962E" stroke-width="2" stroke-dasharray="5 4"/>'
+        '<text x="38" y="194" fill="#55708E" font-size="11">0</text>'
+        '<text x="474" y="194" fill="#55708E" font-size="11">100%</text>'
+        '<text x="183" y="211" fill="#55708E" font-size="11">Escolas acumuladas (%)</text>'
+        '</svg>'
+    )
+
+    # Potência nominal somada, não estimativa de consumo elétrico em kWh.
+    capacidades_numericas = dict(zip(colunas_btu, ARES_CAPACIDADES))
+    escolas_positivas["Capacidade nominal BTU/h"] = sum(
+        escolas_positivas[nome] * valor for nome, valor in capacidades_numericas.items()
+    )
+    max_aparelhos = max(int(escolas_positivas["Total de aparelhos"].max()) if numero_escolas else 0, 1)
+    max_btu = max(int(escolas_positivas["Capacidade nominal BTU/h"].max()) if numero_escolas else 0, 1)
+    pontos_dispersao = "".join(
+        f'<circle cx="{44 + 450 * int(linha["Total de aparelhos"]) / max_aparelhos:.2f}" '
+        f'cy="{178 - 145 * int(linha["Capacidade nominal BTU/h"]) / max_btu:.2f}" '
+        f'r="4" fill="{("#EE962E" if linha["SUPLAN"] == "SIM" else "#146FC0")}" '
+        f'fill-opacity=".73"><title>{escape(str(linha["Unidade Escolar"]))}: '
+        f'{fmt(linha["Total de aparelhos"])} aparelhos; '
+        f'{fmt(linha["Capacidade nominal BTU/h"])} BTU/h</title></circle>'
+        for _, linha in escolas_positivas.iterrows()
+    )
+    grafico_dispersao = (
+        '<svg class="ar-svg" viewBox="0 0 530 215" role="img" '
+        'aria-label="Relação entre aparelhos e capacidade nominal em BTU por hora">'
+        '<line x1="44" y1="33" x2="44" y2="178" stroke="#BACDE1"/>'
+        '<line x1="44" y1="178" x2="494" y2="178" stroke="#BACDE1"/>'
+        f'{pontos_dispersao}'
+        f'<text x="5" y="38" fill="#55708E" font-size="10">{fmt(max_btu)}</text>'
+        f'<text x="470" y="194" fill="#55708E" font-size="10">{fmt(max_aparelhos)}</text>'
+        '<text x="197" y="211" fill="#55708E" font-size="11">Aparelhos por escola</text>'
+        '</svg>'
+    )
     pct_suplan = (100 * qtd_suplan / total) if total else 0
     if total:
         fatia_suplan = f"conic-gradient(#EE962E 0 {pct_suplan:.4f}%,#146FC0 {pct_suplan:.4f}% 100%)"
@@ -9372,18 +9725,49 @@ def renderizar_quantitativo_ares():
 
     html_ares = f"""
     <style>
-    .ar-panel-wrap {{font-family:'Segoe UI',Arial,sans-serif;color:#17365D}}
+    * {{box-sizing:border-box}}
+    html,body {{margin:0;background:#F5F8FC}}
+    .ar-panel-wrap {{font-family:'Segoe UI',Arial,sans-serif;color:#17365D;padding:2px 1px 20px}}
     .ar-kpis {{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:12px 0 19px}}
     .ar-kpi {{background:#fff;border:1px solid #DCE7F4;border-top:4px solid var(--ar-accent);border-radius:15px;
       padding:17px 18px;box-shadow:0 5px 19px rgba(15,47,89,.07);min-width:0}}
     .ar-kpi-name {{font-weight:800;color:#647992;font-size:11px;letter-spacing:.6px}}
     .ar-kpi-value {{font-size:33px;font-weight:900;color:#082E62;line-height:1.25;margin:7px 0}}
     .ar-kpi-note {{font-size:12px;color:#62738C;font-weight:600}}
-    .ar-grid {{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px}}
+    .ar-grid {{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:17px}}
     .ar-box {{background:#fff;border:1px solid #DCE7F4;border-radius:17px;padding:20px 21px;
       box-shadow:0 5px 20px rgba(15,47,89,.06);min-width:0}}
-    .ar-box h3 {{font-size:18px;color:#092D5F;font-weight:850;margin:0 0 5px}}
-    .ar-sub {{font-size:12px;color:#6E8199;margin-bottom:18px}}
+    .ar-box h3 {{font-size:17px;color:#092D5F;font-weight:850;margin:0 0 7px;line-height:1.35}}
+    .ar-sub {{font-size:12px;color:#627C96;margin-bottom:18px;line-height:1.55}}
+    .ar-section {{margin-top:31px}}
+    .ar-section-head {{border-bottom:2px solid #DCE7F3;padding:0 1px 13px;display:flex;align-items:center;gap:13px}}
+    .ar-section-number {{display:grid;place-items:center;width:35px;height:35px;flex:none;border-radius:11px;
+       background:#0B4E91;color:#fff;font-size:13px;font-weight:900}}
+    .ar-section-head h2 {{margin:0;color:#0C3769;font-size:20px;font-weight:850}}
+    .ar-section-head p {{margin:4px 0 0;color:#6A829B;font-size:12px;line-height:1.4}}
+    .ar-legend {{display:flex;flex-wrap:wrap;gap:17px;margin:10px 0 16px;color:#43607F;font-size:12px;font-weight:700}}
+    .ar-legend i {{display:inline-block;width:11px;height:11px;margin-right:6px;border-radius:3px;vertical-align:-1px}}
+    .ar-compare-row {{display:grid;grid-template-columns:55px minmax(0,1fr) 100px;gap:11px;
+      align-items:center;margin:11px 0;color:#305574;font-size:11px}}
+    .ar-compare-row strong {{font-size:12px}}
+    .ar-compare-pair {{display:flex;flex-direction:column;gap:3px}}
+    .ar-compare-pair span {{display:block;min-height:7px;border-radius:4px;min-width:0}}
+    .ar-compare-row small {{font-size:10px;color:#55718C;text-align:right;white-space:nowrap}}
+    .ar-abc-grid {{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:15px}}
+    .ar-abc-card {{border-radius:11px;background:#EEF5FC;padding:12px 10px;min-width:0;border-top:3px solid #146FC0}}
+    .ar-abc-card b {{font-size:10px;display:block;color:#426A8E;letter-spacing:.5px}}
+    .ar-abc-card strong {{display:block;color:#133B6C;font-size:17px;margin:6px 0}}
+    .ar-abc-card span {{font-size:11px;color:#56728C;line-height:1.4;display:block}}
+    .ar-abc-b {{border-top-color:#16A39E}}
+    .ar-abc-c {{border-top-color:#E99A36}}
+    .ar-wide-matrix {{max-height:500px}}
+    .ar-wide-matrix .ar-matrix {{min-width:800px;border-spacing:4px}}
+    .ar-wide-matrix .ar-matrix th {{font-size:10px;white-space:normal;min-width:70px;line-height:1.2}}
+    .ar-wide-matrix .ar-matrix th:first-child {{position:sticky;left:0;background:white;z-index:1;min-width:75px}}
+    .ar-wide-matrix .ar-matrix td {{min-width:64px}}
+    .ar-flow-scroll {{overflow:auto;background:#FAFCFF;border:1px solid #E5EDF6;border-radius:12px;padding:12px}}
+    .ar-flow-scroll svg {{display:block;min-width:850px;height:auto;max-height:760px}}
+    .ar-empty {{background:#F2F6FA;border-radius:10px;padding:23px;color:#607E99;font-size:13px}}
     .ar-bar-row {{display:grid;grid-template-columns:95px minmax(0,1fr) 48px;align-items:center;gap:12px;margin:12px 0}}
     .ar-bar-label {{font-size:12px;font-weight:750;color:#455D78;white-space:nowrap}}
     .ar-bar-track {{height:13px;background:#ECF2F8;border-radius:999px;overflow:hidden}}
@@ -9408,10 +9792,26 @@ def renderizar_quantitativo_ares():
     .ar-mix-row b {{text-align:right;font-size:11px}}
     .ar-mix-track {{display:flex;height:15px;overflow:hidden;border-radius:5px;background:#EEF3F9}}
     .ar-mix-track span {{height:100%;display:block}}
-    @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}}}
+    .ar-hist {{display:flex;align-items:end;justify-content:space-between;gap:9px;min-height:218px}}
+    .ar-hist-col {{display:flex;align-items:center;flex-direction:column;flex:1;min-width:0;gap:7px;color:#345B82;font-size:11px;font-weight:800}}
+    .ar-hist-col b {{color:#0A376B;font-size:13px}}
+    .ar-hist-track {{height:155px;width:100%;max-width:65px;display:flex;align-items:end;background:#F0F5FA;border-radius:6px 6px 0 0;overflow:hidden}}
+    .ar-hist-fill {{width:100%;background:linear-gradient(180deg,#31A0CB,#146FC0);border-radius:5px 5px 0 0}}
+    .ar-svg {{width:100%;height:auto;display:block;margin:10px auto}}
+    .ar-insight {{background:#EDF5FC;border-left:3px solid #146FC0;padding:9px 12px;border-radius:7px;color:#234A73;font-size:12px;line-height:1.5}}
+    .ar-scatter-leg {{display:flex;gap:15px;flex-wrap:wrap;margin-top:5px;font-size:12px;color:#426383}}
+    .ar-matrix-scroll {{overflow:auto;max-height:320px}}
+    .ar-matrix {{border-collapse:separate;border-spacing:3px;width:100%;min-width:470px;font-size:11px}}
+    .ar-matrix th {{font-size:11px;text-align:center;color:#345474;padding:9px 5px}}
+    .ar-matrix th:first-child {{text-align:left;min-width:135px}}
+    .ar-matrix td {{border-radius:5px;text-align:center;padding:9px 4px;font-weight:800}}
+    @media(max-width:800px){{.ar-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}.ar-grid{{grid-template-columns:1fr}}.ar-section-head h2{{font-size:18px}}}}
     @media(max-width:440px){{.ar-kpis{{grid-template-columns:1fr 1fr}}.ar-kpi{{padding:12px}}.ar-kpi-value{{font-size:26px}}.ar-donut-row{{flex-direction:column}}}}
     </style>
     <div class="ar-panel-wrap">
+      <section class="ar-section" style="margin-top:5px">
+      <div class="ar-section-head"><span class="ar-section-number">01</span><div><h2>Visão Geral</h2>
+        <p>Panorama consolidado da demanda quantificada na aba GERAL.</p></div></div>
       <div class="ar-kpis">{kpis}</div>
       <div class="ar-grid">
         <div class="ar-box"><h3>Equipamentos por capacidade</h3>
@@ -9428,20 +9828,67 @@ def renderizar_quantitativo_ares():
           <div class="ar-footnote">Os aparelhos SUPLAN estão incluídos no total geral.</div>
         </div>
       </div>
+      </section>
+      <section class="ar-section">
+        <div class="ar-section-head"><span class="ar-section-number">02</span><div><h2>Análise Estratégica</h2>
+          <p>Concentração da demanda e distribuição de responsabilidades entre SEE e SUPLAN.</p></div></div>
+        <div class="ar-grid">
+          <div class="ar-box"><h3>Curva ABC · concentração da demanda</h3>
+            <div class="ar-sub">Escolas ordenadas por quantidade necessária, com classes de demanda acumulada.</div>
+            {grafico_pareto}
+            <div class="ar-abc-grid">{abc_cards}</div>
+            <div class="ar-insight" style="margin-top:15px"><strong>{fmt(indice_80)} escolas ({proporcao_80:.1f}%)</strong>
+             concentram pelo menos 80% dos aparelhos. A classificação mede concentração, não urgência de obras.</div></div>
+          <div class="ar-box"><h3>SEE × SUPLAN por GRE</h3>
+            <div class="ar-sub">Comparação da quantidade de equipamentos sob responsabilidade de cada órgão em cada regional.</div>
+            <div class="ar-legend"><span><i style="background:#146FC0"></i>SEE</span>
+              <span><i style="background:#ED972F"></i>SUPLAN</span><span>Valores: SEE / SUPLAN</span></div>
+            {comparativo_orgao}</div>
+        </div>
+      </section>
+      <section class="ar-section">
+        <div class="ar-section-head"><span class="ar-section-number">03</span><div><h2>Análise dos Ambientes</h2>
+          <p>Leitura exclusiva da aba DETALHAMENTO, sem duplicar as linhas de total por escola.</p></div></div>
       <div class="ar-grid" style="grid-template-columns:1fr">
-        <div class="ar-box"><h3>Ranking de demanda por GRE</h3>
-          <div class="ar-sub">Quantidade total de equipamentos necessários em cada regional</div>{barras_gre}</div>
+        <div class="ar-box"><h3>Mapa de calor · GRE × tipo de ambiente</h3>
+          <div class="ar-sub">Em quais regionais estão as maiores necessidades em salas de aula, bibliotecas, laboratórios e outros ambientes.</div>
+          {heatmap_gre_amb}<div class="ar-footnote">Cada célula mostra a quantidade de aparelhos, não o número de ambientes.</div></div>
+      </div>
+      <div class="ar-grid" style="grid-template-columns:1fr">
+        <div class="ar-box"><h3>Fluxo dos equipamentos · GRE → Ambiente → BTU</h3>
+          <div class="ar-sub">Os fluxos mais espessos representam maiores quantidades. Passe o cursor para consultar cada relação.</div>
+          {fluxo_ambientes}<div class="ar-footnote">Aparelhos contabilizados uma vez em cada etapa do fluxo; fonte: ambientes discriminados.</div></div>
       </div>
       <div class="ar-grid">
-        <div class="ar-box"><h3>Escolas com maior demanda</h3>
-          <div class="ar-sub">10 unidades escolares com maior quantitativo de aparelhos</div>{barras_escolas}</div>
-        <div class="ar-box"><h3>Perfil de capacidades por GRE</h3>
-          <div class="ar-sub">Participação de cada faixa de BTU no total da regional</div>
-          <div class="ar-mix-legend">{legenda_mistura}</div>{mistura_html}</div>
+        <div class="ar-box"><h3>Demanda por tipo de ambiente</h3>
+          <div class="ar-sub">Equipamentos distribuídos entre salas de aula, laboratórios e outros espaços</div>
+          {barras_ambientes}<div class="ar-footnote">{escape(nota_ambientes)}</div></div>
+        <div class="ar-box"><h3>Ambientes × capacidade (BTU)</h3>
+          <div class="ar-sub">Matriz de quantidade: cores mais intensas indicam maior concentração de aparelhos</div>
+          {matriz_ambiente}<div class="ar-footnote">Dados exclusivamente dos ambientes discriminados, sem somar as linhas de total da aba GERAL.</div></div>
       </div>
+      </section>
     </div>"""
-    altura_resumo = 1000 + len(ranking) * 38 + max(len(mistura_gre) * 31, 320)
+    altura_resumo = (2050 + len(orgaos_gre) * 23 +
+                    max(590, 27 * len(orgaos_gre) + 65) +
+                    (max(280, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
     components.html(html_ares, height=altura_resumo, scrolling=False)
+
+    if erro_detalhamento:
+        st.warning(f"O detalhamento por ambiente está temporariamente indisponível: {erro_detalhamento}. "
+                   "Os totais da aba GERAL continuam disponíveis.")
+    elif not detalhamento.empty:
+        por_escola_amb = detalhamento.groupby("Chave escola")["Total"].sum()
+        por_escola_geral = filtrado.groupby(filtrado["Unidade Escolar"].map(normalizar_texto))[
+            "Total de aparelhos"].sum()
+        diferencas = [(chave, int(quantidade), int(por_escola_amb.get(chave, 0)))
+                      for chave, quantidade in por_escola_geral.items()
+                      if chave in por_escola_amb and quantidade != por_escola_amb[chave]]
+        if diferencas:
+            st.info(f"Atenção à conferência: {fmt(len(diferencas))} escola(s) apresentam diferença "
+                    "entre a soma dos ambientes e o quantitativo consolidado da aba GERAL. "
+                    "Os gráficos por ambiente usam apenas o DETALHAMENTO; os indicadores gerais "
+                    "continuam usando a aba GERAL. O duplo clique permite conferir cada caso.")
 
     st.markdown('<div style="font-size:21px;font-weight:900;color:#123A67;margin:6px 0 8px">Detalhamento por unidade escolar</div>',
                 unsafe_allow_html=True)
@@ -9452,7 +9899,7 @@ def renderizar_quantitativo_ares():
                                         ["Todas as capacidades"] + colunas_btu, key="ares_tabela_capacidade")
     with tabela_filtro2:
         situacao_tabela = st.selectbox("Situação do levantamento (tabela)",
-                                     ["Todas", "Com quantitativo", "Sem quantitativo informado"],
+                                     ["Todas", "Com quantitativo", "Sem quantitativo informado", "Revisar valores"],
                                      key="ares_tabela_situacao")
     tabela_base = filtrado.copy()
     if capacidade_tabela != "Todas as capacidades":
@@ -9460,11 +9907,23 @@ def renderizar_quantitativo_ares():
     if situacao_tabela != "Todas":
         tabela_base = tabela_base[tabela_base["Situação do levantamento"] == situacao_tabela]
     tabela = tabela_base[["GRE", "Município", "Unidade Escolar", "SUPLAN"] + colunas_btu
-                      + ["Total de aparelhos", "Situação do levantamento"]]
+                      + ["Total de aparelhos", "Situação do levantamento", "Inconsistências"]]
     tabela = tabela.rename(columns={"Total de aparelhos": "Total de Ares", "Situação do levantamento": "Situação", "SUPLAN": "Órgão"})
     tabela["Órgão"] = tabela["Órgão"].map({"SIM": "SUPLAN", "NÃO": "SEE"})
     tabela = tabela[["Unidade Escolar", "Município", "GRE", "Órgão"] + colunas_btu
-                    + ["Total de Ares", "Situação"]]
+                    + ["Total de Ares", "Situação", "Inconsistências"]]
+    detalhes_por_escola = {}
+    if not detalhamento.empty:
+        for chave, grupo in detalhamento.groupby("Chave escola", sort=False):
+            detalhes_por_escola[chave] = [
+                {"ambiente": str(linha["Ambiente"]),
+                 "quantidades": [int(linha[col]) for col in colunas_btu],
+                 "total": int(linha["Total"])}
+                for _, linha in grupo.iterrows()
+            ]
+    # Payload codificado evita que caracteres em nomes/ambientes encerrem <script>.
+    detalhe_json_b64 = base64.b64encode(json.dumps(
+        detalhes_por_escola, ensure_ascii=False).encode("utf-8")).decode("ascii")
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
     linhas_html = []
@@ -9481,7 +9940,17 @@ def renderizar_quantitativo_ares():
                 classe = ""
             elif col == "Situação":
                 conteudo = ('<span class="ar-data-tag">Quantificado</span>' if valor == "Com quantitativo"
+                            else '<span class="ar-pending-tag">Revisar valores</span>' if valor == "Revisar valores"
                             else '<span class="ar-pending-tag">Não informado</span>')
+                classe = ""
+            elif col == "Unidade Escolar":
+                chave = normalizar_texto(str(valor))
+                conteudo = (f'<button type="button" class="ar-school-link" '
+                            f'data-school="{escape(chave, quote=True)}" '
+                            f'data-title="{escape(str(valor), quote=True)}" '
+                            f'data-total="{int(linha["Total de Ares"])}" '
+                            f'title="Clique duas vezes para consultar os ambientes">'
+                            f'{escape(str(valor))}</button>')
                 classe = ""
             else:
                 conteudo = escape(str(valor))
@@ -9511,6 +9980,7 @@ def renderizar_quantitativo_ares():
     .ar-school-table th:nth-child(n+5):nth-child(-n+10),.ar-school-table td:nth-child(n+5):nth-child(-n+10) {{width:94px;text-align:right}}
     .ar-school-table th:nth-child(11),.ar-school-table td:nth-child(11) {{width:115px;text-align:right;font-weight:900}}
     .ar-school-table th:nth-child(12),.ar-school-table td:nth-child(12) {{width:140px}}
+    .ar-school-table th:nth-child(13),.ar-school-table td:nth-child(13) {{width:220px}}
     .ar-number {{font-variant-numeric:tabular-nums}}
     .ar-supl-tag,.ar-other-tag,.ar-data-tag,.ar-pending-tag {{display:inline-block;padding:5px 8px;border-radius:6px;font-size:10px;font-weight:800}}
     .ar-supl-tag {{background:#FFF0DC;color:#955200}}
@@ -9518,10 +9988,82 @@ def renderizar_quantitativo_ares():
     .ar-data-tag {{background:#E3F5EC;color:#187A4D}}
     .ar-pending-tag {{background:#FFF2DE;color:#98610B}}
     .ar-table-foot {{padding:10px 14px;font-size:11px;color:#5D748E;background:#F7FAFE;border-top:1px solid #DCE5EF}}
+    .ar-school-link {{display:block;width:100%;padding:0;border:0;background:none;color:#03427D;
+      font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+    .ar-school-link:hover,.ar-school-link:focus {{color:#0B70C8;text-decoration:underline;outline-offset:2px}}
+    .ar-modal {{position:fixed;inset:0;background:rgba(5,25,54,.76);display:none;align-items:center;
+      justify-content:center;z-index:1000;padding:14px}}
+    .ar-modal[aria-hidden="false"] {{display:flex}}
+    .ar-dialog {{width:min(1080px,100%);max-height:96%;overflow:auto;background:#FFF;border-radius:16px;
+      box-shadow:0 20px 70px rgba(0,0,0,.3);padding:20px;color:#16385E}}
+    .ar-dialog-head {{display:flex;justify-content:space-between;align-items:start;gap:15px}}
+    .ar-dialog h2 {{font-size:20px;color:#0A396E;margin:0 0 7px}}
+    .ar-close {{border:0;border-radius:8px;padding:7px 12px;background:#D7E7F7;color:#0B396F;
+      font-size:19px;font-weight:900;cursor:pointer}}
+    .ar-modal-meta {{font-size:12px;color:#526B87;margin:4px 0 15px}}
+    .ar-detail-scroll {{overflow:auto;max-height:310px}}
+    .ar-detail-table {{border-collapse:collapse;width:100%;min-width:790px;font-size:12px}}
+    .ar-detail-table th {{position:sticky;top:0;background:#0A4C96;color:white;text-align:right;padding:11px 8px}}
+    .ar-detail-table th:first-child,.ar-detail-table td:first-child {{text-align:left}}
+    .ar-detail-table td {{text-align:right;padding:10px 8px;border-bottom:1px solid #DEE8F2}}
+    .ar-detail-table tr:nth-child(even) {{background:#F3F7FC}}
+    .ar-modal-note {{margin-top:12px;font-size:12px;background:#EDF4FC;padding:11px;border-radius:8px}}
     </style>
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Arraste horizontalmente para visualizar todas as capacidades</div></div>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique duas vezes no nome de uma escola para consultar os aparelhos por ambiente. Arraste horizontalmente para visualizar todas as capacidades.</div></div>
+    <div id="ar-detail-modal" class="ar-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Detalhamento por ambiente">
+      <div class="ar-dialog"><div class="ar-dialog-head"><h2 id="ar-detail-name"></h2>
+      <button type="button" class="ar-close" id="ar-modal-close" aria-label="Fechar">×</button></div>
+      <div class="ar-modal-meta" id="ar-detail-meta"></div><div class="ar-detail-scroll" id="ar-detail-body"></div>
+      <div class="ar-modal-note" id="ar-detail-note"></div></div></div>
+    <script>
+    (() => {{
+      const raw = atob('{detalhe_json_b64}');
+      const detalhamento = JSON.parse(new TextDecoder().decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+      const modal = document.getElementById('ar-detail-modal');
+      const unidades = ['12.000','18.000','24.000','30.000','36.000','60.000'];
+      const fmt = n => Number(n || 0).toLocaleString('pt-BR');
+      const esc = s => String(s).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+      function abrir(botao) {{
+        const registros = detalhamento[botao.dataset.school] || [];
+        const geral = Number(botao.dataset.total || 0);
+        const detalhado = registros.reduce((s, r) => s + r.total, 0);
+        document.getElementById('ar-detail-name').textContent = botao.dataset.title;
+        document.getElementById('ar-detail-meta').textContent =
+          `Total na aba GERAL: ${{fmt(geral)}} aparelhos · Ambientes detalhados: ${{fmt(detalhado)}} aparelhos`;
+        if (registros.length) {{
+          let html = '<table class="ar-detail-table"><thead><tr><th>Ambiente</th>' +
+            unidades.map(u => `<th>${{u}} BTU</th>`).join('') + '<th>Total</th></tr></thead><tbody>';
+          registros.forEach(r => {{
+            html += '<tr><td>' + esc(r.ambiente) + '</td>' +
+              r.quantidades.map(q => '<td>' + (q ? fmt(q) : '—') + '</td>').join('') +
+              '<td><b>' + fmt(r.total) + '</b></td></tr>';
+          }});
+          html += '</tbody></table>';
+          document.getElementById('ar-detail-body').innerHTML = html;
+          document.getElementById('ar-detail-note').textContent = geral === detalhado
+            ? 'O detalhamento por ambiente coincide com a quantidade registrada na aba GERAL.'
+            : `Atenção: há uma diferença de ${{fmt(Math.abs(geral - detalhado))}} aparelho(s) entre a aba GERAL e os ambientes já discriminados. Isso pode representar ambientes ainda não detalhados ou dados a revisar.`;
+        }} else {{
+          document.getElementById('ar-detail-body').innerHTML =
+            '<p style="padding:20px;color:#526B87">Ainda não há ambientes com equipamentos discriminados nesta escola.</p>';
+          document.getElementById('ar-detail-note').textContent =
+            'O total da aba GERAL é mantido; a ausência de ambientes preenchidos não significa ausência de demanda.';
+        }}
+        modal.setAttribute('aria-hidden', 'false');
+        document.getElementById('ar-modal-close').focus();
+      }}
+      function fechar() {{ modal.setAttribute('aria-hidden', 'true'); }}
+      document.querySelectorAll('.ar-school-link').forEach(b => {{
+        b.addEventListener('dblclick', () => abrir(b));
+        b.addEventListener('keydown', e => {{ if (e.key === 'Enter') abrir(b); }});
+      }});
+      document.getElementById('ar-modal-close').addEventListener('click', fechar);
+      modal.addEventListener('click', e => {{ if (e.target === modal) fechar(); }});
+      document.addEventListener('keydown', e => {{ if (e.key === 'Escape') fechar(); }});
+    }})();
+    </script>
     """
     components.html(html_tabela, height=585, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
