@@ -9812,7 +9812,7 @@ def renderizar_quantitativo_ares():
     .ar-hist-col b {{color:#0A376B;font-size:13px}}
     .ar-hist-track {{height:155px;width:100%;max-width:65px;display:flex;align-items:end;background:#F0F5FA;border-radius:6px 6px 0 0;overflow:hidden}}
     .ar-hist-fill {{width:100%;background:linear-gradient(180deg,#31A0CB,#146FC0);border-radius:5px 5px 0 0}}
-    .ar-svg {{width:100%;height:auto;display:block;margin:10px auto}}
+    .ar-svg {{width:100%;max-width:740px;height:auto;display:block;margin:10px auto}}
     .ar-insight {{background:#EDF5FC;border-left:3px solid #146FC0;padding:9px 12px;border-radius:7px;color:#234A73;font-size:12px;line-height:1.5}}
     .ar-scatter-leg {{display:flex;gap:15px;flex-wrap:wrap;margin-top:5px;font-size:12px;color:#426383}}
     .ar-matrix-scroll {{overflow:auto;max-height:320px}}
@@ -9881,7 +9881,7 @@ def renderizar_quantitativo_ares():
       </div>
       </section>
     </div>"""
-    altura_resumo = (1650 + len(ranking) * 32 +
+    altura_resumo = (2350 + len(ranking) * 32 +
                     max(len(mistura_gre) * 29, 340) +
                     (max(240, 26 * len(por_ambiente)) if not detalhamento.empty else 260))
     components.html(html_ares, height=altura_resumo, scrolling=False)
@@ -9924,58 +9924,10 @@ def renderizar_quantitativo_ares():
     tabela["Órgão"] = tabela["Órgão"].map({"SIM": "SUPLAN", "NÃO": "SEE"})
     tabela = tabela[["Unidade Escolar", "Município", "GRE", "Órgão"] + colunas_btu
                     + ["Total de Ares", "Situação", "Inconsistências"]]
-    detalhes_por_escola = {}
-    if not detalhamento.empty:
-        for chave, grupo in detalhamento.groupby("Chave escola", sort=False):
-            detalhes_por_escola[chave] = [
-                {"ambiente": str(linha["Ambiente"]),
-                 "quantidades": [int(linha[col]) for col in colunas_btu],
-                 "total": int(linha["Total"])}
-                for _, linha in grupo.iterrows()
-            ]
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
     linhas_html = []
-    detalhes_html = []
-    for indice_escola, (_, linha) in enumerate(tabela.iterrows()):
-        id_detalhe = f"ar-detalhe-escola-{indice_escola}"
-        chave_escola = normalizar_texto(str(linha["Unidade Escolar"]))
-        ambiente_escola = detalhes_por_escola.get(chave_escola, [])
-        total_geral_escola = int(linha["Total de Ares"])
-        total_ambientes_escola = sum(r["total"] for r in ambiente_escola)
-        cabecalho_ambiente = "".join(f"<th>{escape(cap)}</th>" for cap in colunas_btu)
-        linhas_ambiente = "".join(
-            '<tr><td>' + escape(r["ambiente"]) + '</td>' +
-            ''.join(f'<td>{fmt(qtd) if qtd else "—"}</td>' for qtd in r["quantidades"]) +
-            f'<td><b>{fmt(r["total"])}</b></td></tr>'
-            for r in ambiente_escola
-        )
-        aviso_total = (
-            "O somatório por ambiente coincide com o quantitativo da aba GERAL."
-            if total_geral_escola == total_ambientes_escola else
-            f"Atenção: diferença de {fmt(abs(total_geral_escola - total_ambientes_escola))} aparelho(s) "
-            "entre o levantamento dos ambientes e o total da aba GERAL."
-        )
-        conteudo_ambiente = (
-            f'<div class="ar-detail-scroll"><table class="ar-detail-table"><thead><tr>'
-            f'<th>Tipo / ambiente</th>{cabecalho_ambiente}<th>Total</th></tr></thead>'
-            f'<tbody>{linhas_ambiente}</tbody></table></div>'
-            if ambiente_escola else
-            '<p class="ar-no-rooms">Não há ambientes individualizados para esta escola na aba DETALHAMENTO.</p>'
-        )
-        detalhes_html.append(
-            f'<section id="{id_detalhe}" class="ar-modal" role="dialog" '
-            f'aria-label="Detalhamento de {escape(str(linha["Unidade Escolar"]), quote=True)}">'
-            f'<div class="ar-dialog"><div class="ar-dialog-head">'
-            f'<div><h2>{escape(str(linha["Unidade Escolar"]))}</h2>'
-            f'<div class="ar-modal-meta">{escape(str(linha["GRE"]))} · '
-            f'{escape(str(linha["Município"]))} · {escape(str(linha["Órgão"]))}</div></div>'
-            f'<a class="ar-close" href="#ar-table-top" aria-label="Fechar detalhamento">×</a></div>'
-            f'<div class="ar-detail-summary"><span>Total da aba GERAL <b>{fmt(total_geral_escola)}</b></span>'
-            f'<span>Ambientes discriminados <b>{fmt(len(ambiente_escola))}</b></span>'
-            f'<span>Aparelhos por ambiente <b>{fmt(total_ambientes_escola)}</b></span></div>'
-            f'{conteudo_ambiente}<div class="ar-modal-note">{escape(aviso_total)}</div></div></section>'
-        )
+    for _, linha in tabela.iterrows():
         celulas = []
         for col in colunas_tabela:
             valor = linha[col]
@@ -9992,12 +9944,7 @@ def renderizar_quantitativo_ares():
                             else '<span class="ar-pending-tag">Não informado</span>')
                 classe = ""
             elif col == "Unidade Escolar":
-                conteudo = (f'<span class="ar-school-action"><a class="ar-school-link" '
-                            f'href="#{id_detalhe}" title="Abrir levantamento por ambiente">'
-                            f'{escape(str(valor))}</a>'
-                            f'<a class="ar-school-open" href="#{id_detalhe}" '
-                            f'title="Abrir levantamento por ambiente" '
-                            f'aria-label="Abrir levantamento de {escape(str(valor), quote=True)}">↗</a></span>')
+                conteudo = escape(str(valor))
                 classe = ""
             else:
                 conteudo = escape(str(valor))
@@ -10069,36 +10016,18 @@ def renderizar_quantitativo_ares():
     <div id="ar-table-top"></div>
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique no nome (um ou dois cliques) ou no botão ↗ para abrir o levantamento completo por ambiente.</div></div>
-    {''.join(detalhes_html)}
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Para consultar os ambientes, selecione uma escola no campo acima da tabela.</div></div>
     """
-    # Seleção nativa do Streamlit: o levantamento aparece na página após
-    # selecionar a escola. Não depende de JavaScript, âncoras nem iframe.
+    # Preserva a tabela institucional HTML (cabeçalho azul e linhas zebrada).
+    # A escolha por nome, feita fora do iframe, atualiza o detalhe pelo Streamlit.
     st.markdown(
         '<div style="padding:11px 15px;background:#E9F3FD;border-left:4px solid #146FC0;'
         'border-radius:8px;color:#133F70;font-size:13px;font-weight:700;margin:8px 0 12px">'
-        'Selecione uma linha da tabela para visualizar os ambientes e aparelhos destinados à escola. '
-        'Você também pode procurar a unidade pelo campo abaixo.</div>',
+        'Para consultar todos os ambientes e aparelhos previstos, escolha uma unidade escolar '
+        'no seletor abaixo. A tabela preserva a formatação original do painel.</div>',
         unsafe_allow_html=True,
     )
     tabela_visual = tabela.reset_index(drop=True)
-    try:
-        evento_tabela = st.dataframe(
-            tabela_visual, height=410, hide_index=True, use_container_width=True,
-            selection_mode="single-row", on_select="rerun", key="ares_tabela_interativa",
-            column_config={
-                "Unidade Escolar": st.column_config.TextColumn("Unidade Escolar", width="large"),
-                "Município": st.column_config.TextColumn("Município", width="medium"),
-                "GRE": st.column_config.TextColumn("GRE", width="small"),
-                "Órgão": st.column_config.TextColumn("Órgão", width="small"),
-            },
-        )
-        linhas_selecionadas = list(evento_tabela.selection.rows)
-    except (TypeError, AttributeError):
-        # Compatibilidade com versões anteriores à seleção de linhas nativa.
-        st.dataframe(tabela_visual, height=410, hide_index=True, use_container_width=True)
-        linhas_selecionadas = []
-
     opcoes_escolas = [None] + list(range(len(tabela_visual)))
     def legenda_escola(indice):
         if indice is None:
@@ -10107,11 +10036,11 @@ def renderizar_quantitativo_ares():
         return (f'{registro["Unidade Escolar"]} — {registro["Município"]} '
                 f'({registro["GRE"]})')
     selecao_manual = st.selectbox(
-        "Localizar escola para abrir o levantamento por ambiente",
+        "Selecionar escola para visualizar o levantamento por ambiente",
         opcoes_escolas, format_func=legenda_escola, key="ares_escola_detalhamento",
     )
-    indice_escolhido = (selecao_manual if selecao_manual is not None else
-                        linhas_selecionadas[0] if linhas_selecionadas else None)
+    components.html(html_tabela, height=585, scrolling=False)
+    indice_escolhido = selecao_manual
     if indice_escolhido is not None and 0 <= indice_escolhido < len(tabela_visual):
         escola_escolhida = tabela_visual.iloc[indice_escolhido]
         nome_escolhido = str(escola_escolhida["Unidade Escolar"])
@@ -10133,20 +10062,59 @@ def renderizar_quantitativo_ares():
             f'{escape(str(escola_escolhida["Órgão"]))}</div></div>',
             unsafe_allow_html=True,
         )
-        resumo_escola = st.columns(3)
-        with resumo_escola[0]:
-            st.metric("Total na aba GERAL", fmt(total_geral_escolhido))
-        with resumo_escola[1]:
-            st.metric("Ambientes discriminados", fmt(len(ambientes_escola)))
-        with resumo_escola[2]:
-            st.metric("Aparelhos por ambiente", fmt(total_detalhado))
+        st.markdown(
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 17px">'
+            + ''.join(
+                '<div style="flex:1;min-width:175px;background:#F0F6FC;border:1px solid #D5E3F3;'
+                'border-radius:11px;padding:13px 17px">'
+                f'<div style="font-size:12px;color:#56708A;font-weight:800">{escape(rotulo)}</div>'
+                f'<div style="font-size:26px;font-weight:900;color:#0B467F">{fmt(valor)}</div></div>'
+                for rotulo, valor in [
+                    ("Total na aba GERAL", total_geral_escolhido),
+                    ("Ambientes discriminados", len(ambientes_escola)),
+                    ("Aparelhos por ambiente", total_detalhado),
+                ]
+            ) + '</div>', unsafe_allow_html=True,
+        )
         if ambientes_escola.empty:
             st.warning("Ainda não há ambientes individualizados para esta escola na aba DETALHAMENTO.")
         else:
             detalhe_tabela = ambientes_escola[["Ambiente"] + colunas_btu + ["Total"]].copy()
             detalhe_tabela = detalhe_tabela.rename(columns={"Ambiente": "Tipo / Ambiente", "Total": "Total de Ares"})
-            st.dataframe(detalhe_tabela, height=min(540, 45 * (len(detalhe_tabela) + 1) + 10),
-                         hide_index=True, use_container_width=True)
+            colunas_detalhe = list(detalhe_tabela.columns)
+            cabecalhos_detalhe = ''.join(f'<th>{escape(col)}</th>' for col in colunas_detalhe)
+            linhas_detalhe = ''.join(
+                '<tr>' + ''.join(
+                    f'<td title="{escape(str(row[col]), quote=True)}">'
+                    f'{fmt(row[col]) if col != "Tipo / Ambiente" and int(row[col]) else "—" if col != "Tipo / Ambiente" else escape(str(row[col]))}'
+                    '</td>' for col in colunas_detalhe
+                ) + '</tr>' for _, row in detalhe_tabela.iterrows()
+            )
+            html_detalhamento = f"""
+            <style>
+              * {{box-sizing:border-box}}
+              body {{margin:0;font-family:'Segoe UI',Arial,sans-serif;color:#03427D;background:#fff}}
+              .frame {{border:1px solid #BDCDDF;border-radius:13px;overflow:hidden}}
+              .scroll {{max-height:500px;overflow:auto;scrollbar-color:#7088A1 #EDF3F9}}
+              table {{border-collapse:separate;border-spacing:0;min-width:1000px;width:100%;font-size:12px;table-layout:fixed}}
+              th {{background:#0A4C96;color:white;position:sticky;top:0;text-align:left;padding:14px 10px;
+                font-weight:800;border-right:1px solid #3977B6;white-space:nowrap}}
+              th:first-child,td:first-child {{width:255px;text-align:left}}
+              td {{padding:12px 10px;height:44px;border-bottom:1px solid #C7D2DF;border-right:1px solid #E0E7EF;
+                text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+              td:first-child {{color:#03427D}}
+              tbody tr:nth-child(even) {{background:#F0F5FB}}
+              tbody tr:nth-child(odd) {{background:#FFFFFF}}
+              tbody tr:hover {{background:#DCEBFB}}
+              td:last-child {{font-weight:900;color:#0A4C96}}
+              .foot {{padding:10px 14px;background:#F7FAFE;color:#5D748E;font-size:11px}}
+            </style>
+            <div class="frame"><div class="scroll"><table><thead><tr>{cabecalhos_detalhe}</tr></thead>
+            <tbody>{linhas_detalhe}</tbody></table></div>
+            <div class="foot">{fmt(len(detalhe_tabela))} ambientes registrados · Deslize horizontalmente para visualizar todas as capacidades.</div></div>
+            """
+            components.html(html_detalhamento, height=min(550, 45 * (len(detalhe_tabela) + 1) + 52),
+                            scrolling=False)
             if total_geral_escolhido != total_detalhado:
                 st.warning(
                     f"Conferência: a aba GERAL registra {fmt(total_geral_escolhido)} aparelhos, "
