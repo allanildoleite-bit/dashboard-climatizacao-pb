@@ -9954,13 +9954,49 @@ def renderizar_quantitativo_ares():
                  "total": int(linha["Total"])}
                 for _, linha in grupo.iterrows()
             ]
-    # Payload codificado evita que caracteres em nomes/ambientes encerrem <script>.
-    detalhe_json_b64 = base64.b64encode(json.dumps(
-        detalhes_por_escola, ensure_ascii=False).encode("utf-8")).decode("ascii")
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
     linhas_html = []
-    for _, linha in tabela.iterrows():
+    detalhes_html = []
+    for indice_escola, (_, linha) in enumerate(tabela.iterrows()):
+        id_detalhe = f"ar-detalhe-escola-{indice_escola}"
+        chave_escola = normalizar_texto(str(linha["Unidade Escolar"]))
+        ambiente_escola = detalhes_por_escola.get(chave_escola, [])
+        total_geral_escola = int(linha["Total de Ares"])
+        total_ambientes_escola = sum(r["total"] for r in ambiente_escola)
+        cabecalho_ambiente = "".join(f"<th>{escape(cap)}</th>" for cap in colunas_btu)
+        linhas_ambiente = "".join(
+            '<tr><td>' + escape(r["ambiente"]) + '</td>' +
+            ''.join(f'<td>{fmt(qtd) if qtd else "—"}</td>' for qtd in r["quantidades"]) +
+            f'<td><b>{fmt(r["total"])}</b></td></tr>'
+            for r in ambiente_escola
+        )
+        aviso_total = (
+            "O somatório por ambiente coincide com o quantitativo da aba GERAL."
+            if total_geral_escola == total_ambientes_escola else
+            f"Atenção: diferença de {fmt(abs(total_geral_escola - total_ambientes_escola))} aparelho(s) "
+            "entre o levantamento dos ambientes e o total da aba GERAL."
+        )
+        conteudo_ambiente = (
+            f'<div class="ar-detail-scroll"><table class="ar-detail-table"><thead><tr>'
+            f'<th>Tipo / ambiente</th>{cabecalho_ambiente}<th>Total</th></tr></thead>'
+            f'<tbody>{linhas_ambiente}</tbody></table></div>'
+            if ambiente_escola else
+            '<p class="ar-no-rooms">Não há ambientes individualizados para esta escola na aba DETALHAMENTO.</p>'
+        )
+        detalhes_html.append(
+            f'<section id="{id_detalhe}" class="ar-modal" role="dialog" '
+            f'aria-label="Detalhamento de {escape(str(linha["Unidade Escolar"]), quote=True)}">'
+            f'<div class="ar-dialog"><div class="ar-dialog-head">'
+            f'<div><h2>{escape(str(linha["Unidade Escolar"]))}</h2>'
+            f'<div class="ar-modal-meta">{escape(str(linha["GRE"]))} · '
+            f'{escape(str(linha["Município"]))} · {escape(str(linha["Órgão"]))}</div></div>'
+            f'<a class="ar-close" href="#ar-table-top" aria-label="Fechar detalhamento">×</a></div>'
+            f'<div class="ar-detail-summary"><span>Total da aba GERAL <b>{fmt(total_geral_escola)}</b></span>'
+            f'<span>Ambientes discriminados <b>{fmt(len(ambiente_escola))}</b></span>'
+            f'<span>Aparelhos por ambiente <b>{fmt(total_ambientes_escola)}</b></span></div>'
+            f'{conteudo_ambiente}<div class="ar-modal-note">{escape(aviso_total)}</div></div></section>'
+        )
         celulas = []
         for col in colunas_tabela:
             valor = linha[col]
@@ -9977,19 +10013,12 @@ def renderizar_quantitativo_ares():
                             else '<span class="ar-pending-tag">Não informado</span>')
                 classe = ""
             elif col == "Unidade Escolar":
-                chave = normalizar_texto(str(valor))
-                conteudo = (f'<span class="ar-school-action"><button type="button" class="ar-school-link" '
-                            f'data-school="{escape(chave, quote=True)}" '
-                            f'data-title="{escape(str(valor), quote=True)}" '
-                            f'data-total="{int(linha["Total de Ares"])}" '
-                            f'title="Clique duas vezes para consultar os ambientes">'
-                            f'{escape(str(valor))}</button>'
-                            f'<button type="button" class="ar-school-open" '
-                            f'data-school="{escape(chave, quote=True)}" '
-                            f'data-title="{escape(str(valor), quote=True)}" '
-                            f'data-total="{int(linha["Total de Ares"])}" '
+                conteudo = (f'<span class="ar-school-action"><a class="ar-school-link" '
+                            f'href="#{id_detalhe}" title="Abrir levantamento por ambiente">'
+                            f'{escape(str(valor))}</a>'
+                            f'<a class="ar-school-open" href="#{id_detalhe}" '
                             f'title="Abrir levantamento por ambiente" '
-                            f'aria-label="Abrir levantamento de {escape(str(valor), quote=True)}">↗</button></span>')
+                            f'aria-label="Abrir levantamento de {escape(str(valor), quote=True)}">↗</a></span>')
                 classe = ""
             else:
                 conteudo = escape(str(valor))
@@ -10029,21 +10058,27 @@ def renderizar_quantitativo_ares():
     .ar-table-foot {{padding:10px 14px;font-size:11px;color:#5D748E;background:#F7FAFE;border-top:1px solid #DCE5EF}}
     .ar-school-action {{display:flex;align-items:center;gap:7px;width:100%;min-width:0}}
     .ar-school-link {{display:block;flex:1;min-width:0;padding:0;border:0;background:none;color:#03427D;
-      font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+      font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}}
     .ar-school-link:hover,.ar-school-link:focus {{color:#0B70C8;text-decoration:underline;outline-offset:2px}}
     .ar-school-open {{flex:none;width:24px;height:24px;border:1px solid #9ABDDD;border-radius:6px;
-      background:#EAF3FC;color:#155A9D;font-size:16px;font-weight:800;cursor:pointer;line-height:1}}
+      background:#EAF3FC;color:#155A9D;font-size:16px;font-weight:800;cursor:pointer;line-height:22px;
+      text-align:center;text-decoration:none}}
     .ar-school-open:hover {{background:#0B4E91;color:white}}
     .ar-modal {{position:fixed;inset:0;background:rgba(5,25,54,.76);display:none;align-items:center;
       justify-content:center;z-index:1000;padding:14px}}
-    .ar-modal[aria-hidden="false"] {{display:flex}}
+    .ar-modal:target {{display:flex}}
     .ar-dialog {{width:min(1080px,100%);max-height:96%;overflow:auto;background:#FFF;border-radius:16px;
       box-shadow:0 20px 70px rgba(0,0,0,.3);padding:20px;color:#16385E}}
     .ar-dialog-head {{display:flex;justify-content:space-between;align-items:start;gap:15px}}
     .ar-dialog h2 {{font-size:20px;color:#0A396E;margin:0 0 7px}}
     .ar-close {{border:0;border-radius:8px;padding:7px 12px;background:#D7E7F7;color:#0B396F;
-      font-size:19px;font-weight:900;cursor:pointer}}
+      font-size:19px;font-weight:900;cursor:pointer;text-decoration:none}}
     .ar-modal-meta {{font-size:12px;color:#526B87;margin:4px 0 15px}}
+    .ar-detail-summary {{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 16px}}
+    .ar-detail-summary span {{padding:10px 13px;border-radius:9px;background:#EFF5FC;
+      font-size:12px;font-weight:700;color:#456483}}
+    .ar-detail-summary b {{font-size:17px;color:#104A85;margin-left:7px}}
+    .ar-no-rooms {{padding:22px;background:#F3F7FC;border-radius:10px;color:#476580}}
     .ar-detail-scroll {{overflow:auto;max-height:310px}}
     .ar-detail-table {{border-collapse:collapse;width:100%;min-width:790px;font-size:12px}}
     .ar-detail-table th {{position:sticky;top:0;background:#0A4C96;color:white;text-align:right;padding:11px 8px}}
@@ -10052,76 +10087,11 @@ def renderizar_quantitativo_ares():
     .ar-detail-table tr:nth-child(even) {{background:#F3F7FC}}
     .ar-modal-note {{margin-top:12px;font-size:12px;background:#EDF4FC;padding:11px;border-radius:8px}}
     </style>
+    <div id="ar-table-top"></div>
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Dê dois cliques no nome da escola ou use o botão ↗ para abrir todos os ambientes. Deslize horizontalmente para consultar as capacidades.</div></div>
-    <div id="ar-detail-modal" class="ar-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Detalhamento por ambiente">
-      <div class="ar-dialog"><div class="ar-dialog-head"><h2 id="ar-detail-name"></h2>
-      <button type="button" class="ar-close" id="ar-modal-close" aria-label="Fechar">×</button></div>
-      <div class="ar-modal-meta" id="ar-detail-meta"></div><div class="ar-detail-scroll" id="ar-detail-body"></div>
-      <div class="ar-modal-note" id="ar-detail-note"></div></div></div>
-    <script>
-    (() => {{
-      let detalhamento = {{}};
-      try {{
-        const raw = atob('{detalhe_json_b64}');
-        detalhamento = JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
-      }} catch (erro) {{
-        console.error('Falha ao carregar os ambientes:', erro);
-      }}
-      const modal = document.getElementById('ar-detail-modal');
-      const unidades = ['12.000','18.000','24.000','30.000','36.000','60.000'];
-      const fmt = n => Number(n || 0).toLocaleString('pt-BR');
-      const esc = s => String(s).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
-      function abrir(botao) {{
-        const registros = detalhamento[botao.dataset.school] || [];
-        const geral = Number(botao.dataset.total || 0);
-        const detalhado = registros.reduce((s, r) => s + r.total, 0);
-        document.getElementById('ar-detail-name').textContent = botao.dataset.title;
-        document.getElementById('ar-detail-meta').textContent =
-          `Total na aba GERAL: ${{fmt(geral)}} aparelhos · Ambientes detalhados: ${{fmt(detalhado)}} aparelhos`;
-        if (registros.length) {{
-          let html = '<table class="ar-detail-table"><thead><tr><th>Ambiente</th>' +
-            unidades.map(u => `<th>${{u}} BTU</th>`).join('') + '<th>Total</th></tr></thead><tbody>';
-          registros.forEach(r => {{
-            html += '<tr><td>' + esc(r.ambiente) + '</td>' +
-              r.quantidades.map(q => '<td>' + (q ? fmt(q) : '—') + '</td>').join('') +
-              '<td><b>' + fmt(r.total) + '</b></td></tr>';
-          }});
-          html += '</tbody></table>';
-          document.getElementById('ar-detail-body').innerHTML = html;
-          document.getElementById('ar-detail-note').textContent = geral === detalhado
-            ? 'O detalhamento por ambiente coincide com a quantidade registrada na aba GERAL.'
-            : `Atenção: há uma diferença de ${{fmt(Math.abs(geral - detalhado))}} aparelho(s) entre a aba GERAL e os ambientes já discriminados. Isso pode representar ambientes ainda não detalhados ou dados a revisar.`;
-        }} else {{
-          document.getElementById('ar-detail-body').innerHTML =
-            '<p style="padding:20px;color:#526B87">Ainda não há ambientes com equipamentos discriminados nesta escola.</p>';
-          document.getElementById('ar-detail-note').textContent =
-            'O total da aba GERAL é mantido; a ausência de ambientes preenchidos não significa ausência de demanda.';
-        }}
-        modal.setAttribute('aria-hidden', 'false');
-        document.getElementById('ar-modal-close').focus();
-      }}
-      function fechar() {{ modal.setAttribute('aria-hidden', 'true'); }}
-      // Delegação no documento também cobre cliques rápidos na célula e
-      // evita perder eventos quando o navegador seleciona o texto do nome.
-      document.addEventListener('dblclick', e => {{
-        const botao = e.target.closest('.ar-school-link');
-        if (botao) {{ e.preventDefault(); abrir(botao); }}
-      }});
-      document.addEventListener('click', e => {{
-        const botao = e.target.closest('.ar-school-open');
-        if (botao) {{ e.preventDefault(); abrir(botao); }}
-      }});
-      document.addEventListener('keydown', e => {{
-        const botao = e.target.closest('.ar-school-link, .ar-school-open');
-        if (botao && (e.key === 'Enter' || e.key === ' ')) {{ e.preventDefault(); abrir(botao); }}
-      }});
-      document.getElementById('ar-modal-close').addEventListener('click', fechar);
-      modal.addEventListener('click', e => {{ if (e.target === modal) fechar(); }});
-      document.addEventListener('keydown', e => {{ if (e.key === 'Escape') fechar(); }});
-    }})();
-    </script>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique no nome (um ou dois cliques) ou no botão ↗ para abrir o levantamento completo por ambiente.</div></div>
+    {''.join(detalhes_html)}
     """
     components.html(html_tabela, height=690, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
