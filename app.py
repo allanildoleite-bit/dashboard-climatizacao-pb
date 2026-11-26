@@ -9387,7 +9387,7 @@ def renderizar_consulta_ambientes_ares(escolas: pd.DataFrame, ambientes: pd.Data
     cards = [
         ("APARELHOS NA ABA GERAL", total_geral),
         ("AMBIENTES DISCRIMINADOS", len(registros)),
-        ("APARELHOS POR AMBIENTE", total_ambientes),
+        ("APARELHOS DETALHADOS", total_ambientes),
     ]
     st.markdown(
         '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 15px">' + ''.join(
@@ -10021,7 +10021,80 @@ def renderizar_quantitativo_ares():
     colunas_tabela = list(tabela.columns)
     cabecalhos_html = "".join(f"<th>{escape(col)}</th>" for col in colunas_tabela)
     linhas_html = []
-    for _, linha in tabela.iterrows():
+    radios_escolas = ['<input class="ar-radio" type="radio" name="ar-escola" id="ar-fechar" checked>']
+    paineis_escolas = []
+    regras_abertura = []
+    # Ícones lineares monocromáticos, coerentes com a identidade GEOBS.
+    desenhos = {
+        "livro": '<path d="M12 7c-2-2-5-2-9-2v14c4 0 7 0 9 2m0-14c2-2 5-2 9-2v14c-4 0-7 0-9 2V7Z"/>',
+        "laboratorio": '<path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8"/>',
+        "biblioteca": '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="9" y="4" width="5" height="16" rx="1"/><path d="m16 7 3-1 3 13-3 1-3-13Z"/>',
+        "professores": '<circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2M3 4h4M3 8h3"/>',
+        "pasta": '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
+        "diretoria": '<path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h.01M15 11h.01"/>',
+        "prancheta": '<rect x="5" y="5" width="14" height="17" rx="2"/><path d="M9 5V3h6v2M9 11h6M9 15h6"/>',
+        "escola": '<path d="M3 21h18V9l-9-6-9 6v12ZM9 21v-7h6v7M8 10h.01M16 10h.01"/>',
+        "ar": '<path d="M12 2v20M4 6l16 12M20 6 4 18M8 4l4 4 4-4M8 20l4-4 4 4"/>',
+    }
+    def icone(nome):
+        return ('<svg class="ar-line-icon" viewBox="0 0 24 24" aria-hidden="true" '
+                'fill="none" stroke="currentColor" stroke-width="1.7" '
+                'stroke-linecap="round" stroke-linejoin="round">'
+                + desenhos[nome] + '</svg>')
+    icones_ambiente = {
+        "Salas de aula": "livro", "Laboratórios": "laboratorio", "Bibliotecas": "biblioteca",
+        "Sala dos professores": "professores", "Secretarias": "pasta",
+        "Diretorias": "diretoria", "Coordenação": "prancheta", "Outros ambientes": "escola",
+    }
+    for indice, (_, linha) in enumerate(tabela.iterrows()):
+        id_radio, id_painel = f"ar-abrir-{indice}", f"ar-painel-{indice}"
+        radios_escolas.append(f'<input class="ar-radio" type="radio" name="ar-escola" id="{id_radio}">')
+        regras_abertura.append(f'#{id_radio}:checked ~ .ar-paineis #{id_painel}{{display:flex}}')
+        chave_escola = normalizar_texto(str(linha["Unidade Escolar"]))
+        ambientes_da_escola = (detalhamento[detalhamento["Chave escola"] == chave_escola]
+                              if not detalhamento.empty else pd.DataFrame())
+        soma_ambientes = int(ambientes_da_escola["Total"].sum()) if not ambientes_da_escola.empty else 0
+        total_geral = int(linha["Total de Ares"])
+        if ambientes_da_escola.empty:
+            conteudo_painel = '<div class="ar-no-rooms">Esta unidade ainda não tem ambientes individualizados na aba DETALHAMENTO.</div>'
+        else:
+            cab_painel = ''.join(f'<th>{escape(col)}</th>' for col in colunas_btu)
+            linhas_painel = ''.join(
+                '<tr><td><span class="ar-room-icon">' +
+                icone(icones_ambiente.get(categorizar_ambiente(str(reg["Ambiente"])), "escola")) +
+                '</span>' + escape(str(reg["Ambiente"])) + '</td>' +
+                ''.join(f'<td>{fmt(reg[col]) if int(reg[col]) else "—"}</td>' for col in colunas_btu) +
+                f'<td><b>{fmt(reg["Total"])}</b></td></tr>'
+                for _, reg in ambientes_da_escola.iterrows()
+            )
+            conteudo_painel = (
+                '<div class="ar-detail-scroll"><table class="ar-detail-table"><thead><tr>'
+                f'<th>Tipo / Ambiente</th>{cab_painel}<th>Total</th></tr></thead>'
+                f'<tbody>{linhas_painel}</tbody></table></div>'
+            )
+        nota_conferencia = (
+            "A soma dos ambientes coincide com o total da aba GERAL."
+            if total_geral == soma_ambientes else
+            f"Atenção: a aba GERAL possui {fmt(total_geral)} aparelhos e os ambientes somam "
+            f"{fmt(soma_ambientes)}. Confira os dados na planilha."
+        )
+        paineis_escolas.append(
+            f'<section class="ar-modal" id="{id_painel}" role="dialog" '
+            f'aria-label="Levantamento de {escape(str(linha["Unidade Escolar"]), quote=True)}">'
+            f'<div class="ar-dialog"><div class="ar-dialog-head">'
+            f'<div><div class="ar-modal-eyebrow">{icone("ar")} LEVANTAMENTO POR AMBIENTE</div>'
+            f'<h2>{escape(str(linha["Unidade Escolar"]))}</h2>'
+            f'<div class="ar-modal-meta">{escape(str(linha["GRE"]))} · '
+            f'{escape(str(linha["Município"]))} · {escape(str(linha["Órgão"]))}</div></div>'
+            '<label class="ar-close" for="ar-fechar" role="button" tabindex="0" '
+            'title="Fechar detalhamento">×</label></div>'
+            '<div class="ar-detail-summary">'
+            f'<span>{icone("ar")} Total na GERAL <b>{fmt(total_geral)}</b></span>'
+            f'<span>{icone("escola")} Ambientes <b>{fmt(len(ambientes_da_escola))}</b></span>'
+            f'<span>{icone("prancheta")} Aparelhos detalhados <b>{fmt(soma_ambientes)}</b></span></div>'
+            f'{conteudo_painel}<div class="ar-modal-note">{escape(nota_conferencia)}</div>'
+            '</div></section>'
+        )
         celulas = []
         for col in colunas_tabela:
             valor = linha[col]
@@ -10038,7 +10111,9 @@ def renderizar_quantitativo_ares():
                             else '<span class="ar-pending-tag">Não informado</span>')
                 classe = ""
             elif col == "Unidade Escolar":
-                conteudo = escape(str(valor))
+                conteudo = (f'<label class="ar-school-link" for="{id_radio}" '
+                            f'title="Clique uma ou duas vezes para abrir os ambientes desta escola">'
+                            f'{escape(str(valor))}<span class="ar-open-hint"> ↗</span></label>')
                 classe = ""
             else:
                 conteudo = escape(str(valor))
@@ -10080,13 +10155,15 @@ def renderizar_quantitativo_ares():
     .ar-school-link {{display:block;flex:1;min-width:0;padding:0;border:0;background:none;color:#03427D;
       font:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}}
     .ar-school-link:hover,.ar-school-link:focus {{color:#0B70C8;text-decoration:underline;outline-offset:2px}}
+    .ar-open-hint {{font-size:14px;font-weight:900;color:#166EBB;margin-left:6px}}
+    .ar-radio {{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}}
     .ar-school-open {{flex:none;width:24px;height:24px;border:1px solid #9ABDDD;border-radius:6px;
       background:#EAF3FC;color:#155A9D;font-size:16px;font-weight:800;cursor:pointer;line-height:22px;
       text-align:center;text-decoration:none}}
     .ar-school-open:hover {{background:#0B4E91;color:white}}
     .ar-modal {{position:fixed;inset:0;background:rgba(5,25,54,.76);display:none;align-items:center;
       justify-content:center;z-index:1000;padding:14px}}
-    .ar-modal:target {{display:flex}}
+    {''.join(regras_abertura)}
     .ar-dialog {{width:min(1080px,100%);max-height:96%;overflow:auto;background:#FFF;border-radius:16px;
       box-shadow:0 20px 70px rgba(0,0,0,.3);padding:20px;color:#16385E}}
     .ar-dialog-head {{display:flex;justify-content:space-between;align-items:start;gap:15px}}
@@ -10094,12 +10171,17 @@ def renderizar_quantitativo_ares():
     .ar-close {{border:0;border-radius:8px;padding:7px 12px;background:#D7E7F7;color:#0B396F;
       font-size:19px;font-weight:900;cursor:pointer;text-decoration:none}}
     .ar-modal-meta {{font-size:12px;color:#526B87;margin:4px 0 15px}}
+    .ar-modal-eyebrow {{font-size:11px;font-weight:900;color:#1976B7;margin-bottom:5px;letter-spacing:.5px;
+      display:flex;align-items:center;gap:7px}}
+    .ar-line-icon {{width:16px;height:16px;flex:none;vertical-align:middle;color:#1766A5}}
+    .ar-room-icon {{display:inline-flex;align-items:center;vertical-align:middle;margin-right:8px}}
+    .ar-detail-summary span .ar-line-icon {{margin-right:6px}}
     .ar-detail-summary {{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 16px}}
     .ar-detail-summary span {{padding:10px 13px;border-radius:9px;background:#EFF5FC;
       font-size:12px;font-weight:700;color:#456483}}
     .ar-detail-summary b {{font-size:17px;color:#104A85;margin-left:7px}}
     .ar-no-rooms {{padding:22px;background:#F3F7FC;border-radius:10px;color:#476580}}
-    .ar-detail-scroll {{overflow:auto;max-height:310px}}
+    .ar-detail-scroll {{overflow:auto;max-height:430px}}
     .ar-detail-table {{border-collapse:collapse;width:100%;min-width:790px;font-size:12px}}
     .ar-detail-table th {{position:sticky;top:0;background:#0A4C96;color:white;text-align:right;padding:11px 8px}}
     .ar-detail-table th:first-child,.ar-detail-table td:first-child {{text-align:left}}
@@ -10108,11 +10190,13 @@ def renderizar_quantitativo_ares():
     .ar-modal-note {{margin-top:12px;font-size:12px;background:#EDF4FC;padding:11px;border-radius:8px}}
     </style>
     <div id="ar-table-top"></div>
+    {''.join(radios_escolas)}
     <div class="ar-table-frame"><div class="ar-table-scroll"><table class="ar-school-table">
     <thead><tr>{cabecalhos_html}</tr></thead><tbody>{''.join(linhas_html)}</tbody>
-    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · O levantamento de cada unidade pode ser consultado na seção “Consultar levantamento por ambiente”, no início desta aba.</div></div>
+    </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique uma ou duas vezes no nome da unidade escolar para abrir os ambientes e as capacidades de BTU.</div></div>
+    <div class="ar-paineis">{''.join(paineis_escolas)}</div>
     """
-    components.html(html_tabela, height=585, scrolling=False)
+    components.html(html_tabela, height=710, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
