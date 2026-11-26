@@ -10201,12 +10201,12 @@ def renderizar_quantitativo_ares():
     </table></div><div class="ar-table-foot">{fmt(len(tabela))} escolas exibidas · Clique uma ou duas vezes no nome da unidade escolar para abrir os ambientes e as capacidades de BTU.</div></div>
     <div class="ar-paineis">{''.join(paineis_escolas)}</div>
     """
-    components.html(html_tabela, height=710, scrolling=False)
     st.download_button("Baixar levantamento filtrado (CSV)",
                        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        file_name="quantitativo_de_ares_filtrado.csv", mime="text/csv",
                        key="baixar_ares")
     st.caption("Campos vazios não são tratados como demanda inexistente. Os totais mostram apenas equipamentos quantificados na planilha publicada. Atualização em cache a cada 150 segundos.")
+    components.html(html_tabela, height=730, scrolling=False)
 
 
 def renderizar():
